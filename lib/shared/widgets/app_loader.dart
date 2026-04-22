@@ -56,7 +56,7 @@ class AppLoadingOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black.withOpacity(0.35),
+      color: Colors.black.withValues(alpha: 0.35),
       child: AppLoader(
         message: message,
         color: AppColors.textOnPrimary,
