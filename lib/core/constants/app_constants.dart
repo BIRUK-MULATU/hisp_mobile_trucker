@@ -8,7 +8,8 @@ class AppConstants {
   // ── Storage Keys ───────────────────────────────────────────
   static const String keyAuthToken = 'auth_token';
   static const String keyUsername = 'username';
-  static const String keyBaseUrl = 'http://192.168.100.149:8081/api';
+  static const String keyBaseUrl = 'base_url';
+  // static const String keyBaseUrl = 'http://192.168.100.149:8081/me';
   static const String keyIsLoggedIn = 'is_logged_in';
   static const String keyUserData = 'user_data';
 

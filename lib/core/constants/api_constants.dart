@@ -2,7 +2,7 @@ class ApiConstants {
   ApiConstants._();
 
   // ── DHIS2 Endpoints ────────────────────────────────────────
-  static const String baseUrl = 'http://192.168.100.149:8081/api';
+  static const String baseUrl = 'http://localhost:8081/api';
   static const String loginEndpoint = '/me';
   static const String meEndpoint = '/me';
   static const String programsEndpoint = '/programs';

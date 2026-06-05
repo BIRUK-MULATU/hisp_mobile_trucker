@@ -13,7 +13,7 @@ class AppDimensions {
   static const double spaceXXXL = 40.0;
   static const double spaceHuge = 48.0;
   static const double spaceGiant = 64.0;
-
+  
   // ── Border Radius ──────────────────────────────────────────
   static const double radiusXS = 4.0;
   static const double radiusSM = 8.0;

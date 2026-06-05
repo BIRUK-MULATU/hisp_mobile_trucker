@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
+import '../../features/home/presentation/pages/home_page.dart';
 
 class AppRouter {
   AppRouter._();
 
-  // ── Route Names ────────────────────────────────────────────
+  // ── Route Paths ────────────────────────────────────────────
   static const String login = '/login';
   static const String home = '/home';
   static const String dataEntry = '/data-entry';
@@ -24,7 +25,7 @@ class AppRouter {
       GoRoute(
         path: home,
         name: 'home',
-        builder: (context, state) => const _PlaceholderPage(title: 'Home'),
+        builder: (context, state) => const HomePage(),
       ),
       GoRoute(
         path: dataEntry,
@@ -41,7 +42,6 @@ class AppRouter {
   );
 }
 
-/// Temporary placeholder — remove once real screens are built
 class _PlaceholderPage extends StatelessWidget {
   final String title;
   const _PlaceholderPage({required this.title});

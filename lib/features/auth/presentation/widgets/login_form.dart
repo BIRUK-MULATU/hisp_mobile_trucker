@@ -132,7 +132,7 @@ class _LoginFormState extends State<LoginForm> {
                 color: AppColors.errorLight,
                 borderRadius:
                     BorderRadius.circular(AppDimensions.radiusSM),
-                border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
               ),
               child: Row(
                 children: [
