@@ -81,4 +81,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-Developed with ❤️ by [Biruk](https://github.com/biruk)
+Powered by HISP ETHIOPIA
