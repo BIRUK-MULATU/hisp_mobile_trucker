@@ -75,10 +75,5 @@ To run the test suite:
 flutter test
 ```
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
 
 Powered by HISP ETHIOPIA
