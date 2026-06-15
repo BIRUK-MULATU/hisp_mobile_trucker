@@ -5,6 +5,7 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
+import '../../../dataset_detail/presentation/pages/dataset_detail_page.dart';
 import '../../data/datasources/home_remote_datasource.dart';
 import '../../data/repositories/home_repository_impl.dart';
 import '../../domain/usecases/get_datasets_usecase.dart';
@@ -41,8 +42,7 @@ class _HomeView extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<HomeBloc, HomeState>(
       builder: (context, state) {
-        final isSyncing =
-            state is HomeLoaded && state.isSyncing;
+        final isSyncing = state is HomeLoaded && state.isSyncing;
 
         return Scaffold(
           backgroundColor: AppColors.backgroundGrey,
@@ -51,9 +51,7 @@ class _HomeView extends StatelessWidget {
             onMenuTap: () => Scaffold.of(context).openDrawer(),
             onSyncTap: () =>
                 context.read<HomeBloc>().add(const HomeSyncAll()),
-            onListViewTap: () {
-              // TODO: toggle view mode
-            },
+            onListViewTap: () {},
           ),
           drawer: const _HomeDrawer(),
           body: _buildBody(context, state),
@@ -84,7 +82,6 @@ class _HomeView extends StatelessWidget {
         color: AppColors.primary,
         onRefresh: () async {
           context.read<HomeBloc>().add(const HomeRefresh());
-          // Wait for state change
           await Future.delayed(const Duration(seconds: 1));
         },
         child: ListView.builder(
@@ -96,13 +93,15 @@ class _HomeView extends StatelessWidget {
             final dataSet = state.dataSets[index];
             return DataSetCard(
               dataSet: dataSet,
+              // ── Navigate to Dataset Detail ──────────
               onTap: () {
-                // TODO: navigate to data entry
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Opening: ${dataSet.name}'),
-                    behavior: SnackBarBehavior.floating,
-                    duration: const Duration(seconds: 1),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DatasetDetailPage(
+                      dataSetId: dataSet.id,
+                      dataSetName: dataSet.name,
+                    ),
                   ),
                 );
               },
@@ -119,7 +118,7 @@ class _HomeView extends StatelessWidget {
   }
 }
 
-// ── Drawer ────────────────────────────────────────────────────
+// ── Drawer ─────────────────────────────────────────────────────
 class _HomeDrawer extends StatelessWidget {
   const _HomeDrawer();
 
@@ -128,7 +127,6 @@ class _HomeDrawer extends StatelessWidget {
     return Drawer(
       child: Column(
         children: [
-          // Header
           Container(
             width: double.infinity,
             color: AppColors.primary,
@@ -153,21 +151,17 @@ class _HomeDrawer extends StatelessWidget {
                 const SizedBox(height: AppDimensions.spaceMD),
                 Text(
                   'HISP User',
-                  style: AppTextStyles.headingSmall.copyWith(
-                    color: Colors.white,
-                  ),
+                  style: AppTextStyles.headingSmall
+                      .copyWith(color: Colors.white),
                 ),
                 Text(
                   'admin@dhis2.org',
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: Colors.white70,
-                  ),
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: Colors.white70),
                 ),
               ],
             ),
           ),
-
-          // Menu items
           ListTile(
             leading: const Icon(Icons.home_outlined,
                 color: AppColors.primary),
@@ -186,23 +180,17 @@ class _HomeDrawer extends StatelessWidget {
             title: const Text('Settings'),
             onTap: () => Navigator.pop(context),
           ),
-
           const Spacer(),
-
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.logout_rounded,
-                color: AppColors.error),
+            leading:
+                const Icon(Icons.logout_rounded, color: AppColors.error),
             title: Text(
               'Logout',
-              style: AppTextStyles.bodyMedium.copyWith(
-                color: AppColors.error,
-              ),
+              style:
+                  AppTextStyles.bodyMedium.copyWith(color: AppColors.error),
             ),
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: trigger logout bloc
-            },
+            onTap: () => Navigator.pop(context),
           ),
           const SizedBox(height: AppDimensions.spaceMD),
         ],
@@ -211,11 +199,9 @@ class _HomeDrawer extends StatelessWidget {
   }
 }
 
-// ── Error View ────────────────────────────────────────────────
 class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
-
   const _ErrorView({required this.message, required this.onRetry});
 
   @override
@@ -226,23 +212,17 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.cloud_off_rounded,
-              size: AppDimensions.iconHuge,
-              color: AppColors.textSecondary,
-            ),
+            const Icon(Icons.cloud_off_rounded,
+                size: AppDimensions.iconHuge,
+                color: AppColors.textSecondary),
             const SizedBox(height: AppDimensions.spaceLG),
-            Text(
-              'Could not load datasets',
-              style: AppTextStyles.headingSmall,
-              textAlign: TextAlign.center,
-            ),
+            Text('Could not load datasets',
+                style: AppTextStyles.headingSmall,
+                textAlign: TextAlign.center),
             const SizedBox(height: AppDimensions.spaceSM),
-            Text(
-              message,
-              style: AppTextStyles.bodySmall,
-              textAlign: TextAlign.center,
-            ),
+            Text(message,
+                style: AppTextStyles.bodySmall,
+                textAlign: TextAlign.center),
             const SizedBox(height: AppDimensions.spaceXXL),
             ElevatedButton.icon(
               onPressed: onRetry,
@@ -256,7 +236,6 @@ class _ErrorView extends StatelessWidget {
   }
 }
 
-// ── Empty View ────────────────────────────────────────────────
 class _EmptyView extends StatelessWidget {
   const _EmptyView();
 
@@ -266,16 +245,11 @@ class _EmptyView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.folder_open_rounded,
-            size: AppDimensions.iconHuge,
-            color: AppColors.textSecondary,
-          ),
+          const Icon(Icons.folder_open_rounded,
+              size: AppDimensions.iconHuge,
+              color: AppColors.textSecondary),
           const SizedBox(height: AppDimensions.spaceLG),
-          Text(
-            'No datasets found',
-            style: AppTextStyles.headingSmall,
-          ),
+          Text('No datasets found', style: AppTextStyles.headingSmall),
           const SizedBox(height: AppDimensions.spaceSM),
           Text(
             'Check your server connection\nor contact your administrator.',
