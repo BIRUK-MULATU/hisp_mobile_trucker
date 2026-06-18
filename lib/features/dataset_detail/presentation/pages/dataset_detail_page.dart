@@ -62,11 +62,9 @@ class _DatasetDetailView extends StatelessWidget {
           if (state is DatasetDetailLoading) {
             return const AppLoader(message: 'Loading records...');
           }
-
           if (state is DatasetDetailLoaded && state.isEmpty) {
             return const _EmptyState();
           }
-
           if (state is DatasetDetailLoaded && !state.isEmpty) {
             return RefreshIndicator(
               color: AppColors.primary,
@@ -77,7 +75,8 @@ class _DatasetDetailView extends StatelessWidget {
                 await Future.delayed(const Duration(seconds: 1));
               },
               child: ListView.separated(
-                padding: const EdgeInsets.all(AppDimensions.space),
+                padding:
+                    const EdgeInsets.all(AppDimensions.space),
                 itemCount: state.records.length,
                 separatorBuilder: (_, __) =>
                     const SizedBox(height: AppDimensions.spaceSM),
@@ -88,7 +87,6 @@ class _DatasetDetailView extends StatelessWidget {
               ),
             );
           }
-
           if (state is DatasetDetailError) {
             return _ErrorState(
               message: state.message,
@@ -97,18 +95,16 @@ class _DatasetDetailView extends StatelessWidget {
                   .add(DatasetDetailLoad(dataSetId)),
             );
           }
-
           return const SizedBox.shrink();
         },
       ),
-
-      // ── Floating Add Button ──────────────────────────────
       floatingActionButton: FloatingActionButton(
         onPressed: () => _onAddRecord(context),
         backgroundColor: AppColors.primary,
         elevation: 4,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimensions.radiusLG),
+          borderRadius:
+              BorderRadius.circular(AppDimensions.radiusLG),
         ),
         child: const Icon(
           Icons.add_rounded,
@@ -119,7 +115,9 @@ class _DatasetDetailView extends StatelessWidget {
     );
   }
 
+  // ── Fix: store bloc reference before async gap ─────────────
   void _onAddRecord(BuildContext context) {
+    final bloc = context.read<DatasetDetailBloc>();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -129,18 +127,15 @@ class _DatasetDetailView extends StatelessWidget {
         ),
       ),
     ).then((_) {
-      // Refresh list when coming back from add record
-      context
-          .read<DatasetDetailBloc>()
-          .add(DatasetDetailRefresh(dataSetId));
+      bloc.add(DatasetDetailRefresh(dataSetId));
     });
   }
 }
 
 // ── AppBar ─────────────────────────────────────────────────────
-class _DetailAppBar extends StatelessWidget implements PreferredSizeWidget {
+class _DetailAppBar extends StatelessWidget
+    implements PreferredSizeWidget {
   final String dataSetName;
-
   const _DetailAppBar({required this.dataSetName});
 
   @override
@@ -153,10 +148,8 @@ class _DetailAppBar extends StatelessWidget implements PreferredSizeWidget {
       backgroundColor: AppColors.primary,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(
-          Icons.arrow_back_rounded,
-          color: Colors.white,
-        ),
+        icon: const Icon(Icons.arrow_back_rounded,
+            color: Colors.white),
         onPressed: () => Navigator.pop(context),
       ),
       title: Text(
@@ -169,15 +162,11 @@ class _DetailAppBar extends StatelessWidget implements PreferredSizeWidget {
         IconButton(
           icon: const Icon(Icons.sync_rounded, color: Colors.white),
           onPressed: () {},
-          tooltip: 'Sync',
         ),
         IconButton(
-          icon: const Icon(
-            Icons.format_list_bulleted_rounded,
-            color: Colors.white,
-          ),
+          icon: const Icon(Icons.format_list_bulleted_rounded,
+              color: Colors.white),
           onPressed: () {},
-          tooltip: 'View options',
         ),
         const SizedBox(width: AppDimensions.spaceXS),
       ],
@@ -193,15 +182,15 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.spaceXXXL),
+        padding:
+            const EdgeInsets.all(AppDimensions.spaceXXXL),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Illustration
             Container(
               width: 80,
               height: 80,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: AppColors.primarySurface,
                 shape: BoxShape.circle,
               ),
@@ -211,10 +200,7 @@ class _EmptyState extends StatelessWidget {
                 color: AppColors.primary,
               ),
             ),
-
             const SizedBox(height: AppDimensions.spaceXL),
-
-            // Message — matches Figma text exactly
             Text(
               'There are no data. Click "+" to\nadd new a new record',
               style: AppTextStyles.bodyMedium.copyWith(
@@ -241,7 +227,8 @@ class _RecordCard extends StatelessWidget {
       padding: const EdgeInsets.all(AppDimensions.space),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusLG),
+        borderRadius:
+            BorderRadius.circular(AppDimensions.radiusLG),
         border: Border.all(color: AppColors.divider),
         boxShadow: [
           BoxShadow(
@@ -284,10 +271,8 @@ class _RecordCard extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(
-            Icons.chevron_right_rounded,
-            color: AppColors.textSecondary,
-          ),
+          const Icon(Icons.chevron_right_rounded,
+              color: AppColors.textSecondary),
         ],
       ),
     );
@@ -298,8 +283,8 @@ class _RecordCard extends StatelessWidget {
 class _ErrorState extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
-
-  const _ErrorState({required this.message, required this.onRetry});
+  const _ErrorState(
+      {required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -309,22 +294,16 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.cloud_off_rounded,
-              size: AppDimensions.iconHuge,
-              color: AppColors.textSecondary,
-            ),
+            const Icon(Icons.cloud_off_rounded,
+                size: AppDimensions.iconHuge,
+                color: AppColors.textSecondary),
             const SizedBox(height: AppDimensions.spaceLG),
-            Text(
-              'Could not load records',
-              style: AppTextStyles.headingSmall,
-            ),
+            Text('Could not load records',
+                style: AppTextStyles.headingSmall),
             const SizedBox(height: AppDimensions.spaceSM),
-            Text(
-              message,
-              style: AppTextStyles.bodySmall,
-              textAlign: TextAlign.center,
-            ),
+            Text(message,
+                style: AppTextStyles.bodySmall,
+                textAlign: TextAlign.center),
             const SizedBox(height: AppDimensions.spaceXXL),
             ElevatedButton.icon(
               onPressed: onRetry,
