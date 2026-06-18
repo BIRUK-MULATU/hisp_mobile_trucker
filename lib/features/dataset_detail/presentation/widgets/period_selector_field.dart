@@ -16,11 +16,12 @@ class PeriodSelectorField extends StatefulWidget {
   });
 
   @override
-  State<PeriodSelectorField> createState() => _PeriodSelectorFieldState();
+  State<PeriodSelectorField> createState() =>
+      _PeriodSelectorFieldState();
 }
 
 class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
-  late List<_PeriodOption> _periods;
+  late final List<_PeriodOption> _periods;
 
   @override
   void initState() {
@@ -30,20 +31,19 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
 
   List<_PeriodOption> _generatePeriods() {
     final now = DateTime.now();
-    final periods = <_PeriodOption>[];
     const monthNames = [
       'January', 'February', 'March', 'April',
       'May', 'June', 'July', 'August',
       'September', 'October', 'November', 'December',
     ];
-    for (int i = 0; i < 24; i++) {
+    return List.generate(24, (i) {
       final date = DateTime(now.year, now.month - i, 1);
       final month = date.month.toString().padLeft(2, '0');
-      final id = '${date.year}$month';
-      final label = '${monthNames[date.month - 1]} ${date.year}';
-      periods.add(_PeriodOption(id: id, label: label));
-    }
-    return periods;
+      return _PeriodOption(
+        id: '${date.year}$month',
+        label: '${monthNames[date.month - 1]} ${date.year}',
+      );
+    });
   }
 
   @override
@@ -51,7 +51,6 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Label ─────────────────────────────────────
         Text(
           'Report Period',
           style: AppTextStyles.bodyLarge.copyWith(
@@ -59,25 +58,22 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
             fontWeight: FontWeight.w400,
           ),
         ),
-
         const SizedBox(height: AppDimensions.spaceSM),
-
-        // ── Dropdown with bottom border only ──────────
         DropdownButtonFormField<String>(
-          value: widget.selectedPeriod,
+          // Use initialValue pattern — not deprecated value
+          key: ValueKey(widget.selectedPeriod),
+          initialValue: widget.selectedPeriod,
           isExpanded: true,
           icon: const Icon(
             Icons.keyboard_arrow_down_rounded,
             color: AppColors.textSecondary,
           ),
-          style: AppTextStyles.bodyMedium.copyWith(
-            color: AppColors.textPrimary,
-          ),
+          style: AppTextStyles.bodyMedium
+              .copyWith(color: AppColors.textPrimary),
           decoration: const InputDecoration(
             filled: false,
-            contentPadding: EdgeInsets.only(
-              bottom: AppDimensions.spaceSM,
-            ),
+            contentPadding:
+                EdgeInsets.only(bottom: AppDimensions.spaceSM),
             border: UnderlineInputBorder(
               borderSide: BorderSide(color: AppColors.border),
             ),
@@ -91,19 +87,13 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
             errorBorder: UnderlineInputBorder(
               borderSide: BorderSide(color: AppColors.error),
             ),
-            hintText: '',
-            hintStyle: TextStyle(color: AppColors.textHint),
           ),
           items: _periods
-              .map(
-                (p) => DropdownMenuItem<String>(
-                  value: p.id,
-                  child: Text(
-                    p.label,
-                    style: AppTextStyles.bodyMedium,
-                  ),
-                ),
-              )
+              .map((p) => DropdownMenuItem<String>(
+                    value: p.id,
+                    child: Text(p.label,
+                        style: AppTextStyles.bodyMedium),
+                  ))
               .toList(),
           onChanged: widget.onChanged,
           validator: widget.validator,

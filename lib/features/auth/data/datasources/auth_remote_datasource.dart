@@ -33,7 +33,6 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       final response = await _apiClient.get(
         '/me',
         queryParameters: {
-          // ── Include organisationUnits with full details ──
           'fields':
               'id,username,firstName,surname,email,phoneNumber,avatar,'
               'authorities,organisationUnits[id,displayName,shortName,code,level,path]',
@@ -45,12 +44,12 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
         ),
       );
 
-      // Detect HTML response
       final data = response.data;
+
+      // Detect HTML response
       if (data is String && data.trimLeft().startsWith('<')) {
         throw const UnauthorizedException(
-          message: 'Invalid server URL or credentials.',
-        );
+            message: 'Invalid server URL or credentials.');
       }
 
       if (response.statusCode == 401 || response.statusCode == 403) {
@@ -58,18 +57,15 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       }
 
       if (response.statusCode == 200 && data is Map<String, dynamic>) {
-        // Save auth token
         await _secureStorage.saveToken(token);
         await _secureStorage.saveUsername(username);
-
-        // Save full user data including org units
         await _secureStorage.saveUserData(data);
 
-        // Save org units separately for quick access
-        final orgUnits = (data['organisationUnits'] as List<dynamic>?)
-                ?.map((e) => e as Map<String, dynamic>)
-                .toList() ??
-            [];
+        final orgUnits =
+            (data['organisationUnits'] as List<dynamic>?)
+                    ?.map((e) => e as Map<String, dynamic>)
+                    .toList() ??
+                [];
         await _secureStorage.saveOrgUnits(orgUnits);
 
         return UserModel.fromJson(data);
@@ -83,6 +79,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       if (e is AppException) rethrow;
       throw ServerException(message: e.toString());
     }
+    // This line is required by Dart but never reached
     throw const ServerException();
   }
 
