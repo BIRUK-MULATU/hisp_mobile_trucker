@@ -1,5 +1,37 @@
 import '../../domain/entities/user_entity.dart';
 
+class OrgUnitModel extends OrgUnitEntity {
+  const OrgUnitModel({
+    required super.id,
+    required super.name,
+    super.shortName,
+    super.code,
+    super.level,
+    super.path,
+  });
+
+  factory OrgUnitModel.fromJson(Map<String, dynamic> json) {
+    return OrgUnitModel(
+      id: json['id'] as String? ?? '',
+      name: json['displayName'] as String? ??
+          json['name'] as String? ?? '',
+      shortName: json['shortName'] as String?,
+      code: json['code'] as String?,
+      level: json['level'] as int?,
+      path: json['path'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'shortName': shortName,
+        'code': code,
+        'level': level,
+        'path': path,
+      };
+}
+
 class UserModel extends UserEntity {
   const UserModel({
     required super.id,
@@ -10,10 +42,17 @@ class UserModel extends UserEntity {
     super.phoneNumber,
     super.avatar,
     super.authorities,
-    super.organisationUnit,
+    super.organisationUnits,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
+    // Parse organisation units list
+    final orgUnits = (json['organisationUnits'] as List<dynamic>?)
+            ?.map((e) =>
+                OrgUnitModel.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+
     return UserModel(
       id: json['id'] as String? ?? '',
       username: json['username'] as String? ?? '',
@@ -26,23 +65,19 @@ class UserModel extends UserEntity {
               ?.map((e) => e.toString())
               .toList() ??
           [],
-      organisationUnit:
-          (json['organisationUnits'] as List<dynamic>?)?.isNotEmpty == true
-              ? (json['organisationUnits'][0]['id'] as String?)
-              : null,
+      organisationUnits: orgUnits,
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'username': username,
-      'firstName': firstName,
-      'surname': surname,
-      'email': email,
-      'phoneNumber': phoneNumber,
-      'avatar': avatar != null ? {'id': avatar} : null,
-      'authorities': authorities,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'username': username,
+        'firstName': firstName,
+        'surname': surname,
+        'email': email,
+        'phoneNumber': phoneNumber,
+        'organisationUnits': organisationUnits
+            .map((o) => (o as OrgUnitModel).toJson())
+            .toList(),
+      };
 }
