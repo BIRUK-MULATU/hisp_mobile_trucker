@@ -33,18 +33,19 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       final response = await _apiClient.get(
         '/me',
         queryParameters: {
+          // ── Include organisationUnits with full details ──
           'fields':
-          'id,username,firstName,surname,email,phoneNumber,avatar,authorities,organisationUnits',
+              'id,username,firstName,surname,email,phoneNumber,avatar,'
+              'authorities,organisationUnits[id,displayName,shortName,code,level,path]',
         },
         options: Options(
           headers: {'Authorization': 'Basic $token'},
-          // Force JSON response
           responseType: ResponseType.json,
           validateStatus: (status) => status != null && status < 500,
         ),
       );
 
-      // ── Detect HTML response ──────────────────────────
+      // Detect HTML response
       final data = response.data;
       if (data is String && data.trimLeft().startsWith('<')) {
         throw const UnauthorizedException(
@@ -57,12 +58,25 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       }
 
       if (response.statusCode == 200 && data is Map<String, dynamic>) {
+        // Save auth token
         await _secureStorage.saveToken(token);
         await _secureStorage.saveUsername(username);
+
+        // Save full user data including org units
+        await _secureStorage.saveUserData(data);
+
+        // Save org units separately for quick access
+        final orgUnits = (data['organisationUnits'] as List<dynamic>?)
+                ?.map((e) => e as Map<String, dynamic>)
+                .toList() ??
+            [];
+        await _secureStorage.saveOrgUnits(orgUnits);
+
         return UserModel.fromJson(data);
       }
 
-      throw const ServerException(message: 'Unexpected response from server.');
+      throw const ServerException(
+          message: 'Unexpected response from server.');
     } on DioException catch (e) {
       _handleDioError(e);
     } catch (e) {
