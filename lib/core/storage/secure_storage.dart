@@ -67,6 +67,7 @@ class SecureStorage {
 
   Future<Map<String, dynamic>?> getPrimaryOrgUnit() async {
     final orgUnits = await getOrgUnits();
+    print('DEBUG org units from starage: $orgUnits');
     return orgUnits.isNotEmpty ? orgUnits.first : null;
   }
 
