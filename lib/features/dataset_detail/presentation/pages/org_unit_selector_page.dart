@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
-import '../domain/entities/org_unit_tree_node.dart';
-import '../domain/services/org_unit_tree_service.dart';
+import '../../domain/entities/org_unit_tree_node.dart';
 
 class OrgUnitSelectorPage extends StatefulWidget {
   final String? preSelectedId;
@@ -19,24 +19,25 @@ class OrgUnitSelectorPage extends StatefulWidget {
       _OrgUnitSelectorPageState();
 }
 
-class _OrgUnitSelectorPageState
-    extends State<OrgUnitSelectorPage> {
+class _OrgUnitSelectorPageState extends State<OrgUnitSelectorPage> {
   final _searchController = TextEditingController();
   final _secureStorage = SecureStorage();
+  final _apiClient = ApiClient();
 
-  List<OrgUnitTreeNode> _tree = [];
-  List<FlatNode> _flatNodes = [];
-  List<FlatNode> _filteredNodes = [];
+  List<OrgUnitTreeNode> _roots = [];
   String? _selectedId;
   String? _selectedName;
   bool _isLoading = true;
   String _searchQuery = '';
 
+  // Flat list for display
+  List<_DisplayNode> _displayNodes = [];
+
   @override
   void initState() {
     super.initState();
     _selectedId = widget.preSelectedId;
-    _loadOrgUnits();
+    _loadOrgUnitTree();
   }
 
   @override
@@ -45,71 +46,138 @@ class _OrgUnitSelectorPageState
     super.dispose();
   }
 
-  Future<void> _loadOrgUnits() async {
-    final orgUnits = await _secureStorage.getOrgUnits();
-    final assignedIds =
-        orgUnits.map((o) => o['id'] as String? ?? '').toList();
+  // ── Fetch full org unit tree from DHIS2 ───────────────────
+  Future<void> _loadOrgUnitTree() async {
+    try {
+      final orgUnits = await _secureStorage.getOrgUnits();
+      if (orgUnits.isEmpty) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
-    if (assignedIds.length == 1) {
-      _selectedId = assignedIds.first;
-      _selectedName = orgUnits.first['displayName'] as String? ??
-          orgUnits.first['name'] as String?;
+      // Fetch children for each assigned org unit
+      final List<OrgUnitTreeNode> roots = [];
+
+      for (final orgUnit in orgUnits) {
+        final id = orgUnit['id'] as String? ?? '';
+        final name = orgUnit['displayName'] as String?
+            ?? orgUnit['name'] as String? ?? '';
+
+        // Fetch all descendants from DHIS2 API
+        final children = await _fetchChildren(id);
+
+        final rootNode = OrgUnitTreeNode(
+          id: id,
+          name: name,
+          level: orgUnit['level'] as int? ?? 1,
+          path: orgUnit['path'] as String?,
+          children: children,
+          isExpanded: true, // auto expand root
+          isSelected: _selectedId == id,
+          isAssigned: true,
+        );
+        roots.add(rootNode);
+      }
+
+      _roots = roots;
+      _buildDisplayList();
+
+      if (mounted) setState(() => _isLoading = false);
+    } catch (e) {
+      print('Error loading org unit tree: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
-
-    _tree = OrgUnitTreeService.buildTree(orgUnits, assignedIds);
-    _flatNodes = _buildFlatNodes(_tree);
-    _filteredNodes = List.from(_flatNodes);
-
-    if (mounted) setState(() => _isLoading = false);
   }
 
-  List<FlatNode> _buildFlatNodes(
-    List<OrgUnitTreeNode> nodes, {
-    int depth = 0,
-  }) {
-    final result = <FlatNode>[];
-    for (final node in nodes) {
-      result.add(FlatNode(node: node, depth: depth));
-      if (node.isExpanded) {
-        result.addAll(
-            _buildFlatNodes(node.children, depth: depth + 1));
+  // ── Fetch children from DHIS2 API ─────────────────────────
+  Future<List<OrgUnitTreeNode>> _fetchChildren(String parentId) async {
+    try {
+      final response = await _apiClient.get(
+        '/organisationUnits/$parentId',
+        queryParameters: {
+          'fields': 'id,displayName,level,path,children[id,displayName,level,path,children[id,displayName,level,path,children[id,displayName,level,path]]]',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        final childrenJson =
+            data['children'] as List<dynamic>? ?? [];
+        return childrenJson
+            .map((c) => _parseNode(c as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+      }
+    } catch (e) {
+      print('Error fetching children for $parentId: $e');
+    }
+    return [];
+  }
+
+  // ── Parse node recursively ─────────────────────────────────
+  OrgUnitTreeNode _parseNode(Map<String, dynamic> json) {
+    final id = json['id'] as String? ?? '';
+    final children = (json['children'] as List<dynamic>? ?? [])
+        .map((c) => _parseNode(c as Map<String, dynamic>))
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    return OrgUnitTreeNode(
+      id: id,
+      name: json['displayName'] as String? ?? '',
+      level: json['level'] as int? ?? 1,
+      path: json['path'] as String?,
+      children: children,
+      isExpanded: false,
+      isSelected: _selectedId == id,
+      isAssigned: false,
+    );
+  }
+
+  // ── Build flat display list from tree ─────────────────────
+  void _buildDisplayList() {
+    _displayNodes = [];
+    for (final root in _roots) {
+      _flattenNode(root, 0);
+    }
+  }
+
+  void _flattenNode(OrgUnitTreeNode node, int depth) {
+    _displayNodes.add(_DisplayNode(node: node, depth: depth));
+    if (node.isExpanded) {
+      for (final child in node.children) {
+        _flattenNode(child, depth + 1);
       }
     }
-    return result;
   }
 
-  void _onSearch(String query) {
-    setState(() {
-      _searchQuery = query.toLowerCase();
-      if (_searchQuery.isEmpty) {
-        _filteredNodes = List.from(_flatNodes);
-      } else {
-        _filteredNodes = _flatNodes
-            .where((n) =>
-                n.node.name.toLowerCase().contains(_searchQuery))
-            .toList();
-      }
-    });
-  }
-
+  // ── Toggle expand/collapse ─────────────────────────────────
   void _toggleExpand(OrgUnitTreeNode node) {
     setState(() {
       node.isExpanded = !node.isExpanded;
-      _flatNodes = _buildFlatNodes(_tree);
-      _filteredNodes = _searchQuery.isEmpty
-          ? List.from(_flatNodes)
-          : _flatNodes
-              .where((n) =>
-                  n.node.name.toLowerCase().contains(_searchQuery))
-              .toList();
+      _buildDisplayList();
     });
   }
 
+  // ── Select a node ─────────────────────────────────────────
   void _selectNode(OrgUnitTreeNode node) {
     setState(() {
       _selectedId = node.id;
       _selectedName = node.name;
     });
+  }
+
+  // ── Search ────────────────────────────────────────────────
+  void _onSearch(String query) {
+    setState(() => _searchQuery = query.toLowerCase());
+  }
+
+  List<_DisplayNode> get _filteredNodes {
+    if (_searchQuery.isEmpty) return _displayNodes;
+    return _displayNodes
+        .where((n) =>
+            n.node.name.toLowerCase().contains(_searchQuery))
+        .toList();
   }
 
   void _clearAll() {
@@ -120,14 +188,9 @@ class _OrgUnitSelectorPageState
   }
 
   void _done() {
-    if (_selectedId != null) {
-      Navigator.pop(context, {
-        'id': _selectedId,
-        'name': _selectedName,
-      });
-    } else {
-      Navigator.pop(context);
-    }
+    Navigator.pop(context, _selectedId != null
+        ? {'id': _selectedId, 'name': _selectedName}
+        : null);
   }
 
   @override
@@ -142,34 +205,40 @@ class _OrgUnitSelectorPageState
               controller: _searchController,
               onChanged: _onSearch,
             ),
-
             const Divider(height: 1),
 
-            // ── Tree List ───────────────────────────
+            // ── Tree ────────────────────────────────
             Expanded(
               child: _isLoading
                   ? const Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primary,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(
+                              color: AppColors.primary),
+                          SizedBox(height: AppDimensions.spaceMD),
+                          Text('Loading org units...',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary)),
+                        ],
                       ),
                     )
                   : _filteredNodes.isEmpty
-                      ? _EmptySearchResult(query: _searchQuery)
+                      ? _EmptyState(query: _searchQuery)
                       : ListView.builder(
                           itemCount: _filteredNodes.length,
                           itemBuilder: (context, index) {
-                            final flatNode = _filteredNodes[index];
-                            return _OrgUnitTreeTile(
-                              node: flatNode.node,
-                              depth: flatNode.depth,
+                            final item = _filteredNodes[index];
+                            return _TreeTile(
+                              node: item.node,
+                              depth: item.depth,
                               isSelected:
-                                  flatNode.node.id == _selectedId,
-                              onExpand: flatNode.node.hasChildren
-                                  ? () =>
-                                      _toggleExpand(flatNode.node)
+                                  item.node.id == _selectedId,
+                              onExpand: item.node.hasChildren
+                                  ? () => _toggleExpand(item.node)
                                   : null,
                               onSelect: () =>
-                                  _selectNode(flatNode.node),
+                                  _selectNode(item.node),
                             );
                           },
                         ),
@@ -195,10 +264,8 @@ class _SearchBar extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
 
-  const _SearchBar({
-    required this.controller,
-    required this.onChanged,
-  });
+  const _SearchBar(
+      {required this.controller, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -217,8 +284,7 @@ class _SearchBar extends StatelessWidget {
               style: AppTextStyles.bodyMedium,
               decoration: const InputDecoration(
                 hintText: 'Search',
-                hintStyle:
-                    TextStyle(color: AppColors.textHint),
+                hintStyle: TextStyle(color: AppColors.textHint),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -227,11 +293,9 @@ class _SearchBar extends StatelessWidget {
               ),
             ),
           ),
-          const Icon(
-            Icons.search_rounded,
-            color: AppColors.textSecondary,
-            size: AppDimensions.iconLG,
-          ),
+          const Icon(Icons.search_rounded,
+              color: AppColors.textSecondary,
+              size: AppDimensions.iconLG),
         ],
       ),
     );
@@ -239,14 +303,14 @@ class _SearchBar extends StatelessWidget {
 }
 
 // ── Tree Tile ──────────────────────────────────────────────────
-class _OrgUnitTreeTile extends StatelessWidget {
+class _TreeTile extends StatelessWidget {
   final OrgUnitTreeNode node;
   final int depth;
   final bool isSelected;
   final VoidCallback? onExpand;
   final VoidCallback? onSelect;
 
-  const _OrgUnitTreeTile({
+  const _TreeTile({
     required this.node,
     required this.depth,
     required this.isSelected,
@@ -260,44 +324,45 @@ class _OrgUnitTreeTile extends StatelessWidget {
       onTap: node.isLeaf ? onSelect : onExpand,
       child: Padding(
         padding: EdgeInsets.only(
-          left: AppDimensions.space + (depth * 20.0),
+          left: AppDimensions.spaceSM + (depth * 16.0),
           right: AppDimensions.space,
           top: AppDimensions.spaceSM,
           bottom: AppDimensions.spaceSM,
         ),
         child: Row(
           children: [
-            // ── Expand arrow ───────────────────────
-            if (node.hasChildren)
-              GestureDetector(
-                onTap: onExpand,
-                child: AnimatedRotation(
-                  turns: node.isExpanded ? 0.25 : 0,
-                  duration: const Duration(milliseconds: 150),
-                  child: const Icon(
-                    Icons.chevron_right_rounded,
-                    size: AppDimensions.iconMD,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              )
-            else
-              const SizedBox(width: AppDimensions.iconMD),
+            // ── Arrow ──────────────────────────────
+            SizedBox(
+              width: 24,
+              child: node.hasChildren
+                  ? GestureDetector(
+                      onTap: onExpand,
+                      child: AnimatedRotation(
+                        turns: node.isExpanded ? 0.25 : 0,
+                        duration:
+                            const Duration(milliseconds: 150),
+                        child: const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
 
-            const SizedBox(width: AppDimensions.spaceXS),
+            const SizedBox(width: 4),
 
             // ── Checkbox or Radio ──────────────────
-            if (node.hasChildren)
-              _ParentCheckbox(
-                isChecked: isSelected ||
-                    node.children.any((c) => c.isSelected),
-                onTap: onExpand,
-              )
-            else
-              _LeafRadio(
-                isSelected: isSelected,
-                onTap: onSelect,
-              ),
+            node.hasChildren
+                ? _Checkbox(
+                    isChecked: isSelected,
+                    onTap: onExpand,
+                  )
+                : _Radio(
+                    isSelected: isSelected,
+                    onTap: onSelect,
+                  ),
 
             const SizedBox(width: AppDimensions.spaceSM),
 
@@ -322,15 +387,11 @@ class _OrgUnitTreeTile extends StatelessWidget {
   }
 }
 
-// ── Parent Checkbox ────────────────────────────────────────────
-class _ParentCheckbox extends StatelessWidget {
+// ── Checkbox widget ────────────────────────────────────────────
+class _Checkbox extends StatelessWidget {
   final bool isChecked;
   final VoidCallback? onTap;
-
-  const _ParentCheckbox({
-    required this.isChecked,
-    this.onTap,
-  });
+  const _Checkbox({required this.isChecked, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -343,32 +404,27 @@ class _ParentCheckbox extends StatelessWidget {
           color:
               isChecked ? AppColors.primary : Colors.transparent,
           border: Border.all(
-            color: isChecked
-                ? AppColors.primary
-                : AppColors.border,
+            color:
+                isChecked ? AppColors.primary : AppColors.border,
             width: 1.5,
           ),
           borderRadius:
               BorderRadius.circular(AppDimensions.radiusXS),
         ),
         child: isChecked
-            ? const Icon(
-                Icons.check_rounded,
-                size: 14,
-                color: Colors.white,
-              )
+            ? const Icon(Icons.check_rounded,
+                size: 14, color: Colors.white)
             : null,
       ),
     );
   }
 }
 
-// ── Leaf Radio ─────────────────────────────────────────────────
-class _LeafRadio extends StatelessWidget {
+// ── Radio widget ───────────────────────────────────────────────
+class _Radio extends StatelessWidget {
   final bool isSelected;
   final VoidCallback? onTap;
-
-  const _LeafRadio({required this.isSelected, this.onTap});
+  const _Radio({required this.isSelected, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -427,36 +483,26 @@ class _BottomActions extends StatelessWidget {
         children: [
           TextButton.icon(
             onPressed: onClearAll,
-            icon: const Icon(
-              Icons.clear_all_rounded,
-              color: AppColors.textSecondary,
-              size: AppDimensions.iconMD,
-            ),
-            label: Text(
-              'Clear All',
-              style: AppTextStyles.buttonMedium.copyWith(
+            icon: const Icon(Icons.clear_all_rounded,
                 color: AppColors.textSecondary,
-              ),
-            ),
+                size: AppDimensions.iconMD),
+            label: Text('Clear All',
+                style: AppTextStyles.buttonMedium
+                    .copyWith(color: AppColors.textSecondary)),
           ),
           const Spacer(),
           TextButton.icon(
             onPressed: hasSelection ? onDone : null,
-            icon: Icon(
-              Icons.check_rounded,
-              color: hasSelection
-                  ? AppColors.primary
-                  : AppColors.textDisabled,
-              size: AppDimensions.iconMD,
-            ),
-            label: Text(
-              'Done',
-              style: AppTextStyles.buttonMedium.copyWith(
+            icon: Icon(Icons.check_rounded,
                 color: hasSelection
                     ? AppColors.primary
                     : AppColors.textDisabled,
-              ),
-            ),
+                size: AppDimensions.iconMD),
+            label: Text('Done',
+                style: AppTextStyles.buttonMedium.copyWith(
+                    color: hasSelection
+                        ? AppColors.primary
+                        : AppColors.textDisabled)),
           ),
         ],
       ),
@@ -464,10 +510,10 @@ class _BottomActions extends StatelessWidget {
   }
 }
 
-// ── Empty Search ───────────────────────────────────────────────
-class _EmptySearchResult extends StatelessWidget {
+// ── Empty State ────────────────────────────────────────────────
+class _EmptyState extends StatelessWidget {
   final String query;
-  const _EmptySearchResult({required this.query});
+  const _EmptyState({required this.query});
 
   @override
   Widget build(BuildContext context) {
@@ -475,11 +521,9 @@ class _EmptySearchResult extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.search_off_rounded,
-            size: AppDimensions.iconHuge,
-            color: AppColors.textSecondary,
-          ),
+          const Icon(Icons.search_off_rounded,
+              size: AppDimensions.iconHuge,
+              color: AppColors.textSecondary),
           const SizedBox(height: AppDimensions.spaceMD),
           Text(
             query.isEmpty
@@ -492,4 +536,11 @@ class _EmptySearchResult extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Display Node helper ────────────────────────────────────────
+class _DisplayNode {
+  final OrgUnitTreeNode node;
+  final int depth;
+  const _DisplayNode({required this.node, required this.depth});
 }
