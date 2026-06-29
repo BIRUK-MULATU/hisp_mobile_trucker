@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
+import '../../../../core/utils/ethiopian_calendar.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 
 class PeriodSelectorField extends StatefulWidget {
   final String? selectedPeriod;
+  final String periodType;
   final ValueChanged<String?> onChanged;
   final String? Function(String?)? validator;
 
   const PeriodSelectorField({
     super.key,
     this.selectedPeriod,
+    this.periodType = 'Monthly',
     required this.onChanged,
     this.validator,
   });
@@ -20,30 +23,30 @@ class PeriodSelectorField extends StatefulWidget {
       _PeriodSelectorFieldState();
 }
 
-class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
-  late final List<_PeriodOption> _periods;
+class _PeriodSelectorFieldState
+    extends State<PeriodSelectorField> {
+  late List<EthiopianPeriod> _periods;
 
   @override
   void initState() {
     super.initState();
-    _periods = _generatePeriods();
+    _periods = EthiopianCalendar.generatePeriods(
+      periodType: widget.periodType,
+      count: 24,
+    );
   }
 
-  List<_PeriodOption> _generatePeriods() {
-    final now = DateTime.now();
-    const monthNames = [
-      'January', 'February', 'March', 'April',
-      'May', 'June', 'July', 'August',
-      'September', 'October', 'November', 'December',
-    ];
-    return List.generate(24, (i) {
-      final date = DateTime(now.year, now.month - i, 1);
-      final month = date.month.toString().padLeft(2, '0');
-      return _PeriodOption(
-        id: '${date.year}$month',
-        label: '${monthNames[date.month - 1]} ${date.year}',
-      );
-    });
+  @override
+  void didUpdateWidget(PeriodSelectorField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.periodType != widget.periodType) {
+      setState(() {
+        _periods = EthiopianCalendar.generatePeriods(
+          periodType: widget.periodType,
+          count: 24,
+        );
+      });
+    }
   }
 
   @override
@@ -51,6 +54,7 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // ── Label in English ───────────────────────
         Text(
           'Report Period',
           style: AppTextStyles.bodyLarge.copyWith(
@@ -58,18 +62,21 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
             fontWeight: FontWeight.w400,
           ),
         ),
+
         const SizedBox(height: AppDimensions.spaceSM),
+
+        // ── Dropdown with Amharic months ───────────
         DropdownButtonFormField<String>(
-          // Use initialValue pattern — not deprecated value
-          key: ValueKey(widget.selectedPeriod),
+          key: ValueKey(widget.selectedPeriod ?? 'none'),
           initialValue: widget.selectedPeriod,
           isExpanded: true,
           icon: const Icon(
             Icons.keyboard_arrow_down_rounded,
             color: AppColors.textSecondary,
           ),
-          style: AppTextStyles.bodyMedium
-              .copyWith(color: AppColors.textPrimary),
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: AppColors.textPrimary,
+          ),
           decoration: const InputDecoration(
             filled: false,
             contentPadding:
@@ -89,22 +96,23 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
             ),
           ),
           items: _periods
-              .map((p) => DropdownMenuItem<String>(
-                    value: p.id,
-                    child: Text(p.label,
-                        style: AppTextStyles.bodyMedium),
-                  ))
+              .map(
+                (p) => DropdownMenuItem<String>(
+                  value: p.id,
+                  child: Text(
+                    p.label, // Amharic: "መስከረም 2017"
+                    style: AppTextStyles.bodyMedium,
+                  ),
+                ),
+              )
               .toList(),
           onChanged: widget.onChanged,
-          validator: widget.validator,
+          validator: widget.validator ??
+              (value) => value == null
+                  ? 'Please select a report period'
+                  : null,
         ),
       ],
     );
   }
-}
-
-class _PeriodOption {
-  final String id;
-  final String label;
-  const _PeriodOption({required this.id, required this.label});
 }

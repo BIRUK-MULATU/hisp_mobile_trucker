@@ -15,11 +15,13 @@ import 'add_record_page.dart';
 class DatasetDetailPage extends StatelessWidget {
   final String dataSetId;
   final String dataSetName;
+  final String periodType; // ← passed from home page
 
   const DatasetDetailPage({
     super.key,
     required this.dataSetId,
     required this.dataSetName,
+    this.periodType = 'Monthly',
   });
 
   @override
@@ -38,6 +40,7 @@ class DatasetDetailPage extends StatelessWidget {
       child: _DatasetDetailView(
         dataSetId: dataSetId,
         dataSetName: dataSetName,
+        periodType: periodType,
       ),
     );
   }
@@ -46,10 +49,12 @@ class DatasetDetailPage extends StatelessWidget {
 class _DatasetDetailView extends StatelessWidget {
   final String dataSetId;
   final String dataSetName;
+  final String periodType;
 
   const _DatasetDetailView({
     required this.dataSetId,
     required this.dataSetName,
+    required this.periodType,
   });
 
   @override
@@ -72,7 +77,8 @@ class _DatasetDetailView extends StatelessWidget {
                 context
                     .read<DatasetDetailBloc>()
                     .add(DatasetDetailRefresh(dataSetId));
-                await Future.delayed(const Duration(seconds: 1));
+                await Future.delayed(
+                    const Duration(seconds: 1));
               },
               child: ListView.separated(
                 padding:
@@ -106,16 +112,12 @@ class _DatasetDetailView extends StatelessWidget {
           borderRadius:
               BorderRadius.circular(AppDimensions.radiusLG),
         ),
-        child: const Icon(
-          Icons.add_rounded,
-          color: Colors.white,
-          size: AppDimensions.iconXL,
-        ),
+        child: const Icon(Icons.add_rounded,
+            color: Colors.white, size: AppDimensions.iconXL),
       ),
     );
   }
 
-  // ── Fix: store bloc reference before async gap ─────────────
   void _onAddRecord(BuildContext context) {
     final bloc = context.read<DatasetDetailBloc>();
     Navigator.push(
@@ -124,6 +126,7 @@ class _DatasetDetailView extends StatelessWidget {
         builder: (_) => AddRecordPage(
           dataSetId: dataSetId,
           dataSetName: dataSetName,
+          periodType: periodType, // ← pass period type
         ),
       ),
     ).then((_) {
@@ -152,22 +155,19 @@ class _DetailAppBar extends StatelessWidget
             color: Colors.white),
         onPressed: () => Navigator.pop(context),
       ),
-      title: Text(
-        dataSetName,
-        style: AppTextStyles.appBarTitle,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: Text(dataSetName,
+          style: AppTextStyles.appBarTitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis),
       actions: [
         IconButton(
-          icon: const Icon(Icons.sync_rounded, color: Colors.white),
-          onPressed: () {},
-        ),
+            icon:
+                const Icon(Icons.sync_rounded, color: Colors.white),
+            onPressed: () {}),
         IconButton(
-          icon: const Icon(Icons.format_list_bulleted_rounded,
-              color: Colors.white),
-          onPressed: () {},
-        ),
+            icon: const Icon(Icons.format_list_bulleted_rounded,
+                color: Colors.white),
+            onPressed: () {}),
         const SizedBox(width: AppDimensions.spaceXS),
       ],
     );
@@ -182,8 +182,7 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(AppDimensions.spaceXXXL),
+        padding: const EdgeInsets.all(AppDimensions.spaceXXXL),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -191,22 +190,17 @@ class _EmptyState extends StatelessWidget {
               width: 80,
               height: 80,
               decoration: const BoxDecoration(
-                color: AppColors.primarySurface,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.inbox_outlined,
-                size: AppDimensions.iconXXL,
-                color: AppColors.primary,
-              ),
+                  color: AppColors.primarySurface,
+                  shape: BoxShape.circle),
+              child: const Icon(Icons.inbox_outlined,
+                  size: AppDimensions.iconXXL,
+                  color: AppColors.primary),
             ),
             const SizedBox(height: AppDimensions.spaceXL),
             Text(
               'There are no data. Click "+" to\nadd new a new record',
               style: AppTextStyles.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.6,
-              ),
+                  color: AppColors.textSecondary, height: 1.6),
               textAlign: TextAlign.center,
             ),
           ],
@@ -232,10 +226,9 @@ class _RecordCard extends StatelessWidget {
         border: Border.all(color: AppColors.divider),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2))
         ],
       ),
       child: Row(
@@ -244,30 +237,23 @@ class _RecordCard extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.primarySurface,
-              borderRadius:
-                  BorderRadius.circular(AppDimensions.radiusSM),
-            ),
-            child: const Icon(
-              Icons.assignment_outlined,
-              color: AppColors.primary,
-              size: AppDimensions.iconMD,
-            ),
+                color: AppColors.primarySurface,
+                borderRadius: BorderRadius.circular(
+                    AppDimensions.radiusSM)),
+            child: const Icon(Icons.assignment_outlined,
+                color: AppColors.primary,
+                size: AppDimensions.iconMD),
           ),
           const SizedBox(width: AppDimensions.spaceMD),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  record.periodName ?? record.periodId,
-                  style: AppTextStyles.labelLarge,
-                ),
+                Text(record.periodName ?? record.periodId,
+                    style: AppTextStyles.labelLarge),
                 const SizedBox(height: AppDimensions.spaceXXS),
-                Text(
-                  record.orgUnitName ?? record.orgUnitId,
-                  style: AppTextStyles.bodySmall,
-                ),
+                Text(record.orgUnitName ?? record.orgUnitId,
+                    style: AppTextStyles.bodySmall),
               ],
             ),
           ),

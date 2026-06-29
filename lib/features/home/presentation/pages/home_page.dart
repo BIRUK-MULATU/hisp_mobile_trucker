@@ -43,7 +43,6 @@ class _HomeView extends StatelessWidget {
     return BlocBuilder<HomeBloc, HomeState>(
       builder: (context, state) {
         final isSyncing = state is HomeLoaded && state.isSyncing;
-
         return Scaffold(
           backgroundColor: AppColors.backgroundGrey,
           appBar: HomeAppBar(
@@ -64,7 +63,6 @@ class _HomeView extends StatelessWidget {
     if (state is HomeLoading) {
       return const AppLoader(message: 'Loading datasets...');
     }
-
     if (state is HomeError) {
       return _ErrorView(
         message: state.message,
@@ -72,12 +70,8 @@ class _HomeView extends StatelessWidget {
             context.read<HomeBloc>().add(const HomeLoadDataSets()),
       );
     }
-
     if (state is HomeLoaded) {
-      if (state.dataSets.isEmpty) {
-        return const _EmptyView();
-      }
-
+      if (state.dataSets.isEmpty) return const _EmptyView();
       return RefreshIndicator(
         color: AppColors.primary,
         onRefresh: () async {
@@ -86,14 +80,12 @@ class _HomeView extends StatelessWidget {
         },
         child: ListView.builder(
           padding: const EdgeInsets.symmetric(
-            vertical: AppDimensions.spaceMD,
-          ),
+              vertical: AppDimensions.spaceMD),
           itemCount: state.dataSets.length,
           itemBuilder: (context, index) {
             final dataSet = state.dataSets[index];
             return DataSetCard(
               dataSet: dataSet,
-              // ── Navigate to Dataset Detail ──────────
               onTap: () {
                 Navigator.push(
                   context,
@@ -101,6 +93,7 @@ class _HomeView extends StatelessWidget {
                     builder: (_) => DatasetDetailPage(
                       dataSetId: dataSet.id,
                       dataSetName: dataSet.name,
+                      periodType: dataSet.periodType, // ← pass it
                     ),
                   ),
                 );
@@ -113,12 +106,10 @@ class _HomeView extends StatelessWidget {
         ),
       );
     }
-
     return const SizedBox.shrink();
   }
 }
 
-// ── Drawer ─────────────────────────────────────────────────────
 class _HomeDrawer extends StatelessWidget {
   const _HomeDrawer();
 
@@ -131,7 +122,8 @@ class _HomeDrawer extends StatelessWidget {
             width: double.infinity,
             color: AppColors.primary,
             padding: EdgeInsets.only(
-              top: MediaQuery.of(context).padding.top + AppDimensions.spaceXL,
+              top: MediaQuery.of(context).padding.top +
+                  AppDimensions.spaceXL,
               bottom: AppDimensions.spaceXL,
               left: AppDimensions.space,
               right: AppDimensions.space,
@@ -142,23 +134,17 @@ class _HomeDrawer extends StatelessWidget {
                 const CircleAvatar(
                   radius: 30,
                   backgroundColor: Colors.white24,
-                  child: Icon(
-                    Icons.person_rounded,
-                    color: Colors.white,
-                    size: AppDimensions.iconXL,
-                  ),
+                  child: Icon(Icons.person_rounded,
+                      color: Colors.white,
+                      size: AppDimensions.iconXL),
                 ),
                 const SizedBox(height: AppDimensions.spaceMD),
-                Text(
-                  'HISP User',
-                  style: AppTextStyles.headingSmall
-                      .copyWith(color: Colors.white),
-                ),
-                Text(
-                  'admin@dhis2.org',
-                  style: AppTextStyles.bodySmall
-                      .copyWith(color: Colors.white70),
-                ),
+                Text('HISP User',
+                    style: AppTextStyles.headingSmall
+                        .copyWith(color: Colors.white)),
+                Text('admin@dhis2.org',
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: Colors.white70)),
               ],
             ),
           ),
@@ -183,13 +169,11 @@ class _HomeDrawer extends StatelessWidget {
           const Spacer(),
           const Divider(),
           ListTile(
-            leading:
-                const Icon(Icons.logout_rounded, color: AppColors.error),
-            title: Text(
-              'Logout',
-              style:
-                  AppTextStyles.bodyMedium.copyWith(color: AppColors.error),
-            ),
+            leading: const Icon(Icons.logout_rounded,
+                color: AppColors.error),
+            title: Text('Logout',
+                style: AppTextStyles.bodyMedium
+                    .copyWith(color: AppColors.error)),
             onTap: () => Navigator.pop(context),
           ),
           const SizedBox(height: AppDimensions.spaceMD),
@@ -249,7 +233,8 @@ class _EmptyView extends StatelessWidget {
               size: AppDimensions.iconHuge,
               color: AppColors.textSecondary),
           const SizedBox(height: AppDimensions.spaceLG),
-          Text('No datasets found', style: AppTextStyles.headingSmall),
+          Text('No datasets found',
+              style: AppTextStyles.headingSmall),
           const SizedBox(height: AppDimensions.spaceSM),
           Text(
             'Check your server connection\nor contact your administrator.',
