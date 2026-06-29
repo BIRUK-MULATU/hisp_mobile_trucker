@@ -3,6 +3,7 @@ import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../data_entry/presentation/pages/data_entry_page.dart';
 import '../widgets/period_selector_field.dart';
 import 'org_unit_selector_page.dart';
 
@@ -29,7 +30,6 @@ class _AddRecordPageState extends State<AddRecordPage> {
   String? _orgUnitName;
   String? _orgUnitId;
   String? _selectedPeriodId;
-  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -53,9 +53,8 @@ class _AddRecordPageState extends State<AddRecordPage> {
     final result = await Navigator.push<Map<String, dynamic>>(
       context,
       MaterialPageRoute(
-        builder: (_) => OrgUnitSelectorPage(
-          preSelectedId: _orgUnitId,
-        ),
+        builder: (_) =>
+            OrgUnitSelectorPage(preSelectedId: _orgUnitId),
       ),
     );
     if (result != null && mounted) {
@@ -66,7 +65,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
     }
   }
 
-  void _submit() async {
+  void _submit() {
     if (_formKey.currentState?.validate() ?? false) {
       if (_orgUnitId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -79,19 +78,21 @@ class _AddRecordPageState extends State<AddRecordPage> {
         );
         return;
       }
-      setState(() => _isSubmitting = true);
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Record created successfully!'),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
+
+      // Navigate to Data Entry page
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DataEntryPage(
+            dataSetId: widget.dataSetId,
+            dataSetName: widget.dataSetName,
+            orgUnitId: _orgUnitId!,
+            orgUnitName: _orgUnitName ?? '',
+            period: _selectedPeriodId!,
+            periodType: widget.periodType,
           ),
-        );
-        Navigator.pop(context);
-      }
+        ),
+      );
     }
   }
 
@@ -123,13 +124,13 @@ class _AddRecordPageState extends State<AddRecordPage> {
             children: [
               const SizedBox(height: AppDimensions.spaceLG),
 
-              // ── Top Icon ────────────────────────────
+              // ── Top Icon ──────────────────────────
               _TopIconSection(
                   onClose: () => Navigator.pop(context)),
 
               const SizedBox(height: AppDimensions.spaceXXL),
 
-              // ── Org Unit (Read Only) ─────────────────
+              // ── Org Unit ──────────────────────────
               _OrgUnitField(
                 orgUnitName: _orgUnitName,
                 onTap: _openOrgUnitSelector,
@@ -137,7 +138,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
 
               const SizedBox(height: AppDimensions.spaceXXL),
 
-              // ── Report Period (Amharic months only) ──
+              // ── Report Period ─────────────────────
               PeriodSelectorField(
                 selectedPeriod: _selectedPeriodId,
                 periodType: widget.periodType,
@@ -147,12 +148,12 @@ class _AddRecordPageState extends State<AddRecordPage> {
 
               const SizedBox(height: AppDimensions.spaceGiant),
 
-              // ── Submit Button (English) ──────────────
+              // ── Open Form Button ──────────────────
               SizedBox(
                 width: double.infinity,
                 height: AppDimensions.buttonHeightLG,
                 child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submit,
+                  onPressed: _submit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -162,20 +163,11 @@ class _AddRecordPageState extends State<AddRecordPage> {
                           AppDimensions.radiusFull),
                     ),
                   ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(
-                          'Create Record',
-                          style: AppTextStyles.buttonLarge
-                              .copyWith(color: Colors.white),
-                        ),
+                  child: Text(
+                    'Open Form',
+                    style: AppTextStyles.buttonLarge
+                        .copyWith(color: Colors.white),
+                  ),
                 ),
               ),
             ],
@@ -186,7 +178,6 @@ class _AddRecordPageState extends State<AddRecordPage> {
   }
 }
 
-// ── Top Icon ───────────────────────────────────────────────────
 class _TopIconSection extends StatelessWidget {
   final VoidCallback onClose;
   const _TopIconSection({required this.onClose});
@@ -230,7 +221,6 @@ class _TopIconSection extends StatelessWidget {
   }
 }
 
-// ── Org Unit Field ─────────────────────────────────────────────
 class _OrgUnitField extends StatelessWidget {
   final String? orgUnitName;
   final VoidCallback? onTap;
@@ -243,13 +233,10 @@ class _OrgUnitField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Org unit',
-            style: AppTextStyles.bodyLarge.copyWith(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
+          Text('Org unit',
+              style: AppTextStyles.bodyLarge.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w400)),
           const SizedBox(height: AppDimensions.spaceSM),
           Container(
             width: double.infinity,
@@ -257,9 +244,8 @@ class _OrgUnitField extends StatelessWidget {
                 bottom: AppDimensions.spaceSM),
             decoration: const BoxDecoration(
               border: Border(
-                bottom:
-                    BorderSide(color: AppColors.border, width: 1.0),
-              ),
+                  bottom: BorderSide(
+                      color: AppColors.border, width: 1.0)),
             ),
             child: Row(
               children: [

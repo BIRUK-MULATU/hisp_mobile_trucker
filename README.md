@@ -1,79 +1,129 @@
-# HISP Mobile Tracker 🚀
+# HISP Mobile Tracker
 
 [![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)](https://dart.dev)
-[![Clean Architecture](https://img.shields.io/badge/Architecture-Clean-green?style=for-the-badge)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+[![Clean Architecture](https://img.shields.io/badge/Architecture-Clean%20Architecture-6DB33F?style=for-the-badge)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+[![DHIS2](https://img.shields.io/badge/DHIS2-4285F4?style=for-the-badge&logo=DHIS2&logoColor=white)](https://dhis2.org)
 
-A professional, high-performance DHIS2-based mobile data entry application built with Flutter. **HISP Mobile Tracker** is designed to streamline field data collection, ensuring reliability and seamless integration with DHIS2 instances.
+**HISP Mobile Tracker** is a cross-platform mobile data entry application built with Flutter, purpose-built for **DHIS2** (District Health Information System 2). It enables health workers and field data collectors to capture, validate, and synchronize program data with DHIS2 instances — reliably, even in low-connectivity environments.
 
-## ✨ Features
+Developed and maintained by **HISP Ethiopia**.
 
-- **Secure Authentication**: OAuth2/Token-based login with secure local storage.
-- **DHIS2 Integration**: Direct synchronization with DHIS2 DataSets and Data Elements.
-- **Offline First**: Robust local caching for data entry in low-connectivity areas.
-- **Dynamic Forms**: Auto-generated forms based on DHIS2 metadata configuration.
-- **Real-time Validation**: Client-side validation for data accuracy.
-- **Modern UI/UX**: Clean, intuitive interface built with Material Design 3.
+## Features
 
-## 🛠 Tech Stack
+- **Secure Authentication** — Token-based login with credentials encrypted via secure local storage.
+- **DHIS2 Integration** — Seamless synchronization with DHIS2 DataSets, Data Elements, Programs, and Events (API v40).
+- **Offline-First** — Built for field conditions; local data persistence ensures uninterrupted data entry when connectivity is unavailable.
+- **Dynamic Forms** — Auto-generated data entry forms driven by DHIS2 metadata configuration.
+- **Client-Side Validation** — Real-time data validation for accuracy before submission.
+- **Material Design 3** — Modern, intuitive interface with a consistent design language.
+- **Ethiopian Calendar Support** — Native Ethiopian-to-Gregorian calendar conversion with DHIS2-compatible period generation.
+- **Multi-Platform** — Runs on Android, iOS, Web, Linux, macOS, and Windows.
 
-- **Framework**: [Flutter](https://flutter.dev) (v3.0.0+)
-- **State Management**: [BLoC](https://pub.dev/packages/flutter_bloc) for predictable state transitions.
-- **Navigation**: [GoRouter](https://pub.dev/packages/go_router) for declarative routing.
-- **Networking**: [Dio](https://pub.dev/packages/dio) with interceptors for auth and logging.
-- **Dependency Injection**: [GetIt](https://pub.dev/packages/get_it) & [Injectable](https://pub.dev/packages/injectable).
-- **Local Storage**: [Secure Storage](https://pub.dev/packages/flutter_secure_storage) for credentials and [Shared Preferences](https://pub.dev/packages/shared_preferences) for settings.
-- **Serialization**: [Freezed](https://pub.dev/packages/freezed) & [JSON Serializable](https://pub.dev/packages/json_serializable).
+## Tech Stack
 
-## 🏗 Architecture
+| Concern | Library |
+|---|---|
+| **Framework** | Flutter (Dart SDK >=3.0.0) |
+| **State Management** | flutter_bloc 8.x (BLoC pattern) |
+| **Routing** | go_router 14.x (declarative, URL-based) |
+| **Networking** | dio 5.x with auth & logging interceptors |
+| **Dependency Injection** | get_it + injectable (code-generated) |
+| **Local Storage** | flutter_secure_storage (credentials), shared_preferences (settings) |
+| **Serialization** | freezed + json_serializable (code-generated) |
+| **Utilities** | intl (i18n), equatable, logger |
 
-The project follows **Clean Architecture** principles to ensure scalability, maintainability, and testability:
+## Architecture
 
-- **Core**: Cross-cutting concerns like constants, themes, and network utilities.
-- **Features**: Domain-driven modules (e.g., Auth, Home).
-  - `data`: Repositories, Data Sources, and Models.
-  - `domain`: Entities, Use Cases, and Repository Interfaces.
-  - `presentation`: BLoCs and UI Components.
-- **Shared**: Common widgets and utility functions used across features.
+The project follows **Clean Architecture** with a **feature-first** module structure, ensuring separation of concerns, testability, and maintainability across the codebase.
 
-## 🚀 Getting Started
+```
+lib/
+├── core/                          # Cross-cutting infrastructure
+│   ├── constants/                 # API endpoints & app constants
+│   ├── errors/                    # Exceptions (data) & Failures (domain)
+│   ├── network/                   # Dio client, auth & logging interceptors
+│   ├── router/                    # GoRouter configuration
+│   ├── storage/                   # Secure storage wrapper
+│   └── utils/                     # Ethiopian calendar utilities
+├── features/                      # Feature modules (domain-driven)
+│   ├── auth/                      # Authentication
+│   │   ├── data/                  #   Datasources, models, repository impl
+│   │   ├── domain/                #   Entities, repository interfaces, use cases
+│   │   └── presentation/          #   BLoC, pages, widgets
+│   ├── data_entry/                # Data entry forms
+│   │   ├── data/
+│   │   ├── domain/
+│   │   └── presentation/
+│   ├── dataset_detail/            # Dataset detail & record list
+│   │   ├── data/
+│   │   ├── domain/
+│   │   └── presentation/
+│   └── home/                      # Dashboard
+│       ├── data/
+│       ├── domain/
+│       └── presentation/
+├── shared/                        # Shared UI & utilities
+│   ├── theme/                     # AppColors, AppTextStyles, AppTheme
+│   └── widgets/                   # AppButton, AppTextField, AppLoader
+└── main.dart                      # App entry point
+```
+
+### Layered Design
+
+Each feature is split into three distinct layers:
+
+| Layer | Responsibility | Dependencies |
+|---|---|---|
+| **Domain** (innermost) | Business logic — entities, use cases, repository interfaces | Pure Dart, no Flutter dependency |
+| **Data** | Repository implementations, data sources (remote API), models | Domain layer, Dio |
+| **Presentation** | UI — BLoC state management, pages, reusable widgets | Domain layer, Flutter/BLoC |
+
+Data flows **inward** (Presentation → Domain → Data) via dependency inversion: the presentation layer depends on domain abstractions, while the data layer implements those abstractions.
+
+## Getting Started
 
 ### Prerequisites
 
 - Flutter SDK: `>=3.0.0`
 - Dart SDK: `>=3.0.0`
-- Android Studio / VS Code with Flutter extension
+- Android Studio, VS Code, or IntelliJ IDEA with Flutter extension
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/hisp_mobile_trucker.git
-   cd hisp_mobile_trucker
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/your-org/hisp_mobile_tracker.git
+cd hisp_mobile_tracker
 
-2. **Install dependencies**
-   ```bash
-   flutter pub get
-   ```
+# Install dependencies
+flutter pub get
 
-3. **Run code generation**
-   ```bash
-   flutter pub run build_runner build --delete-conflicting-outputs
-   ```
+# Run code generation (freezed, json_serializable, injectable)
+flutter pub run build_runner build --delete-conflicting-outputs
 
-4. **Run the app**
-   ```bash
-   flutter run
-   ```
+# Launch the app
+flutter run
+```
 
-## 🧪 Testing
+### Configuration
 
-To run the test suite:
+Before running the app, configure your DHIS2 instance base URL and credentials through the application's login screen or via environment configuration.
+
+## Testing
 
 ```bash
 flutter test
 ```
 
+## Project Status
 
-Powered by HISP ETHIOPIA
+This project is under active development by **HISP Ethiopia**. Features and improvements are continuously being added to support DHIS2-based health data collection workflows.
+
+## License
+
+This project is proprietary software of HISP Ethiopia. All rights reserved.
+
+---
+
+*Powered by HISP Ethiopia*
