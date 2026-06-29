@@ -9,11 +9,13 @@ import 'org_unit_selector_page.dart';
 class AddRecordPage extends StatefulWidget {
   final String dataSetId;
   final String dataSetName;
+  final String periodType;
 
   const AddRecordPage({
     super.key,
     required this.dataSetId,
     required this.dataSetName,
+    this.periodType = 'Monthly',
   });
 
   @override
@@ -26,7 +28,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
 
   String? _orgUnitName;
   String? _orgUnitId;
-  String? _selectedPeriod;
+  String? _selectedPeriodId;
   bool _isSubmitting = false;
 
   @override
@@ -37,7 +39,6 @@ class _AddRecordPageState extends State<AddRecordPage> {
 
   Future<void> _loadOrgUnit() async {
     final orgUnit = await _secureStorage.getPrimaryOrgUnit();
-    print('DEBUG primary org unit: $orgUnit');
     if (mounted && orgUnit != null) {
       setState(() {
         _orgUnitId = orgUnit['id'] as String?;
@@ -70,7 +71,8 @@ class _AddRecordPageState extends State<AddRecordPage> {
       if (_orgUnitId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No organisation unit found. Contact your administrator.'),
+            content: Text(
+                'No organisation unit found. Contact your administrator.'),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -101,7 +103,8 @@ class _AddRecordPageState extends State<AddRecordPage> {
         backgroundColor: AppColors.primary,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_rounded,
+              color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -120,34 +123,31 @@ class _AddRecordPageState extends State<AddRecordPage> {
             children: [
               const SizedBox(height: AppDimensions.spaceLG),
 
-              // ── Top Icon ────────────────────────────────
+              // ── Top Icon ────────────────────────────
               _TopIconSection(
-                onClose: () => Navigator.pop(context),
-              ),
+                  onClose: () => Navigator.pop(context)),
 
               const SizedBox(height: AppDimensions.spaceXXL),
 
-              // ── Org Unit Field (Read Only) ───────────────
-              _OrgUnitReadOnlyField(
+              // ── Org Unit (Read Only) ─────────────────
+              _OrgUnitField(
                 orgUnitName: _orgUnitName,
                 onTap: _openOrgUnitSelector,
               ),
 
               const SizedBox(height: AppDimensions.spaceXXL),
 
-              // ── Report Period ────────────────────────────
+              // ── Report Period (Amharic months only) ──
               PeriodSelectorField(
-                selectedPeriod: _selectedPeriod,
+                selectedPeriod: _selectedPeriodId,
+                periodType: widget.periodType,
                 onChanged: (value) =>
-                    setState(() => _selectedPeriod = value),
-                validator: (value) => value == null
-                    ? 'Please select a report period'
-                    : null,
+                    setState(() => _selectedPeriodId = value),
               ),
 
               const SizedBox(height: AppDimensions.spaceGiant),
 
-              // ── Submit Button ────────────────────────────
+              // ── Submit Button (English) ──────────────
               SizedBox(
                 width: double.infinity,
                 height: AppDimensions.buttonHeightLG,
@@ -186,7 +186,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
   }
 }
 
-// ── Top Icon Section ───────────────────────────────────────────
+// ── Top Icon ───────────────────────────────────────────────────
 class _TopIconSection extends StatelessWidget {
   final VoidCallback onClose;
   const _TopIconSection({required this.onClose});
@@ -204,11 +204,9 @@ class _TopIconSection extends StatelessWidget {
             shape: BoxShape.circle,
             border: Border.all(color: AppColors.divider),
           ),
-          child: const Icon(
-            Icons.grid_view_rounded,
-            color: AppColors.primary,
-            size: AppDimensions.iconXL,
-          ),
+          child: const Icon(Icons.grid_view_rounded,
+              color: AppColors.primary,
+              size: AppDimensions.iconXL),
         ),
         Positioned(
           right: -4,
@@ -222,11 +220,8 @@ class _TopIconSection extends StatelessWidget {
                 color: AppColors.primary,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.close_rounded,
-                color: Colors.white,
-                size: 14,
-              ),
+              child: const Icon(Icons.close_rounded,
+                  color: Colors.white, size: 14),
             ),
           ),
         ),
@@ -235,15 +230,11 @@ class _TopIconSection extends StatelessWidget {
   }
 }
 
-// ── Org Unit Read Only Field ───────────────────────────────────
-class _OrgUnitReadOnlyField extends StatelessWidget {
+// ── Org Unit Field ─────────────────────────────────────────────
+class _OrgUnitField extends StatelessWidget {
   final String? orgUnitName;
   final VoidCallback? onTap;
-
-  const _OrgUnitReadOnlyField({
-    this.orgUnitName,
-    this.onTap,
-  });
+  const _OrgUnitField({this.orgUnitName, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -263,14 +254,11 @@ class _OrgUnitReadOnlyField extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.only(
-              bottom: AppDimensions.spaceSM,
-            ),
+                bottom: AppDimensions.spaceSM),
             decoration: const BoxDecoration(
               border: Border(
-                bottom: BorderSide(
-                  color: AppColors.border,
-                  width: 1.0,
-                ),
+                bottom:
+                    BorderSide(color: AppColors.border, width: 1.0),
               ),
             ),
             child: Row(
@@ -285,11 +273,9 @@ class _OrgUnitReadOnlyField extends StatelessWidget {
                     ),
                   ),
                 ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: AppDimensions.iconMD,
-                  color: AppColors.textHint,
-                ),
+                const Icon(Icons.chevron_right_rounded,
+                    size: AppDimensions.iconMD,
+                    color: AppColors.textHint),
               ],
             ),
           ),
