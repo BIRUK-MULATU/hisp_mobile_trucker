@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../../../core/utils/ethiopian_calendar.dart';
@@ -13,13 +14,12 @@ import '../../domain/entities/data_record_entity.dart';
 import '../../domain/usecases/get_records_usecase.dart';
 import '../../domain/usecases/create_record_usecase.dart';
 import '../bloc/dataset_detail_bloc.dart';
-import '../widgets/record_list_card.dart';
 import 'add_record_page.dart';
 
 class DatasetDetailPage extends StatefulWidget {
   final String dataSetId;
   final String dataSetName;
-  final String periodType;
+  final String periodType; // ← passed from home page
 
   const DatasetDetailPage({
     super.key,
@@ -29,13 +29,13 @@ class DatasetDetailPage extends StatefulWidget {
   });
 
   @override
-  State<DatasetDetailPage> createState() =>
-      _DatasetDetailPageState();
+  State<DatasetDetailPage> createState() => _DatasetDetailPageState();
 }
 
 class _DatasetDetailPageState extends State<DatasetDetailPage> {
   final _secureStorage = SecureStorage();
-  String _orgUnitId = '';
+  String? _orgUnitId;
+  bool _loadingOrgUnit = true;
 
   @override
   void initState() {
@@ -45,15 +45,23 @@ class _DatasetDetailPageState extends State<DatasetDetailPage> {
 
   Future<void> _loadOrgUnit() async {
     final orgUnit = await _secureStorage.getPrimaryOrgUnit();
-    if (mounted && orgUnit != null) {
+    if (mounted) {
       setState(() {
-        _orgUnitId = orgUnit['id'] as String? ?? '';
+        _orgUnitId = orgUnit?['id'] as String?;
+        _loadingOrgUnit = false;
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loadingOrgUnit) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: AppLoader(message: 'Loading records...'),
+      );
+    }
+
     final repository = DatasetDetailRepositoryImpl(
       remoteDataSource: DatasetDetailRemoteDataSourceImpl(
         apiClient: ApiClient(),
@@ -64,12 +72,12 @@ class _DatasetDetailPageState extends State<DatasetDetailPage> {
       create: (_) => DatasetDetailBloc(
         getRecordsUseCase: GetRecordsUseCase(repository),
         createRecordUseCase: CreateRecordUseCase(repository),
-      )..add(DatasetDetailLoad(widget.dataSetId, _orgUnitId)),
+      )..add(DatasetDetailLoad(widget.dataSetId, _orgUnitId ?? '')),
       child: _DatasetDetailView(
         dataSetId: widget.dataSetId,
         dataSetName: widget.dataSetName,
         periodType: widget.periodType,
-        orgUnitId: _orgUnitId,
+        orgUnitId: _orgUnitId ?? '',
       ),
     );
   }
@@ -91,13 +99,12 @@ class _DatasetDetailView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundGrey,
+      backgroundColor: Colors.white,
       appBar: _DetailAppBar(dataSetName: dataSetName),
       body: BlocBuilder<DatasetDetailBloc, DatasetDetailState>(
         builder: (context, state) {
           if (state is DatasetDetailLoading) {
-            return const AppLoader(
-                message: 'Loading records...');
+            return const AppLoader(message: 'Loading records...');
           }
           if (state is DatasetDetailLoaded && state.isEmpty) {
             return const _EmptyState();
@@ -106,29 +113,21 @@ class _DatasetDetailView extends StatelessWidget {
             return RefreshIndicator(
               color: AppColors.primary,
               onRefresh: () async {
-                context.read<DatasetDetailBloc>().add(
-                    DatasetDetailRefresh(dataSetId, orgUnitId));
+                context
+                    .read<DatasetDetailBloc>()
+                    .add(DatasetDetailRefresh(dataSetId, orgUnitId));
                 await Future.delayed(
                     const Duration(seconds: 1));
               },
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(
-                    vertical: AppDimensions.spaceMD),
+              child: ListView.separated(
+                padding:
+                    const EdgeInsets.all(AppDimensions.space),
                 itemCount: state.records.length,
+                separatorBuilder: (_, __) =>
+                    const SizedBox(height: AppDimensions.spaceSM),
                 itemBuilder: (context, index) {
                   final record = state.records[index];
-                  return RecordListCard(
-                    period: record.periodId,
-                    orgUnitName:
-                        record.orgUnitName ?? record.orgUnitId,
-                    date: _formatDate(record.createdAt),
-                    isCompleted:
-                        record.status == RecordStatus.complete,
-                    syncStatus: index % 2 == 0
-                        ? RecordSyncStatus.synced
-                        : RecordSyncStatus.unsynced,
-                    onTap: () {},
-                  );
+                  return _RecordCard(record: record);
                 },
               ),
             );
@@ -138,8 +137,7 @@ class _DatasetDetailView extends StatelessWidget {
               message: state.message,
               onRetry: () => context
                   .read<DatasetDetailBloc>()
-                  .add(DatasetDetailLoad(
-                      dataSetId, orgUnitId)),
+                  .add(DatasetDetailLoad(dataSetId, orgUnitId)),
             );
           }
           return const SizedBox.shrink();
@@ -149,27 +147,11 @@ class _DatasetDetailView extends StatelessWidget {
         onPressed: () => _onAddRecord(context),
         backgroundColor: AppColors.primary,
         elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.circular(AppDimensions.radiusLG),
-        ),
+        shape: const CircleBorder(),
         child: const Icon(Icons.add_rounded,
             color: Colors.white, size: AppDimensions.iconXL),
       ),
     );
-  }
-
-  String _formatDate(DateTime? date) {
-    if (date == null) {
-      final now = EthiopianCalendar.toEthiopian(DateTime.now());
-      return '${now.day.toString().padLeft(2, '0')}/'
-          '${now.month.toString().padLeft(2, '0')}/'
-          '${now.year}';
-    }
-    final eth = EthiopianCalendar.toEthiopian(date);
-    return '${eth.day.toString().padLeft(2, '0')}/'
-        '${eth.month.toString().padLeft(2, '0')}/'
-        '${eth.year}';
   }
 
   void _onAddRecord(BuildContext context) {
@@ -180,13 +162,11 @@ class _DatasetDetailView extends StatelessWidget {
         builder: (_) => AddRecordPage(
           dataSetId: dataSetId,
           dataSetName: dataSetName,
-          periodType: periodType,
+          periodType: periodType, // ← pass period type
         ),
       ),
-    ).then((result) {
-      if (result != null) {
-        bloc.add(DatasetDetailRefresh(dataSetId, orgUnitId));
-      }
+    ).then((_) {
+      bloc.add(DatasetDetailRefresh(dataSetId, orgUnitId));
     });
   }
 }
@@ -217,16 +197,13 @@ class _DetailAppBar extends StatelessWidget
           overflow: TextOverflow.ellipsis),
       actions: [
         IconButton(
-          icon: const Icon(Icons.sync_rounded,
-              color: Colors.white),
-          onPressed: () {},
-        ),
+            icon:
+                const Icon(Icons.sync_rounded, color: Colors.white),
+            onPressed: () {}),
         IconButton(
-          icon: const Icon(
-              Icons.format_list_bulleted_rounded,
-              color: Colors.white),
-          onPressed: () {},
-        ),
+            icon: const Icon(Icons.format_list_bulleted_rounded,
+                color: Colors.white),
+            onPressed: () {}),
         const SizedBox(width: AppDimensions.spaceXS),
       ],
     );
@@ -241,8 +218,7 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(AppDimensions.spaceXXXL),
+        padding: const EdgeInsets.all(AppDimensions.spaceXXXL),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -250,9 +226,8 @@ class _EmptyState extends StatelessWidget {
               width: 80,
               height: 80,
               decoration: const BoxDecoration(
-                color: AppColors.primarySurface,
-                shape: BoxShape.circle,
-              ),
+                  color: AppColors.primarySurface,
+                  shape: BoxShape.circle),
               child: const Icon(Icons.inbox_outlined,
                   size: AppDimensions.iconXXL,
                   color: AppColors.primary),
@@ -261,12 +236,146 @@ class _EmptyState extends StatelessWidget {
             Text(
               'There are no data. Click "+" to\nadd new a new record',
               style: AppTextStyles.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.6,
-              ),
+                  color: AppColors.textSecondary, height: 1.6),
               textAlign: TextAlign.center,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Record Card ────────────────────────────────────────────────
+class _RecordCard extends StatelessWidget {
+  final DataRecordEntity record;
+  const _RecordCard({required this.record});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCompleted = record.status == RecordStatus.complete;
+    final registeredDate = record.createdAt ?? record.lastUpdated;
+
+    return Container(
+      padding: const EdgeInsets.all(AppDimensions.space),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(AppDimensions.radiusLG),
+        border: Border.all(color: AppColors.divider),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2))
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Period + Date ────────────────────────────────
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  EthiopianCalendar.formatPeriodId(record.periodId),
+                  style: AppTextStyles.labelLarge,
+                ),
+              ),
+              if (registeredDate != null)
+                Text(
+                  DateFormat('dd/MM/yyyy').format(registeredDate),
+                  style: AppTextStyles.labelLarge
+                      .copyWith(fontWeight: FontWeight.w700),
+                ),
+            ],
+          ),
+          const SizedBox(height: AppDimensions.spaceXXS),
+
+          // ── Registered in ────────────────────────────────
+          RichText(
+            text: TextSpan(
+              style: AppTextStyles.bodySmall
+                  .copyWith(color: AppColors.textPrimary),
+              children: [
+                const TextSpan(
+                  text: 'Registered in : ',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                TextSpan(
+                  text:
+                      record.orgUnitName ?? record.orgUnitId,
+                  style:
+                      const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spaceSM),
+
+          // ── Completed status + Sync badge ────────────────
+          Row(
+            children: [
+              Icon(
+                isCompleted
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                size: AppDimensions.iconSM,
+                color: isCompleted
+                    ? AppColors.success
+                    : AppColors.textSecondary,
+              ),
+              const SizedBox(width: AppDimensions.spaceXXS),
+              Text(
+                isCompleted ? 'Completed' : 'Incomplete',
+                style: AppTextStyles.labelMedium.copyWith(
+                  color: isCompleted
+                      ? AppColors.success
+                      : AppColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              _SyncBadge(isSynced: record.isSynced),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Sync Badge ─────────────────────────────────────────────────
+class _SyncBadge extends StatelessWidget {
+  final bool isSynced;
+  const _SyncBadge({required this.isSynced});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spaceSM + 2,
+        vertical: 3,
+      ),
+      decoration: BoxDecoration(
+        color: isSynced
+            ? AppColors.primary.withValues(alpha: 0.08)
+            : AppColors.backgroundGrey,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+        border: Border.all(
+          color: isSynced
+              ? AppColors.primary.withValues(alpha: 0.2)
+              : AppColors.divider,
+          width: 1,
+        ),
+      ),
+      child: Text(
+        isSynced ? 'Synced' : 'Unsync',
+        style: AppTextStyles.caption.copyWith(
+          color: isSynced ? AppColors.primary : AppColors.textSecondary,
+          fontWeight: FontWeight.w500,
+          fontSize: 11,
         ),
       ),
     );
