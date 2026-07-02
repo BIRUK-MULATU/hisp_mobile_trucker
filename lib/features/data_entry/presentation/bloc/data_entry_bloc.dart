@@ -1,8 +1,8 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../domain/entities/data_element_entity.dart';
+import '../../domain/repositories/data_entry_repository.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
-import '../../domain/repositories/data_entry_repository.dart';
 
 part 'data_entry_event.dart';
 part 'data_entry_state.dart';
@@ -10,7 +10,9 @@ part 'data_entry_state.dart';
 class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
   final GetDataElementsUseCase _getDataElementsUseCase;
   final SaveDataValuesUseCase _saveDataValuesUseCase;
-  final DataEntryRepository _repository;
+
+  // Exposed so DataEntryPage can call completeDataSet
+  final DataEntryRepository repository;
 
   String _dataSetId = '';
   String _orgUnitId = '';
@@ -22,7 +24,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
     required DataEntryRepository repository,
   })  : _getDataElementsUseCase = getDataElementsUseCase,
         _saveDataValuesUseCase = saveDataValuesUseCase,
-        _repository = repository,
+        repository = repository,
         super(const DataEntryInitial()) {
     on<DataEntryLoad>(_onLoad);
     on<DataEntryValueChanged>(_onValueChanged);
@@ -40,10 +42,10 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
     emit(const DataEntryLoading());
 
     try {
-      // Load data elements and existing values in parallel
       final results = await Future.wait([
-        _getDataElementsUseCase.call(dataSetId: event.dataSetId),
-        _repository.getDataValues(
+        _getDataElementsUseCase.call(
+            dataSetId: event.dataSetId),
+        repository.getDataValues(
           dataSetId: event.dataSetId,
           orgUnitId: event.orgUnitId,
           period: event.period,
@@ -55,7 +57,6 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
       final existingValues =
           results[1] as List<DataValueEntity>;
 
-      // Build value map from existing values
       final valueMap = <String, DataValueEntity>{};
       for (final v in existingValues) {
         valueMap[v.key] = v;
