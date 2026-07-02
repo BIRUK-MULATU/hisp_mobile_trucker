@@ -19,6 +19,12 @@ abstract class DataEntryRemoteDataSource {
     required String orgUnitId,
     required String period,
   });
+
+  Future<void> completeDataSet({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  });
 }
 
 class DataEntryRemoteDataSourceImpl
@@ -113,6 +119,39 @@ class DataEntryRemoteDataSourceImpl
           response.statusCode != 201) {
         throw const ServerException(
             message: 'Failed to save data values');
+      }
+    } catch (e) {
+      if (e is AppException) rethrow;
+      throw ServerException(message: e.toString());
+    }
+  }
+
+  // Registers completion only — deliberately separate from
+  // saveDataValues so completing a dataset never re-POSTs data values.
+  @override
+  Future<void> completeDataSet({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  }) async {
+    try {
+      final response = await _apiClient.post(
+        '/completeDataSetRegistrations',
+        data: {
+          'completeDataSetRegistrations': [
+            {
+              'dataSet': dataSetId,
+              'organisationUnit': orgUnitId,
+              'period': period,
+            },
+          ],
+        },
+      );
+
+      if (response.statusCode != 200 &&
+          response.statusCode != 201) {
+        throw const ServerException(
+            message: 'Failed to complete data set');
       }
     } catch (e) {
       if (e is AppException) rethrow;

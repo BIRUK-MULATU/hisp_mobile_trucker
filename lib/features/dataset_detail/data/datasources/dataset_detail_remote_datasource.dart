@@ -35,9 +35,10 @@ class DatasetDetailRemoteDataSourceImpl
           'orgUnit': orgUnitId,
           // dataValueSets requires a period or date range filter (E2002) —
           // use a wide range so every record for this dataset/org unit
-          // comes back regardless of period.
+          // comes back regardless of period. Day 30 (not 31) is used
+          // because the server's Ethiopian calendar caps every month at 30.
           'startDate': '1970-01-01',
-          'endDate': '${now.year + 5}-12-31',
+          'endDate': '${now.year + 5}-12-30',
           'fields': 'id,period,orgUnit,dataValues,completeDate,created,lastUpdated',
         },
       );
