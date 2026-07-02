@@ -18,11 +18,10 @@ class DataRecordModel extends DataRecordEntity {
   factory DataRecordModel.fromJson(Map<String, dynamic> json) {
     return DataRecordModel(
       id: json['id'] as String? ?? '',
-      dataSetId: json['dataSet'] as String? ?? '',
+      dataSetId: json['dataSet']?['id'] as String? ?? '',
       periodId: json['period'] as String? ?? '',
-      // dataValueSets returns orgUnit as a plain ID string, not a
-      // nested {id, displayName} object like metadata endpoints do.
-      orgUnitId: json['orgUnit'] as String? ?? '',
+      orgUnitId: json['orgUnit']?['id'] as String? ?? '',
+      orgUnitName: json['orgUnit']?['displayName'] as String?,
       periodName: json['period'] as String?,
       status: _parseStatus(json['completeDate']),
       createdAt: json['created'] != null

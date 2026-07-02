@@ -89,6 +89,16 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String orgUnitId,
     required String period,
   }) async {
-    // TODO: implement complete dataset
+    try {
+      await _remoteDataSource.completeDataSet(
+        dataSetId: dataSetId,
+        orgUnitId: orgUnitId,
+        period: period,
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(message: e.toString());
+    }
   }
 }
