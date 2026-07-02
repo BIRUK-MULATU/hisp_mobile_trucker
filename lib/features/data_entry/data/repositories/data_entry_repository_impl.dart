@@ -11,13 +11,23 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
       {required DataEntryRemoteDataSource remoteDataSource})
       : _remoteDataSource = remoteDataSource;
 
+  // Data elements/category combos are static metadata for a dataset —
+  // safe to cache for the lifetime of this repository instance so the
+  // add-record prefetch and the form load don't hit the network twice.
+  final Map<String, List<DataElementEntity>> _dataElementsCache = {};
+
   @override
   Future<List<DataElementEntity>> getDataElements({
     required String dataSetId,
   }) async {
+    final cached = _dataElementsCache[dataSetId];
+    if (cached != null) return cached;
+
     try {
-      return await _remoteDataSource.getDataElements(
+      final elements = await _remoteDataSource.getDataElements(
           dataSetId: dataSetId);
+      _dataElementsCache[dataSetId] = elements;
+      return elements;
     } on AppException {
       rethrow;
     } catch (e) {

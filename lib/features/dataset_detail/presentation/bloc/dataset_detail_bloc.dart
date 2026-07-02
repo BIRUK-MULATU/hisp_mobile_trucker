@@ -28,8 +28,10 @@ class DatasetDetailBloc
   ) async {
     emit(const DatasetDetailLoading());
     try {
-      final records =
-          await _getRecordsUseCase.call(dataSetId: event.dataSetId);
+      final records = await _getRecordsUseCase.call(
+        dataSetId: event.dataSetId,
+        orgUnitId: event.orgUnitId,
+      );
       emit(DatasetDetailLoaded(records));
     } catch (e) {
       // Show empty state instead of error for new datasets
@@ -42,8 +44,10 @@ class DatasetDetailBloc
     Emitter<DatasetDetailState> emit,
   ) async {
     try {
-      final records =
-          await _getRecordsUseCase.call(dataSetId: event.dataSetId);
+      final records = await _getRecordsUseCase.call(
+        dataSetId: event.dataSetId,
+        orgUnitId: event.orgUnitId,
+      );
       emit(DatasetDetailLoaded(records));
     } catch (e) {
       emit(const DatasetDetailLoaded([]));
