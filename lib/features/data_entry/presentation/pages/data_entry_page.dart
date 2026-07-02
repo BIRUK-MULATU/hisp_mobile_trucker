@@ -11,6 +11,7 @@ import '../../data/repositories/data_entry_repository_impl.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
 import '../bloc/data_entry_bloc.dart';
+import '../widgets/complete_dataset_dialog.dart';
 import '../widgets/data_entry_table.dart';
 
 class DataEntryPage extends StatelessWidget {
@@ -35,7 +36,6 @@ class DataEntryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // If bloc already created and loading — reuse it
     if (preloadedBloc != null) {
       return _DataEntryView(
         dataSetId: dataSetId,
@@ -47,7 +47,6 @@ class DataEntryPage extends StatelessWidget {
       );
     }
 
-    // Fallback — create fresh bloc if navigated directly
     final repository = DataEntryRepositoryImpl(
       remoteDataSource: DataEntryRemoteDataSourceImpl(
         apiClient: ApiClient(),
@@ -78,7 +77,7 @@ class DataEntryPage extends StatelessWidget {
   }
 }
 
-class _DataEntryView extends StatelessWidget {
+class _DataEntryView extends StatefulWidget {
   final String dataSetId;
   final String dataSetName;
   final String orgUnitId;
@@ -96,131 +95,321 @@ class _DataEntryView extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return BlocListener<DataEntryBloc, DataEntryState>(
-      listener: (context, state) {
-        if (state is DataEntrySaved) {
+  State<_DataEntryView> createState() => _DataEntryViewState();
+}
+
+class _DataEntryViewState extends State<_DataEntryView> {
+  bool _isSaving = false;
+  bool _isCompleting = false;
+
+  // ── FAB tapped — save first ───────────────────────────────
+  Future<void> _onSaveTapped() async {
+    setState(() => _isSaving = true);
+
+    final bloc = context.read<DataEntryBloc>();
+
+    try {
+      // Save data values via use case directly
+      final state = bloc.state;
+      if (state is DataEntryLoaded) {
+        await bloc.repository.saveDataValues(
+          dataValues: state.dataValues.values.toList(),
+          dataSetId: widget.dataSetId,
+          orgUnitId: widget.orgUnitId,
+          period: widget.period,
+        );
+      }
+
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+
+      // Show complete dialog
+      await _showCompleteDialog();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save: $e'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  // ── Show complete bottom sheet ─────────────────────────────
+  Future<void> _showCompleteDialog() async {
+    if (!mounted) return;
+
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppDimensions.radiusXXL),
+        ),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppDimensions.pagePaddingH,
+          AppDimensions.spaceXXL,
+          AppDimensions.pagePaddingH,
+          AppDimensions.spaceXXL,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Title ──────────────────────────────
+            Text(
+              'Everything looks good',
+              style: AppTextStyles.headingMedium.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+
+            const SizedBox(height: AppDimensions.spaceMD),
+
+            // ── Message ────────────────────────────
+            Text(
+              'Do you also want to complete the data set ?',
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+
+            const SizedBox(height: AppDimensions.spaceXL),
+            const Divider(color: AppColors.divider),
+            const SizedBox(height: AppDimensions.spaceXL),
+
+            // ── Buttons ────────────────────────────
+            Row(
+              children: [
+                // Not now
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () =>
+                        Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(
+                        color: AppColors.primary,
+                        width: 1.5,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                            AppDimensions.radiusFull),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spaceMD),
+                    ),
+                    child: Text(
+                      'Not now',
+                      style: AppTextStyles.buttonMedium
+                          .copyWith(
+                              color: AppColors.primary),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(
+                    width: AppDimensions.spaceMD),
+
+                // Complete
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () =>
+                        Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                            AppDimensions.radiusFull),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spaceMD),
+                    ),
+                    child: Text(
+                      'Complete',
+                      style: AppTextStyles.buttonMedium
+                          .copyWith(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      // User chose Complete
+      setState(() => _isCompleting = true);
+      try {
+        await context.read<DataEntryBloc>().repository
+            .completeDataSet(
+          dataSetId: widget.dataSetId,
+          orgUnitId: widget.orgUnitId,
+          period: widget.period,
+        );
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Data saved successfully!'),
+              content:
+                  Text('Data set completed successfully!'),
               backgroundColor: AppColors.success,
               behavior: SnackBarBehavior.floating,
             ),
           );
-          Navigator.pop(context);
+          Navigator.pop(context, {
+            'saved': true,
+            'completed': true,
+            'period': widget.period,
+            'orgUnitName': widget.orgUnitName,
+          });
         }
-        if (state is DataEntryError) {
+      } catch (e) {
+        if (mounted) {
+          setState(() => _isCompleting = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(state.message),
+              content: Text('Failed to complete: $e'),
               backgroundColor: AppColors.error,
               behavior: SnackBarBehavior.floating,
             ),
           );
         }
-      },
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          backgroundColor: AppColors.primary,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded,
-                color: Colors.white),
-            onPressed: () => Navigator.pop(context),
+      }
+    } else {
+      // User chose Not now — go back with saved result
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Data saved successfully!'),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
           ),
-          title: Text(dataSetName,
-              style: AppTextStyles.appBarTitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.sync_rounded,
-                  color: Colors.white),
-              onPressed: () {},
-            ),
-            const SizedBox(width: AppDimensions.spaceXS),
-          ],
-        ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Period + Org Unit sub-header ────────
-            _SubHeader(
-                period: period, orgUnitName: orgUnitName),
-            const Divider(height: 1, color: AppColors.divider),
+        );
+        Navigator.pop(context, {
+          'saved': true,
+          'completed': false,
+          'period': widget.period,
+          'orgUnitName': widget.orgUnitName,
+        });
+      }
+    }
+  }
 
-            // ── Table ───────────────────────────────
-            Expanded(
-              child: BlocBuilder<DataEntryBloc, DataEntryState>(
-                builder: (context, state) {
-                  if (state is DataEntryLoading) {
-                    return const AppLoader(
-                        message: 'Loading form...');
-                  }
-                  if (state is DataEntryError) {
-                    return _ErrorView(
-                      message: state.message,
-                      onRetry: () =>
-                          context.read<DataEntryBloc>().add(
-                                DataEntryLoad(
-                                  dataSetId: dataSetId,
-                                  orgUnitId: orgUnitId,
-                                  period: period,
-                                ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: AppColors.primary,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded,
+              color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          widget.dataSetName,
+          style: AppTextStyles.appBarTitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sync_rounded,
+                color: Colors.white),
+            onPressed: () {},
+          ),
+          const SizedBox(width: AppDimensions.spaceXS),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Sub header ────────────────────────────
+          _SubHeader(
+            period: widget.period,
+            orgUnitName: widget.orgUnitName,
+          ),
+          const Divider(
+              height: 1, color: AppColors.divider),
+
+          // ── Table ─────────────────────────────────
+          Expanded(
+            child:
+                BlocBuilder<DataEntryBloc, DataEntryState>(
+              builder: (context, state) {
+                if (state is DataEntryLoading) {
+                  return const AppLoader(
+                      message: 'Loading form...');
+                }
+                if (state is DataEntryError) {
+                  return _ErrorView(
+                    message: state.message,
+                    onRetry: () =>
+                        context.read<DataEntryBloc>().add(
+                              DataEntryLoad(
+                                dataSetId: widget.dataSetId,
+                                orgUnitId: widget.orgUnitId,
+                                period: widget.period,
                               ),
-                    );
-                  }
-                  if (state is DataEntryLoaded) {
-                    return DataEntryTable(
-                      dataElements: state.dataElements,
-                      dataValues: state.dataValues,
-                      orgUnitId: orgUnitId,
-                      period: period,
-                    );
-                  }
-                  return const SizedBox.shrink();
-                },
-              ),
+                            ),
+                  );
+                }
+                if (state is DataEntryLoaded) {
+                  return DataEntryTable(
+                    dataElements: state.dataElements,
+                    dataValues: state.dataValues,
+                    orgUnitId: widget.orgUnitId,
+                    period: widget.period,
+                  );
+                }
+                return const SizedBox.shrink();
+              },
             ),
-          ],
-        ),
-        floatingActionButton:
-            BlocBuilder<DataEntryBloc, DataEntryState>(
-          builder: (context, state) {
-            final isSaving = state is DataEntryLoaded &&
-                state.isSaving;
-            final hasChanges = state is DataEntryLoaded &&
-                state.hasChanges;
-            return FloatingActionButton(
-              onPressed: isSaving
-                  ? null
-                  : () => context
-                      .read<DataEntryBloc>()
-                      .add(const DataEntrySave()),
-              backgroundColor: hasChanges
-                  ? AppColors.primary
-                  : AppColors.primaryLight,
-              elevation: 4,
-              shape: const CircleBorder(),
-              child: isSaving
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white))
-                  : const Icon(Icons.check_rounded,
-                      color: Colors.white,
-                      size: AppDimensions.iconXL),
-            );
-          },
-        ),
+          ),
+        ],
+      ),
+
+      // ── Save FAB ──────────────────────────────────
+      floatingActionButton: FloatingActionButton(
+        onPressed:
+            (_isSaving || _isCompleting) ? null : _onSaveTapped,
+        backgroundColor: AppColors.primary,
+        elevation: 4,
+        shape: const CircleBorder(),
+        child: (_isSaving || _isCompleting)
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(
+                Icons.check_rounded,
+                color: Colors.white,
+                size: AppDimensions.iconXL,
+              ),
       ),
     );
   }
 }
 
+// ── Sub Header ─────────────────────────────────────────────────
 class _SubHeader extends StatelessWidget {
   final String period;
   final String orgUnitName;
@@ -231,23 +420,28 @@ class _SubHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(
-          horizontal: AppDimensions.space,
-          vertical: AppDimensions.spaceSM),
+        horizontal: AppDimensions.space,
+        vertical: AppDimensions.spaceSM,
+      ),
       child: Row(
         children: [
           Text(
             EthiopianCalendar.formatPeriodId(period),
             style: AppTextStyles.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w500),
+              color: AppColors.primary,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(width: AppDimensions.spaceXL),
           Expanded(
-            child: Text(orgUnitName,
-                style: AppTextStyles.bodyMedium.copyWith(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w500),
-                overflow: TextOverflow.ellipsis),
+            child: Text(
+              orgUnitName,
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -255,6 +449,7 @@ class _SubHeader extends StatelessWidget {
   }
 }
 
+// ── Error View ─────────────────────────────────────────────────
 class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;

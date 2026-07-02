@@ -2,21 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/storage/secure_storage.dart';
+import '../../../../core/utils/ethiopian_calendar.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
 import '../../data/datasources/dataset_detail_remote_datasource.dart';
 import '../../data/repositories/dataset_detail_repository_impl.dart';
+import '../../domain/entities/data_record_entity.dart';
 import '../../domain/usecases/get_records_usecase.dart';
 import '../../domain/usecases/create_record_usecase.dart';
 import '../bloc/dataset_detail_bloc.dart';
+import '../widgets/record_list_card.dart';
 import 'add_record_page.dart';
 
 class DatasetDetailPage extends StatefulWidget {
   final String dataSetId;
   final String dataSetName;
-  final String periodType; // ← passed from home page
+  final String periodType;
 
   const DatasetDetailPage({
     super.key,
@@ -26,13 +29,13 @@ class DatasetDetailPage extends StatefulWidget {
   });
 
   @override
-  State<DatasetDetailPage> createState() => _DatasetDetailPageState();
+  State<DatasetDetailPage> createState() =>
+      _DatasetDetailPageState();
 }
 
 class _DatasetDetailPageState extends State<DatasetDetailPage> {
   final _secureStorage = SecureStorage();
-  String? _orgUnitId;
-  bool _loadingOrgUnit = true;
+  String _orgUnitId = '';
 
   @override
   void initState() {
@@ -42,23 +45,15 @@ class _DatasetDetailPageState extends State<DatasetDetailPage> {
 
   Future<void> _loadOrgUnit() async {
     final orgUnit = await _secureStorage.getPrimaryOrgUnit();
-    if (mounted) {
+    if (mounted && orgUnit != null) {
       setState(() {
-        _orgUnitId = orgUnit?['id'] as String?;
-        _loadingOrgUnit = false;
+        _orgUnitId = orgUnit['id'] as String? ?? '';
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loadingOrgUnit) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: AppLoader(message: 'Loading records...'),
-      );
-    }
-
     final repository = DatasetDetailRepositoryImpl(
       remoteDataSource: DatasetDetailRemoteDataSourceImpl(
         apiClient: ApiClient(),
@@ -69,12 +64,12 @@ class _DatasetDetailPageState extends State<DatasetDetailPage> {
       create: (_) => DatasetDetailBloc(
         getRecordsUseCase: GetRecordsUseCase(repository),
         createRecordUseCase: CreateRecordUseCase(repository),
-      )..add(DatasetDetailLoad(widget.dataSetId, _orgUnitId ?? '')),
+      )..add(DatasetDetailLoad(widget.dataSetId, _orgUnitId)),
       child: _DatasetDetailView(
         dataSetId: widget.dataSetId,
         dataSetName: widget.dataSetName,
         periodType: widget.periodType,
-        orgUnitId: _orgUnitId ?? '',
+        orgUnitId: _orgUnitId,
       ),
     );
   }
@@ -96,12 +91,13 @@ class _DatasetDetailView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.backgroundGrey,
       appBar: _DetailAppBar(dataSetName: dataSetName),
       body: BlocBuilder<DatasetDetailBloc, DatasetDetailState>(
         builder: (context, state) {
           if (state is DatasetDetailLoading) {
-            return const AppLoader(message: 'Loading records...');
+            return const AppLoader(
+                message: 'Loading records...');
           }
           if (state is DatasetDetailLoaded && state.isEmpty) {
             return const _EmptyState();
@@ -110,21 +106,29 @@ class _DatasetDetailView extends StatelessWidget {
             return RefreshIndicator(
               color: AppColors.primary,
               onRefresh: () async {
-                context
-                    .read<DatasetDetailBloc>()
-                    .add(DatasetDetailRefresh(dataSetId, orgUnitId));
+                context.read<DatasetDetailBloc>().add(
+                    DatasetDetailRefresh(dataSetId, orgUnitId));
                 await Future.delayed(
                     const Duration(seconds: 1));
               },
-              child: ListView.separated(
-                padding:
-                    const EdgeInsets.all(AppDimensions.space),
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(
+                    vertical: AppDimensions.spaceMD),
                 itemCount: state.records.length,
-                separatorBuilder: (_, __) =>
-                    const SizedBox(height: AppDimensions.spaceSM),
                 itemBuilder: (context, index) {
                   final record = state.records[index];
-                  return _RecordCard(record: record);
+                  return RecordListCard(
+                    period: record.periodId,
+                    orgUnitName:
+                        record.orgUnitName ?? record.orgUnitId,
+                    date: _formatDate(record.createdAt),
+                    isCompleted:
+                        record.status == RecordStatus.complete,
+                    syncStatus: index % 2 == 0
+                        ? RecordSyncStatus.synced
+                        : RecordSyncStatus.unsynced,
+                    onTap: () {},
+                  );
                 },
               ),
             );
@@ -134,7 +138,8 @@ class _DatasetDetailView extends StatelessWidget {
               message: state.message,
               onRetry: () => context
                   .read<DatasetDetailBloc>()
-                  .add(DatasetDetailLoad(dataSetId, orgUnitId)),
+                  .add(DatasetDetailLoad(
+                      dataSetId, orgUnitId)),
             );
           }
           return const SizedBox.shrink();
@@ -154,6 +159,19 @@ class _DatasetDetailView extends StatelessWidget {
     );
   }
 
+  String _formatDate(DateTime? date) {
+    if (date == null) {
+      final now = EthiopianCalendar.toEthiopian(DateTime.now());
+      return '${now.day.toString().padLeft(2, '0')}/'
+          '${now.month.toString().padLeft(2, '0')}/'
+          '${now.year}';
+    }
+    final eth = EthiopianCalendar.toEthiopian(date);
+    return '${eth.day.toString().padLeft(2, '0')}/'
+        '${eth.month.toString().padLeft(2, '0')}/'
+        '${eth.year}';
+  }
+
   void _onAddRecord(BuildContext context) {
     final bloc = context.read<DatasetDetailBloc>();
     Navigator.push(
@@ -162,11 +180,13 @@ class _DatasetDetailView extends StatelessWidget {
         builder: (_) => AddRecordPage(
           dataSetId: dataSetId,
           dataSetName: dataSetName,
-          periodType: periodType, // ← pass period type
+          periodType: periodType,
         ),
       ),
-    ).then((_) {
-      bloc.add(DatasetDetailRefresh(dataSetId, orgUnitId));
+    ).then((result) {
+      if (result != null) {
+        bloc.add(DatasetDetailRefresh(dataSetId, orgUnitId));
+      }
     });
   }
 }
@@ -197,13 +217,16 @@ class _DetailAppBar extends StatelessWidget
           overflow: TextOverflow.ellipsis),
       actions: [
         IconButton(
-            icon:
-                const Icon(Icons.sync_rounded, color: Colors.white),
-            onPressed: () {}),
+          icon: const Icon(Icons.sync_rounded,
+              color: Colors.white),
+          onPressed: () {},
+        ),
         IconButton(
-            icon: const Icon(Icons.format_list_bulleted_rounded,
-                color: Colors.white),
-            onPressed: () {}),
+          icon: const Icon(
+              Icons.format_list_bulleted_rounded,
+              color: Colors.white),
+          onPressed: () {},
+        ),
         const SizedBox(width: AppDimensions.spaceXS),
       ],
     );
@@ -218,7 +241,8 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.spaceXXXL),
+        padding:
+            const EdgeInsets.all(AppDimensions.spaceXXXL),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -226,8 +250,9 @@ class _EmptyState extends StatelessWidget {
               width: 80,
               height: 80,
               decoration: const BoxDecoration(
-                  color: AppColors.primarySurface,
-                  shape: BoxShape.circle),
+                color: AppColors.primarySurface,
+                shape: BoxShape.circle,
+              ),
               child: const Icon(Icons.inbox_outlined,
                   size: AppDimensions.iconXXL,
                   color: AppColors.primary),
@@ -236,66 +261,13 @@ class _EmptyState extends StatelessWidget {
             Text(
               'There are no data. Click "+" to\nadd new a new record',
               style: AppTextStyles.bodyMedium.copyWith(
-                  color: AppColors.textSecondary, height: 1.6),
+                color: AppColors.textSecondary,
+                height: 1.6,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ── Record Card ────────────────────────────────────────────────
-class _RecordCard extends StatelessWidget {
-  final dynamic record;
-  const _RecordCard({required this.record});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppDimensions.space),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(AppDimensions.radiusLG),
-        border: Border.all(color: AppColors.divider),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2))
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-                color: AppColors.primarySurface,
-                borderRadius: BorderRadius.circular(
-                    AppDimensions.radiusSM)),
-            child: const Icon(Icons.assignment_outlined,
-                color: AppColors.primary,
-                size: AppDimensions.iconMD),
-          ),
-          const SizedBox(width: AppDimensions.spaceMD),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(record.periodName ?? record.periodId,
-                    style: AppTextStyles.labelLarge),
-                const SizedBox(height: AppDimensions.spaceXXS),
-                Text(record.orgUnitName ?? record.orgUnitId,
-                    style: AppTextStyles.bodySmall),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right_rounded,
-              color: AppColors.textSecondary),
-        ],
       ),
     );
   }

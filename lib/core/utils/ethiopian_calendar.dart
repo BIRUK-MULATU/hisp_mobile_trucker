@@ -1,48 +1,20 @@
-/// Ethiopian Calendar Utility
-/// Handles conversion between Gregorian and Ethiopian calendars
-/// and generates period lists based on DHIS2 period types
 class EthiopianCalendar {
   EthiopianCalendar._();
 
-  // ── Ethiopian Month Names ──────────────────────────────────
   static const List<String> monthNamesAmharic = [
-    'መስከረም', // 1 - Meskerem
-    'ጥቅምት',  // 2 - Tikimit
-    'ህዳር',   // 3 - Hidar
-    'ታህሳስ',  // 4 - Tahsas
-    'ጥር',    // 5 - Tir
-    'የካቲት',  // 6 - Yekatit
-    'መጋቢት',  // 7 - Megabit
-    'ሚያዚያ',  // 8 - Miyazia
-    'ግንቦት',  // 9 - Ginbot
-    'ሰኔ',    // 10 - Sene
-    'ሐምሌ',   // 11 - Hamle
-    'ነሐሴ',   // 12 - Nehase
-    'ጳጉሜ',   // 13 - Pagume
+    'መስከረም', 'ጥቅምት', 'ህዳር', 'ታህሳስ',
+    'ጥር', 'የካቲት', 'መጋቢት', 'ሚያዚያ',
+    'ግንቦት', 'ሰኔ', 'ሐምሌ', 'ነሐሴ', 'ጳጉሜ',
   ];
 
   static const List<String> monthNamesEnglish = [
-    'Meskerem', // 1
-    'Tikimit',  // 2
-    'Hidar',    // 3
-    'Tahsas',   // 4
-    'Tir',      // 5
-    'Yekatit',  // 6
-    'Megabit',  // 7
-    'Miyazia',  // 8
-    'Ginbot',   // 9
-    'Sene',     // 10
-    'Hamle',    // 11
-    'Nehase',   // 12
-    'Pagume',   // 13
+    'Meskerem', 'Tikimit', 'Hidar', 'Tahsas',
+    'Tir', 'Yekatit', 'Megabit', 'Miyazia',
+    'Ginbot', 'Sene', 'Hamle', 'Nehase', 'Pagume',
   ];
 
-  // ── Ethiopian Quarter Names ────────────────────────────────
   static const List<String> quarterNamesAmharic = [
-    'ሩብ 1', // Q1
-    'ሩብ 2', // Q2
-    'ሩብ 3', // Q3
-    'ሩብ 4', // Q4
+    'ሩብ 1', 'ሩብ 2', 'ሩብ 3', 'ሩብ 4',
   ];
 
   // ── Convert Gregorian to Ethiopian ────────────────────────
@@ -52,17 +24,21 @@ class EthiopianCalendar {
     return _jdnToEthiopian(jdn);
   }
 
-  /// Get current Ethiopian date
-  static EthiopianDate today() {
-    return toEthiopian(DateTime.now());
-  }
+  static EthiopianDate today() => toEthiopian(DateTime.now());
 
   // ── Generate periods based on DHIS2 period type ───────────
   static List<EthiopianPeriod> generatePeriods({
     required String periodType,
     int count = 24,
   }) {
-    switch (periodType.toUpperCase()) {
+    final type = periodType.toUpperCase();
+    if (type.contains('FINANCIAL') || type == 'FINANCIALNOV' ||
+        type == 'FINANCIALJUL' || type == 'FINANCIALAP' ||
+        type == 'FINANCIALOCT') {
+      return _generateFinancialPeriods(
+          periodType: periodType, count: count);
+    }
+    switch (type) {
       case 'MONTHLY':
         return _generateMonthlyPeriods(count: count);
       case 'QUARTERLY':
@@ -79,20 +55,91 @@ class EthiopianCalendar {
     }
   }
 
+  // ── Financial Year Periods ─────────────────────────────────
+  // DHIS2 Financial periods: 2017Nov, 2017Jul, 2017April, 2017Oct
+  static List<EthiopianPeriod> _generateFinancialPeriods({
+    required String periodType,
+    int count = 10,
+  }) {
+    final now = DateTime.now();
+    final periods = <EthiopianPeriod>[];
+
+    // Determine suffix and start month
+    String suffix;
+    int startMonth;
+    String startMonthName;
+
+    final type = periodType.toUpperCase();
+    if (type == 'FINANCIALNOV' || type.contains('NOV')) {
+      suffix = 'Nov';
+      startMonth = 11; // November
+      startMonthName = 'Nov';
+    } else if (type == 'FINANCIALJUL' || type.contains('JUL')) {
+      suffix = 'Jul';
+      startMonth = 7;
+      startMonthName = 'Jul';
+    } else if (type == 'FINANCIALAPRIL' ||
+        type == 'FINANCIALAP' ||
+        type.contains('APR')) {
+      suffix = 'April';
+      startMonth = 4;
+      startMonthName = 'Apr';
+    } else if (type == 'FINANCIALOCT' || type.contains('OCT')) {
+      suffix = 'Oct';
+      startMonth = 10;
+      startMonthName = 'Oct';
+    } else {
+      suffix = 'Nov';
+      startMonth = 11;
+      startMonthName = 'Nov';
+    }
+
+    // Find current financial year start
+    int currentYear = now.year;
+    if (now.month < startMonth) currentYear--;
+
+    for (int i = 0; i < count; i++) {
+      final year = currentYear - i;
+      final endYear = year + 1;
+
+      // DHIS2 format: 2017Nov
+      final id = '$year$suffix';
+      // Display: "ህዳር 2010 - ጥቅምት 2011" (Ethiopian)
+      final ethStart =
+          toEthiopian(DateTime(year, startMonth, 1));
+      final ethEnd =
+          toEthiopian(DateTime(endYear, startMonth - 1, 1));
+      final label =
+          '${monthNamesAmharic[ethStart.month - 1]} ${ethStart.year} '
+          '- ${monthNamesAmharic[ethEnd.month - 1]} ${ethEnd.year}';
+      final labelEn =
+          '$startMonthName $year - $startMonthName $endYear';
+
+      periods.add(EthiopianPeriod(
+        id: id,
+        label: label,
+        labelEnglish: labelEn,
+        year: year,
+        type: PeriodType.financial,
+      ));
+    }
+
+    return periods;
+  }
+
   // ── Monthly periods ───────────────────────────────────────
   static List<EthiopianPeriod> _generateMonthlyPeriods({
     int count = 24,
   }) {
     final ethToday = today();
     final periods = <EthiopianPeriod>[];
-
     int year = ethToday.year;
     int month = ethToday.month;
 
     for (int i = 0; i < count; i++) {
-      // DHIS2 Ethiopian monthly format: {year}Eth{mm}
+      // DHIS2 monthly period ID: yyyyMM
       final id =
-          '${year}Eth${month.toString().padLeft(2, '0')}';
+          '$year${month.toString().padLeft(2, '0')}';
       final label =
           '${monthNamesAmharic[month - 1]} $year';
       final labelEn =
@@ -107,14 +154,12 @@ class EthiopianCalendar {
         type: PeriodType.monthly,
       ));
 
-      // Go back one month
       month--;
       if (month < 1) {
         month = 13;
         year--;
       }
     }
-
     return periods;
   }
 
@@ -124,14 +169,14 @@ class EthiopianCalendar {
   }) {
     final ethToday = today();
     final periods = <EthiopianPeriod>[];
-
     int year = ethToday.year;
-    // Ethiopian quarters: Q1=1-3, Q2=4-6, Q3=7-9, Q4=10-12
     int quarter = ((ethToday.month - 1) ~/ 3) + 1;
 
     for (int i = 0; i < count; i++) {
-      final id = '${year}EthQ$quarter';
-      final label = '${quarterNamesAmharic[quarter - 1]} $year';
+      // DHIS2 quarterly period ID: yyyyQn
+      final id = '${year}Q$quarter';
+      final label =
+          '${quarterNamesAmharic[quarter - 1]} $year';
       final labelEn = 'Q$quarter $year';
 
       periods.add(EthiopianPeriod(
@@ -149,7 +194,6 @@ class EthiopianCalendar {
         year--;
       }
     }
-
     return periods;
   }
 
@@ -159,12 +203,12 @@ class EthiopianCalendar {
   }) {
     final ethToday = today();
     final periods = <EthiopianPeriod>[];
-
     int year = ethToday.year;
     int half = ethToday.month <= 6 ? 1 : 2;
 
     for (int i = 0; i < count; i++) {
-      final id = '${year}EthS$half';
+      // DHIS2 six-monthly period ID: yyyySn
+      final id = '${year}S$half';
       final label = half == 1
           ? 'መስከረም - የካቲት $year'
           : 'መጋቢት - ነሐሴ $year';
@@ -187,7 +231,6 @@ class EthiopianCalendar {
         year--;
       }
     }
-
     return periods;
   }
 
@@ -197,11 +240,11 @@ class EthiopianCalendar {
   }) {
     final ethToday = today();
     final periods = <EthiopianPeriod>[];
-
     int year = ethToday.year;
 
     for (int i = 0; i < count; i++) {
-      final id = '${year}Eth';
+      // DHIS2 yearly period ID: yyyy
+      final id = '$year';
       final label = 'ዓ.ም $year';
       final labelEn = 'Year $year';
 
@@ -212,10 +255,8 @@ class EthiopianCalendar {
         year: year,
         type: PeriodType.yearly,
       ));
-
       year--;
     }
-
     return periods;
   }
 
@@ -227,20 +268,17 @@ class EthiopianCalendar {
     final periods = <EthiopianPeriod>[];
 
     for (int i = 0; i < count; i++) {
-      final weekStart =
-          now.subtract(Duration(days: now.weekday - 1 + (i * 7)));
-      final ethDate = toEthiopian(weekStart);
-
-      // Get week number of the year
+      final weekStart = now
+          .subtract(Duration(days: now.weekday - 1 + (i * 7)));
       final weekNum =
-          (weekStart.difference(DateTime(weekStart.year, 1, 1)).inDays /
+          (weekStart.difference(DateTime(weekStart.year, 1, 1))
+                          .inDays /
                       7)
                   .floor() +
               1;
-
       final id = '${weekStart.year}W$weekNum';
-      final label =
-          'ሳምንት $weekNum - ${ethDate.year}';
+      final ethDate = toEthiopian(weekStart);
+      final label = 'ሳምንት $weekNum - ${ethDate.year}';
       final labelEn = 'Week $weekNum - ${weekStart.year}';
 
       periods.add(EthiopianPeriod(
@@ -252,14 +290,25 @@ class EthiopianCalendar {
         type: PeriodType.weekly,
       ));
     }
-
     return periods;
   }
 
-  // ── Format a DHIS2 period ID to Ethiopian display ─────────
+  // ── Format period ID for display ──────────────────────────
   static String formatPeriodId(String periodId) {
     try {
-      // Monthly: 2016Eth01
+      // Financial: 2017Nov, 2017Jul, 2017April, 2017Oct
+      final financialMatch = RegExp(
+              r'^(\d{4})(Nov|Jul|April|Oct|Apr)$',
+              caseSensitive: false)
+          .firstMatch(periodId);
+      if (financialMatch != null) {
+        final year = int.parse(financialMatch.group(1)!);
+        final suffix = financialMatch.group(2)!;
+        final endYear = year + 1;
+        return _financialLabel(year, endYear, suffix);
+      }
+
+      // Legacy Ethiopian Monthly (pre-fix local data): 2016Eth01
       if (RegExp(r'^\d{4}Eth\d{2}$').hasMatch(periodId)) {
         final year = int.parse(periodId.substring(0, 4));
         final month = int.parse(periodId.substring(7, 9));
@@ -268,27 +317,57 @@ class EthiopianCalendar {
         }
       }
 
-      // Quarterly: 2016EthQ1
+      // Legacy Ethiopian Quarterly (pre-fix local data): 2016EthQ1
       if (RegExp(r'^\d{4}EthQ\d$').hasMatch(periodId)) {
         final year = int.parse(periodId.substring(0, 4));
         final quarter = int.parse(periodId.substring(8));
         return '${quarterNamesAmharic[quarter - 1]} $year';
       }
 
-      // Yearly: 2016Eth
+      // Legacy Ethiopian SixMonthly (pre-fix local data): 2016EthS1
+      if (RegExp(r'^\d{4}EthS\d$').hasMatch(periodId)) {
+        final year = int.parse(periodId.substring(0, 4));
+        final half = int.parse(periodId.substring(8));
+        return half == 1
+            ? 'መስከረም - የካቲት $year'
+            : 'መጋቢት - ነሐሴ $year';
+      }
+
+      // Legacy Ethiopian Yearly (pre-fix local data): 2016Eth
       if (RegExp(r'^\d{4}Eth$').hasMatch(periodId)) {
         final year = int.parse(periodId.substring(0, 4));
         return 'ዓ.ም $year';
       }
 
-      // Gregorian monthly fallback: 202401
+      // Monthly: yyyyMM (Ethiopian year/month, DHIS2 ISO format)
       if (RegExp(r'^\d{6}$').hasMatch(periodId)) {
         final year = int.parse(periodId.substring(0, 4));
         final month = int.parse(periodId.substring(4, 6));
-        final ethDate = toEthiopian(DateTime(year, month, 1));
-        if (ethDate.month >= 1 && ethDate.month <= 13) {
-          return '${monthNamesAmharic[ethDate.month - 1]} ${ethDate.year}';
+        if (month >= 1 && month <= 13) {
+          return '${monthNamesAmharic[month - 1]} $year';
         }
+      }
+
+      // Quarterly: yyyyQn
+      if (RegExp(r'^\d{4}Q\d$').hasMatch(periodId)) {
+        final year = int.parse(periodId.substring(0, 4));
+        final quarter = int.parse(periodId.substring(5));
+        return '${quarterNamesAmharic[quarter - 1]} $year';
+      }
+
+      // SixMonthly: yyyySn
+      if (RegExp(r'^\d{4}S\d$').hasMatch(periodId)) {
+        final year = int.parse(periodId.substring(0, 4));
+        final half = int.parse(periodId.substring(5));
+        return half == 1
+            ? 'መስከረም - የካቲት $year'
+            : 'መጋቢት - ነሐሴ $year';
+      }
+
+      // Yearly: yyyy
+      if (RegExp(r'^\d{4}$').hasMatch(periodId)) {
+        final year = int.parse(periodId.substring(0, 4));
+        return 'ዓ.ም $year';
       }
 
       return periodId;
@@ -297,7 +376,26 @@ class EthiopianCalendar {
     }
   }
 
-  // ── Internal: Gregorian to Julian Day Number ───────────────
+  static String _financialLabel(
+      int year, int endYear, String suffix) {
+    // Map Gregorian month to Ethiopian
+    final Map<String, int> monthMap = {
+      'Nov': 11, 'Jul': 7,
+      'April': 4, 'Apr': 4, 'Oct': 10,
+    };
+    final startMonth =
+        monthMap[suffix] ?? monthMap[suffix.toLowerCase()] ?? 11;
+    final ethStart =
+        toEthiopian(DateTime(year, startMonth, 1));
+    final ethEnd =
+        toEthiopian(DateTime(endYear, startMonth - 1, 30));
+    return '${monthNamesAmharic[ethStart.month - 1]} '
+        '${ethStart.year} - '
+        '${monthNamesAmharic[ethEnd.month - 1]} '
+        '${ethEnd.year}';
+  }
+
+  // ── Internal conversions ──────────────────────────────────
   static int _gregorianToJdn(int year, int month, int day) {
     final a = (14 - month) ~/ 12;
     final y = year + 4800 - a;
@@ -311,18 +409,18 @@ class EthiopianCalendar {
         32045;
   }
 
-  // ── Internal: Julian Day Number to Ethiopian ───────────────
   static EthiopianDate _jdnToEthiopian(int jdn) {
     final r = (jdn - 1723856) % 1461;
     final n = r % 365 + 365 * (r ~/ 1460);
-    final year = 4 * ((jdn - 1723856) ~/ 1461) + r ~/ 365 - r ~/ 1460;
+    final year =
+        4 * ((jdn - 1723856) ~/ 1461) + r ~/ 365 - r ~/ 1460;
     final month = n ~/ 30 + 1;
     final day = n % 30 + 1;
     return EthiopianDate(year: year, month: month, day: day);
   }
 }
 
-// ── Ethiopian Date model ───────────────────────────────────────
+// ── Ethiopian Date ─────────────────────────────────────────────
 class EthiopianDate {
   final int year;
   final int month;
@@ -336,7 +434,6 @@ class EthiopianDate {
 
   String get monthNameAmharic =>
       EthiopianCalendar.monthNamesAmharic[month - 1];
-
   String get monthNameEnglish =>
       EthiopianCalendar.monthNamesEnglish[month - 1];
 
@@ -347,7 +444,7 @@ class EthiopianDate {
 // ── Period model ───────────────────────────────────────────────
 class EthiopianPeriod {
   final String id;
-  final String label;       // Amharic label
+  final String label;
   final String labelEnglish;
   final int year;
   final int? month;
@@ -376,4 +473,5 @@ enum PeriodType {
   sixMonthly,
   yearly,
   weekly,
+  financial,
 }
