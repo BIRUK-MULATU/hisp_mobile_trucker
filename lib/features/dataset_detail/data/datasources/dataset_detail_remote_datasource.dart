@@ -27,11 +27,17 @@ class DatasetDetailRemoteDataSourceImpl
     required String orgUnitId,
   }) async {
     try {
+      final now = DateTime.now();
       final response = await _apiClient.get(
         '/dataValueSets',
         queryParameters: {
           'dataSet': dataSetId,
           'orgUnit': orgUnitId,
+          // dataValueSets requires a period or date range filter (E2002) —
+          // use a wide range so every record for this dataset/org unit
+          // comes back regardless of period.
+          'startDate': '1970-01-01',
+          'endDate': '${now.year + 5}-12-31',
           'fields': 'id,period,orgUnit,dataValues,completeDate,created,lastUpdated',
         },
       );

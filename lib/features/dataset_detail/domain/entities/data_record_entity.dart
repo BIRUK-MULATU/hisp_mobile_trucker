@@ -9,6 +9,7 @@ class DataRecordEntity {
   final DateTime? createdAt;
   final DateTime? lastUpdated;
   final Map<String, dynamic> dataValues;
+  final bool isSynced;
 
   const DataRecordEntity({
     required this.id,
@@ -21,6 +22,7 @@ class DataRecordEntity {
     this.createdAt,
     this.lastUpdated,
     this.dataValues = const {},
+    this.isSynced = true,
   });
 
   @override

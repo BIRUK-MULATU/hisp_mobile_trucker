@@ -132,7 +132,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
     }
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_formKey.currentState?.validate() ?? false) {
       if (_orgUnitId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -156,7 +156,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
       ));
 
       // Navigate immediately — data is already loading
-      Navigator.push(
+      final result = await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => BlocProvider.value(
@@ -173,6 +173,13 @@ class _AddRecordPageState extends State<AddRecordPage> {
           ),
         ),
       );
+
+      // DataEntryPage popped with a save result — close this page
+      // too so the caller (dataset detail list) comes back and
+      // refreshes, instead of leaving the user stranded here.
+      if (result != null && mounted) {
+        Navigator.pop(context, result);
+      }
     }
   }
 

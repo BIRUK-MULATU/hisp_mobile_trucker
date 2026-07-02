@@ -12,15 +12,17 @@ class DataRecordModel extends DataRecordEntity {
     super.createdAt,
     super.lastUpdated,
     super.dataValues,
+    super.isSynced,
   });
 
   factory DataRecordModel.fromJson(Map<String, dynamic> json) {
     return DataRecordModel(
       id: json['id'] as String? ?? '',
-      dataSetId: json['dataSet']?['id'] as String? ?? '',
+      dataSetId: json['dataSet'] as String? ?? '',
       periodId: json['period'] as String? ?? '',
-      orgUnitId: json['orgUnit']?['id'] as String? ?? '',
-      orgUnitName: json['orgUnit']?['displayName'] as String?,
+      // dataValueSets returns orgUnit as a plain ID string, not a
+      // nested {id, displayName} object like metadata endpoints do.
+      orgUnitId: json['orgUnit'] as String? ?? '',
       periodName: json['period'] as String?,
       status: _parseStatus(json['completeDate']),
       createdAt: json['created'] != null
@@ -30,6 +32,10 @@ class DataRecordModel extends DataRecordEntity {
           ? DateTime.tryParse(json['lastUpdated'] as String)
           : null,
       dataValues: json['dataValues'] as Map<String, dynamic>? ?? {},
+      // Records returned by the server are, by definition, already synced.
+      // Locally-created records not yet pushed should be created with
+      // isSynced: false until the push succeeds.
+      isSynced: true,
     );
   }
 
