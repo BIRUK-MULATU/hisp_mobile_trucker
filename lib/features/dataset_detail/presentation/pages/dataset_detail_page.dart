@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -12,7 +13,7 @@ import '../../domain/usecases/create_record_usecase.dart';
 import '../bloc/dataset_detail_bloc.dart';
 import 'add_record_page.dart';
 
-class DatasetDetailPage extends StatelessWidget {
+class DatasetDetailPage extends StatefulWidget {
   final String dataSetId;
   final String dataSetName;
   final String periodType; // ← passed from home page
@@ -25,7 +26,39 @@ class DatasetDetailPage extends StatelessWidget {
   });
 
   @override
+  State<DatasetDetailPage> createState() => _DatasetDetailPageState();
+}
+
+class _DatasetDetailPageState extends State<DatasetDetailPage> {
+  final _secureStorage = SecureStorage();
+  String? _orgUnitId;
+  bool _loadingOrgUnit = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrgUnit();
+  }
+
+  Future<void> _loadOrgUnit() async {
+    final orgUnit = await _secureStorage.getPrimaryOrgUnit();
+    if (mounted) {
+      setState(() {
+        _orgUnitId = orgUnit?['id'] as String?;
+        _loadingOrgUnit = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loadingOrgUnit) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: AppLoader(message: 'Loading records...'),
+      );
+    }
+
     final repository = DatasetDetailRepositoryImpl(
       remoteDataSource: DatasetDetailRemoteDataSourceImpl(
         apiClient: ApiClient(),
@@ -36,11 +69,12 @@ class DatasetDetailPage extends StatelessWidget {
       create: (_) => DatasetDetailBloc(
         getRecordsUseCase: GetRecordsUseCase(repository),
         createRecordUseCase: CreateRecordUseCase(repository),
-      )..add(DatasetDetailLoad(dataSetId)),
+      )..add(DatasetDetailLoad(widget.dataSetId, _orgUnitId ?? '')),
       child: _DatasetDetailView(
-        dataSetId: dataSetId,
-        dataSetName: dataSetName,
-        periodType: periodType,
+        dataSetId: widget.dataSetId,
+        dataSetName: widget.dataSetName,
+        periodType: widget.periodType,
+        orgUnitId: _orgUnitId ?? '',
       ),
     );
   }
@@ -50,11 +84,13 @@ class _DatasetDetailView extends StatelessWidget {
   final String dataSetId;
   final String dataSetName;
   final String periodType;
+  final String orgUnitId;
 
   const _DatasetDetailView({
     required this.dataSetId,
     required this.dataSetName,
     required this.periodType,
+    required this.orgUnitId,
   });
 
   @override
@@ -76,7 +112,7 @@ class _DatasetDetailView extends StatelessWidget {
               onRefresh: () async {
                 context
                     .read<DatasetDetailBloc>()
-                    .add(DatasetDetailRefresh(dataSetId));
+                    .add(DatasetDetailRefresh(dataSetId, orgUnitId));
                 await Future.delayed(
                     const Duration(seconds: 1));
               },
@@ -98,7 +134,7 @@ class _DatasetDetailView extends StatelessWidget {
               message: state.message,
               onRetry: () => context
                   .read<DatasetDetailBloc>()
-                  .add(DatasetDetailLoad(dataSetId)),
+                  .add(DatasetDetailLoad(dataSetId, orgUnitId)),
             );
           }
           return const SizedBox.shrink();
@@ -130,7 +166,7 @@ class _DatasetDetailView extends StatelessWidget {
         ),
       ),
     ).then((_) {
-      bloc.add(DatasetDetailRefresh(dataSetId));
+      bloc.add(DatasetDetailRefresh(dataSetId, orgUnitId));
     });
   }
 }
