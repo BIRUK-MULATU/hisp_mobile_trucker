@@ -13,9 +13,13 @@ class DatasetDetailRepositoryImpl implements DatasetDetailRepository {
   @override
   Future<List<DataRecordEntity>> getRecords({
     required String dataSetId,
+    required String orgUnitId,
   }) async {
     try {
-      return await _remoteDataSource.getRecords(dataSetId: dataSetId);
+      return await _remoteDataSource.getRecords(
+        dataSetId: dataSetId,
+        orgUnitId: orgUnitId,
+      );
     } on AppException {
       rethrow;
     } catch (e) {

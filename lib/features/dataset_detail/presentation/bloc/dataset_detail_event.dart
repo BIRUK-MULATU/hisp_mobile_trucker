@@ -6,12 +6,14 @@ abstract class DatasetDetailEvent {
 
 class DatasetDetailLoad extends DatasetDetailEvent {
   final String dataSetId;
-  const DatasetDetailLoad(this.dataSetId);
+  final String orgUnitId;
+  const DatasetDetailLoad(this.dataSetId, this.orgUnitId);
 }
 
 class DatasetDetailRefresh extends DatasetDetailEvent {
   final String dataSetId;
-  const DatasetDetailRefresh(this.dataSetId);
+  final String orgUnitId;
+  const DatasetDetailRefresh(this.dataSetId, this.orgUnitId);
 }
 
 class DatasetDetailCreateRecord extends DatasetDetailEvent {

@@ -3,7 +3,10 @@ import '../../../../core/network/api_client.dart';
 import '../models/data_record_model.dart';
 
 abstract class DatasetDetailRemoteDataSource {
-  Future<List<DataRecordModel>> getRecords({required String dataSetId});
+  Future<List<DataRecordModel>> getRecords({
+    required String dataSetId,
+    required String orgUnitId,
+  });
   Future<DataRecordModel> createRecord({
     required String dataSetId,
     required String periodId,
@@ -21,12 +24,14 @@ class DatasetDetailRemoteDataSourceImpl
   @override
   Future<List<DataRecordModel>> getRecords({
     required String dataSetId,
+    required String orgUnitId,
   }) async {
     try {
       final response = await _apiClient.get(
         '/dataValueSets',
         queryParameters: {
           'dataSet': dataSetId,
+          'orgUnit': orgUnitId,
           'fields': 'id,period,orgUnit,dataValues,completeDate,created,lastUpdated',
         },
       );
