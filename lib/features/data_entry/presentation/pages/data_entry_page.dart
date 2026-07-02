@@ -20,6 +20,7 @@ class DataEntryPage extends StatelessWidget {
   final String orgUnitName;
   final String period;
   final String periodType;
+  final DataEntryBloc? preloadedBloc;
 
   const DataEntryPage({
     super.key,
@@ -29,10 +30,24 @@ class DataEntryPage extends StatelessWidget {
     required this.orgUnitName,
     required this.period,
     required this.periodType,
+    this.preloadedBloc,
   });
 
   @override
   Widget build(BuildContext context) {
+    // If bloc already created and loading — reuse it
+    if (preloadedBloc != null) {
+      return _DataEntryView(
+        dataSetId: dataSetId,
+        dataSetName: dataSetName,
+        orgUnitId: orgUnitId,
+        orgUnitName: orgUnitName,
+        period: period,
+        periodType: periodType,
+      );
+    }
+
+    // Fallback — create fresh bloc if navigated directly
     final repository = DataEntryRepositoryImpl(
       remoteDataSource: DataEntryRemoteDataSourceImpl(
         apiClient: ApiClient(),
@@ -106,8 +121,6 @@ class _DataEntryView extends StatelessWidget {
       },
       child: Scaffold(
         backgroundColor: Colors.white,
-
-        // ── AppBar ──────────────────────────────────
         appBar: AppBar(
           backgroundColor: AppColors.primary,
           elevation: 0,
@@ -116,12 +129,10 @@ class _DataEntryView extends StatelessWidget {
                 color: Colors.white),
             onPressed: () => Navigator.pop(context),
           ),
-          title: Text(
-            dataSetName,
-            style: AppTextStyles.appBarTitle,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
+          title: Text(dataSetName,
+              style: AppTextStyles.appBarTitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis),
           actions: [
             IconButton(
               icon: const Icon(Icons.sync_rounded,
@@ -131,19 +142,15 @@ class _DataEntryView extends StatelessWidget {
             const SizedBox(width: AppDimensions.spaceXS),
           ],
         ),
-
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Sub Header: Period + Org Unit ────────
+            // ── Period + Org Unit sub-header ────────
             _SubHeader(
-              period: period,
-              orgUnitName: orgUnitName,
-            ),
-
+                period: period, orgUnitName: orgUnitName),
             const Divider(height: 1, color: AppColors.divider),
 
-            // ── Data Entry Table ─────────────────────
+            // ── Table ───────────────────────────────
             Expanded(
               child: BlocBuilder<DataEntryBloc, DataEntryState>(
                 builder: (context, state) {
@@ -151,7 +158,6 @@ class _DataEntryView extends StatelessWidget {
                     return const AppLoader(
                         message: 'Loading form...');
                   }
-
                   if (state is DataEntryError) {
                     return _ErrorView(
                       message: state.message,
@@ -165,7 +171,6 @@ class _DataEntryView extends StatelessWidget {
                               ),
                     );
                   }
-
                   if (state is DataEntryLoaded) {
                     return DataEntryTable(
                       dataElements: state.dataElements,
@@ -174,15 +179,12 @@ class _DataEntryView extends StatelessWidget {
                       period: period,
                     );
                   }
-
                   return const SizedBox.shrink();
                 },
               ),
             ),
           ],
         ),
-
-        // ── Save FAB ─────────────────────────────────
         floatingActionButton:
             BlocBuilder<DataEntryBloc, DataEntryState>(
           builder: (context, state) {
@@ -190,7 +192,6 @@ class _DataEntryView extends StatelessWidget {
                 state.isSaving;
             final hasChanges = state is DataEntryLoaded &&
                 state.hasChanges;
-
             return FloatingActionButton(
               onPressed: isSaving
                   ? null
@@ -207,15 +208,11 @@ class _DataEntryView extends StatelessWidget {
                       width: 24,
                       height: 24,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(
-                      Icons.check_rounded,
+                          strokeWidth: 2.5,
+                          color: Colors.white))
+                  : const Icon(Icons.check_rounded,
                       color: Colors.white,
-                      size: AppDimensions.iconXL,
-                    ),
+                      size: AppDimensions.iconXL),
             );
           },
         ),
@@ -224,46 +221,33 @@ class _DataEntryView extends StatelessWidget {
   }
 }
 
-// ── Sub Header ─────────────────────────────────────────────────
 class _SubHeader extends StatelessWidget {
   final String period;
   final String orgUnitName;
-
-  const _SubHeader({
-    required this.period,
-    required this.orgUnitName,
-  });
+  const _SubHeader(
+      {required this.period, required this.orgUnitName});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.space,
-        vertical: AppDimensions.spaceSM,
-      ),
+          horizontal: AppDimensions.space,
+          vertical: AppDimensions.spaceSM),
       child: Row(
         children: [
-          // ── Period in Amharic ───────────────────
           Text(
             EthiopianCalendar.formatPeriodId(period),
             style: AppTextStyles.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-
-          const SizedBox(width: AppDimensions.spaceXL),
-
-          // ── Org Unit ────────────────────────────
-          Expanded(
-            child: Text(
-              orgUnitName,
-              style: AppTextStyles.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
-                fontWeight: FontWeight.w500,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
+                fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(width: AppDimensions.spaceXL),
+          Expanded(
+            child: Text(orgUnitName,
+                style: AppTextStyles.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500),
+                overflow: TextOverflow.ellipsis),
           ),
         ],
       ),
@@ -271,11 +255,11 @@ class _SubHeader extends StatelessWidget {
   }
 }
 
-// ── Error View ─────────────────────────────────────────────────
 class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
+  const _ErrorView(
+      {required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
