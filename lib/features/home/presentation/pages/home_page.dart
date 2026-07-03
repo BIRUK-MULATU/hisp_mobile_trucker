@@ -6,7 +6,6 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
 import '../../../dataset_detail/presentation/pages/dataset_detail_page.dart';
-import '../../../dataset_detail/presentation/pages/org_unit_selector_page.dart';
 import '../../data/datasources/home_remote_datasource.dart';
 import '../../data/repositories/home_repository_impl.dart';
 import '../../domain/usecases/get_datasets_usecase.dart';
@@ -47,29 +46,11 @@ class _HomeView extends StatefulWidget {
 class _HomeViewState extends State<_HomeView> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _showFilters = false;
+  bool _searchActive = false;
+  String _searchQuery = '';
   AppliedFilter? _dateFilter;
   AppliedFilter? _orgUnitFilter;
   AppliedFilter? _syncFilter;
-
-  // Set only when the org unit filter was picked from the tree,
-  // so reopening the tree pre-selects the current choice.
-  String? _orgUnitFilterId;
-
-  Future<void> _openOrgUnitTree() async {
-    final result = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => OrgUnitSelectorPage(
-          preSelectedId: _orgUnitFilterId,
-        ),
-      ),
-    );
-    if (!mounted || result == null) return;
-    setState(() {
-      _orgUnitFilterId = result['id'] as String?;
-      _orgUnitFilter = AppliedFilter(result['name'] as String);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,13 +62,20 @@ class _HomeViewState extends State<_HomeView> {
           backgroundColor: AppColors.backgroundGrey,
           appBar: HomeAppBar(
             isSyncing: isSyncing,
-            filtersShown: _showFilters,
+            searchActive: _searchActive,
             onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
             onSyncTap: () =>
                 context.read<HomeBloc>().add(const HomeSyncAll()),
             onListViewTap: () =>
                 setState(() => _showFilters = !_showFilters),
+            onSearchTap: () => setState(() {
+              _searchActive = !_searchActive;
+              if (!_searchActive) _searchQuery = '';
+            }),
+            onSearchChanged: (query) =>
+                setState(() => _searchQuery = query),
           ),
+          drawer: const _HomeDrawer(),
           body: Column(
             children: [
               AnimatedSize(
@@ -99,15 +87,10 @@ class _HomeViewState extends State<_HomeView> {
                         syncFilter: _syncFilter,
                         onDateChanged: (f) =>
                             setState(() => _dateFilter = f),
-                        onOrgUnitChanged: (f) => setState(() {
-                          _orgUnitFilter = f;
-                          // Search text / quick options carry no id,
-                          // and clearing must forget the old one.
-                          _orgUnitFilterId = null;
-                        }),
+                        onOrgUnitChanged: (f) =>
+                            setState(() => _orgUnitFilter = f),
                         onSyncChanged: (f) =>
                             setState(() => _syncFilter = f),
-                        onOpenOrgUnitTree: _openOrgUnitTree,
                       )
                     : const SizedBox.shrink(),
               ),
@@ -132,6 +115,13 @@ class _HomeViewState extends State<_HomeView> {
     }
     if (state is HomeLoaded) {
       if (state.dataSets.isEmpty) return const _EmptyView();
+      final query = _searchQuery.trim().toLowerCase();
+      final dataSets = query.isEmpty
+          ? state.dataSets
+          : state.dataSets
+              .where((d) => d.name.toLowerCase().contains(query))
+              .toList();
+      if (dataSets.isEmpty) return const _EmptyView();
       return RefreshIndicator(
         color: AppColors.primary,
         onRefresh: () async {
@@ -141,9 +131,9 @@ class _HomeViewState extends State<_HomeView> {
         child: ListView.builder(
           padding: const EdgeInsets.symmetric(
               vertical: AppDimensions.spaceMD),
-          itemCount: state.dataSets.length,
+          itemCount: dataSets.length,
           itemBuilder: (context, index) {
-            final dataSet = state.dataSets[index];
+            final dataSet = dataSets[index];
             return DataSetCard(
               dataSet: dataSet,
               onTap: () {
@@ -167,6 +157,124 @@ class _HomeViewState extends State<_HomeView> {
       );
     }
     return const SizedBox.shrink();
+  }
+}
+
+class _HomeDrawer extends StatelessWidget {
+  const _HomeDrawer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      backgroundColor: const Color(0xFFDDDDDD),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Blue header block ──────────────────────────────
+          Container(
+            width: double.infinity,
+            height: MediaQuery.of(context).padding.top + 110,
+            color: AppColors.primary,
+          ),
+          const SizedBox(height: AppDimensions.spaceLG),
+
+          // ── Main items ─────────────────────────────────────
+          _DrawerItem(
+            icon: Icons.home_rounded,
+            label: 'Home',
+            onTap: () => Navigator.pop(context),
+          ),
+          _DrawerItem(
+            icon: Icons.settings_rounded,
+            label: 'Setting',
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: navigate to settings page when available
+            },
+          ),
+          _DrawerItem(
+            icon: Icons.logout_rounded,
+            label: 'Log Out',
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: dispatch auth logout event
+            },
+          ),
+
+          const SizedBox(height: AppDimensions.spaceGiant),
+
+          // ── About section between dividers ─────────────────
+          const Padding(
+            padding: EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceLG),
+            child: Divider(color: Colors.black45, height: 1),
+          ),
+          _DrawerItem(
+            icon: Icons.info_rounded,
+            label: 'About',
+            filledCircleIcon: true,
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: show about dialog
+            },
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceLG),
+            child: Divider(color: Colors.black45, height: 1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DrawerItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool filledCircleIcon;
+
+  const _DrawerItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.filledCircleIcon = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spaceLG,
+          vertical: AppDimensions.space,
+        ),
+        child: Row(
+          children: [
+            filledCircleIcon
+                ? CircleAvatar(
+                    radius: 14,
+                    backgroundColor: AppColors.primary,
+                    child: Text(
+                      'i',
+                      style: AppTextStyles.labelMedium.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  )
+                : Icon(icon,
+                    color: AppColors.primary,
+                    size: AppDimensions.iconXL),
+            const SizedBox(width: AppDimensions.spaceLG),
+            Text(label, style: AppTextStyles.bodyLarge),
+          ],
+        ),
+      ),
+    );
   }
 }
 
