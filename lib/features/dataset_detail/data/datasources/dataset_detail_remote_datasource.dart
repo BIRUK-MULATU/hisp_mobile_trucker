@@ -39,7 +39,7 @@ class DatasetDetailRemoteDataSourceImpl
           // because the server's Ethiopian calendar caps every month at 30.
           'startDate': '1970-01-01',
           'endDate': '${now.year + 5}-12-30',
-          'fields': 'id,period,orgUnit,dataValues,completeDate,created,lastUpdated',
+          'fields': 'id,period,orgUnit[id,displayName],dataSet[id],dataValues,completeDate,created,lastUpdated',
         },
       );
 
