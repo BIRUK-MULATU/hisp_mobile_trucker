@@ -13,6 +13,7 @@ import '../../domain/usecases/sync_dataset_usecase.dart';
 import '../bloc/home_bloc.dart';
 import '../widgets/dataset_card.dart';
 import '../widgets/home_app_bar.dart';
+import '../../../../shared/widgets/filter_panel.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -35,8 +36,18 @@ class HomePage extends StatelessWidget {
   }
 }
 
-class _HomeView extends StatelessWidget {
+class _HomeView extends StatefulWidget {
   const _HomeView();
+
+  @override
+  State<_HomeView> createState() => _HomeViewState();
+}
+
+class _HomeViewState extends State<_HomeView> {
+  bool _showFilters = false;
+  AppliedFilter? _dateFilter;
+  AppliedFilter? _orgUnitFilter;
+  AppliedFilter? _syncFilter;
 
   @override
   Widget build(BuildContext context) {
@@ -50,10 +61,31 @@ class _HomeView extends StatelessWidget {
             onMenuTap: () => Scaffold.of(context).openDrawer(),
             onSyncTap: () =>
                 context.read<HomeBloc>().add(const HomeSyncAll()),
-            onListViewTap: () {},
+            onListViewTap: () =>
+                setState(() => _showFilters = !_showFilters),
           ),
           drawer: const _HomeDrawer(),
-          body: _buildBody(context, state),
+          body: Column(
+            children: [
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                child: _showFilters
+                    ? FilterPanel(
+                        dateFilter: _dateFilter,
+                        orgUnitFilter: _orgUnitFilter,
+                        syncFilter: _syncFilter,
+                        onDateChanged: (f) =>
+                            setState(() => _dateFilter = f),
+                        onOrgUnitChanged: (f) =>
+                            setState(() => _orgUnitFilter = f),
+                        onSyncChanged: (f) =>
+                            setState(() => _syncFilter = f),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              Expanded(child: _buildBody(context, state)),
+            ],
+          ),
         );
       },
     );
