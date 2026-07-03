@@ -6,6 +6,7 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
 import '../../../dataset_detail/presentation/pages/dataset_detail_page.dart';
+import '../../../dataset_detail/presentation/pages/org_unit_selector_page.dart';
 import '../../data/datasources/home_remote_datasource.dart';
 import '../../data/repositories/home_repository_impl.dart';
 import '../../domain/usecases/get_datasets_usecase.dart';
@@ -44,10 +45,31 @@ class _HomeView extends StatefulWidget {
 }
 
 class _HomeViewState extends State<_HomeView> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _showFilters = false;
   AppliedFilter? _dateFilter;
   AppliedFilter? _orgUnitFilter;
   AppliedFilter? _syncFilter;
+
+  // Set only when the org unit filter was picked from the tree,
+  // so reopening the tree pre-selects the current choice.
+  String? _orgUnitFilterId;
+
+  Future<void> _openOrgUnitTree() async {
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OrgUnitSelectorPage(
+          preSelectedId: _orgUnitFilterId,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      _orgUnitFilterId = result['id'] as String?;
+      _orgUnitFilter = AppliedFilter(result['name'] as String);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,16 +77,17 @@ class _HomeViewState extends State<_HomeView> {
       builder: (context, state) {
         final isSyncing = state is HomeLoaded && state.isSyncing;
         return Scaffold(
+          key: _scaffoldKey,
           backgroundColor: AppColors.backgroundGrey,
           appBar: HomeAppBar(
             isSyncing: isSyncing,
-            onMenuTap: () => Scaffold.of(context).openDrawer(),
+            filtersShown: _showFilters,
+            onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
             onSyncTap: () =>
                 context.read<HomeBloc>().add(const HomeSyncAll()),
             onListViewTap: () =>
                 setState(() => _showFilters = !_showFilters),
           ),
-          drawer: const _HomeDrawer(),
           body: Column(
             children: [
               AnimatedSize(
@@ -76,10 +99,15 @@ class _HomeViewState extends State<_HomeView> {
                         syncFilter: _syncFilter,
                         onDateChanged: (f) =>
                             setState(() => _dateFilter = f),
-                        onOrgUnitChanged: (f) =>
-                            setState(() => _orgUnitFilter = f),
+                        onOrgUnitChanged: (f) => setState(() {
+                          _orgUnitFilter = f;
+                          // Search text / quick options carry no id,
+                          // and clearing must forget the old one.
+                          _orgUnitFilterId = null;
+                        }),
                         onSyncChanged: (f) =>
                             setState(() => _syncFilter = f),
+                        onOpenOrgUnitTree: _openOrgUnitTree,
                       )
                     : const SizedBox.shrink(),
               ),
@@ -139,79 +167,6 @@ class _HomeViewState extends State<_HomeView> {
       );
     }
     return const SizedBox.shrink();
-  }
-}
-
-class _HomeDrawer extends StatelessWidget {
-  const _HomeDrawer();
-
-  @override
-  Widget build(BuildContext context) {
-    return Drawer(
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            color: AppColors.primary,
-            padding: EdgeInsets.only(
-              top: MediaQuery.of(context).padding.top +
-                  AppDimensions.spaceXL,
-              bottom: AppDimensions.spaceXL,
-              left: AppDimensions.space,
-              right: AppDimensions.space,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Colors.white24,
-                  child: Icon(Icons.person_rounded,
-                      color: Colors.white,
-                      size: AppDimensions.iconXL),
-                ),
-                const SizedBox(height: AppDimensions.spaceMD),
-                Text('HISP User',
-                    style: AppTextStyles.headingSmall
-                        .copyWith(color: Colors.white)),
-                Text('admin@dhis2.org',
-                    style: AppTextStyles.bodySmall
-                        .copyWith(color: Colors.white70)),
-              ],
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.home_outlined,
-                color: AppColors.primary),
-            title: const Text('Home'),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.sync_outlined,
-                color: AppColors.primary),
-            title: const Text('Sync'),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.settings_outlined,
-                color: AppColors.primary),
-            title: const Text('Settings'),
-            onTap: () => Navigator.pop(context),
-          ),
-          const Spacer(),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.logout_rounded,
-                color: AppColors.error),
-            title: Text('Logout',
-                style: AppTextStyles.bodyMedium
-                    .copyWith(color: AppColors.error)),
-            onTap: () => Navigator.pop(context),
-          ),
-          const SizedBox(height: AppDimensions.spaceMD),
-        ],
-      ),
-    );
   }
 }
 

@@ -8,6 +8,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onSyncTap;
   final VoidCallback? onListViewTap;
   final bool isSyncing;
+  final bool filtersShown;
 
   const HomeAppBar({
     super.key,
@@ -15,6 +16,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.onSyncTap,
     this.onListViewTap,
     this.isSyncing = false,
+    this.filtersShown = false,
   });
 
   @override
@@ -32,6 +34,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
           size: AppDimensions.iconLG,
         ),
         onPressed: onMenuTap,
+        tooltip: 'Open menu',
       ),
       title: Text(
         'Home',
@@ -48,6 +51,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     color: Colors.white,
+                    semanticsLabel: 'Syncing',
                   ),
                 )
               : const Icon(
@@ -67,7 +71,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             size: AppDimensions.iconLG,
           ),
           onPressed: onListViewTap,
-          tooltip: 'View options',
+          tooltip: filtersShown ? 'Hide filters' : 'Show filters',
         ),
 
         const SizedBox(width: AppDimensions.spaceXS),

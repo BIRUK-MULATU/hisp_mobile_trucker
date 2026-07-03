@@ -53,7 +53,12 @@ class FilterPanel extends StatefulWidget {
 
 class _FilterPanelState extends State<FilterPanel> {
   int? _expandedIndex;
-  Set<String> _syncSelected = {};
+
+  // The sync selection is derived from the applied filter rather than
+  // kept in local state, so clearing the filter (or rebuilding the
+  // panel) can never leave the checkboxes out of sync with the summary.
+  Set<String> get _syncSelected =>
+      widget.syncFilter?.label.split(', ').toSet() ?? <String>{};
 
   void _toggle(int index) {
     setState(() {
@@ -79,17 +84,13 @@ class _FilterPanelState extends State<FilterPanel> {
             applied: widget.dateFilter,
             expanded: _expandedIndex == 0,
             onTap: () => _toggle(0),
-            optionLabels: kDateFilterOptions,
-            onOptionSelected: (label) {
-              widget.onDateChanged?.call(AppliedFilter(label));
-              // Date grid stays open after picking, unlike the other
-              // rows, so the user can see their selection highlighted.
-            },
             onClear: () {
               widget.onDateChanged?.call(null);
             },
             expandedContent: _DateFilterGrid(
               selected: widget.dateFilter?.label,
+              // Date grid stays open after picking, unlike the other
+              // rows, so the user can see their selection highlighted.
               onSelected: (label) =>
                   widget.onDateChanged?.call(AppliedFilter(label)),
             ),
@@ -101,14 +102,6 @@ class _FilterPanelState extends State<FilterPanel> {
             applied: widget.orgUnitFilter,
             expanded: _expandedIndex == 1,
             onTap: () => _toggle(1),
-            optionLabels: const [
-              'My org unit',
-              'My org unit + children',
-            ],
-            onOptionSelected: (label) {
-              widget.onOrgUnitChanged?.call(AppliedFilter(label));
-              _toggle(1);
-            },
             onClear: () {
               widget.onOrgUnitChanged?.call(null);
             },
@@ -127,11 +120,6 @@ class _FilterPanelState extends State<FilterPanel> {
             applied: widget.syncFilter,
             expanded: _expandedIndex == 2,
             onTap: () => _toggle(2),
-            optionLabels: const ['Synced', 'Unsync'],
-            onOptionSelected: (label) {
-              widget.onSyncChanged?.call(AppliedFilter(label));
-              _toggle(2);
-            },
             onClear: () {
               widget.onSyncChanged?.call(null);
             },
@@ -139,7 +127,6 @@ class _FilterPanelState extends State<FilterPanel> {
             expandedContent: _SyncFilterList(
               selected: _syncSelected,
               onChanged: (updated) {
-                setState(() => _syncSelected = updated);
                 widget.onSyncChanged?.call(
                   updated.isEmpty
                       ? null
@@ -220,47 +207,59 @@ class _SyncOptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceSM),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.white,
-              child: option.icon != null
-                  ? Icon(option.icon, color: option.color, size: 18)
-                  : Text(
-                      'sms',
-                      style: TextStyle(
-                        color: option.color,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                      ),
+    return MergeSemantics(
+      child: Semantics(
+        checked: checked,
+        label: option.label,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(vertical: AppDimensions.spaceSM),
+            child: Row(
+              children: [
+                ExcludeSemantics(
+                  child: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Colors.white,
+                    child: option.icon != null
+                        ? Icon(option.icon, color: option.color, size: 18)
+                        : Text(
+                            'sms',
+                            style: TextStyle(
+                              color: option.color,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: AppDimensions.spaceMD),
+                Expanded(
+                  child: ExcludeSemantics(
+                    child: Text(
+                      option.label,
+                      style: AppTextStyles.bodyLarge
+                          .copyWith(color: Colors.white),
                     ),
+                  ),
+                ),
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white, width: 1.5),
+                    borderRadius: BorderRadius.circular(4),
+                    color: checked ? Colors.white : Colors.transparent,
+                  ),
+                  child: checked
+                      ? const Icon(Icons.check_rounded,
+                          color: AppColors.primaryDark, size: 16)
+                      : null,
+                ),
+              ],
             ),
-            const SizedBox(width: AppDimensions.spaceMD),
-            Expanded(
-              child: Text(
-                option.label,
-                style: AppTextStyles.bodyLarge.copyWith(color: Colors.white),
-              ),
-            ),
-            Container(
-              width: 22,
-              height: 22,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white70, width: 1.5),
-                borderRadius: BorderRadius.circular(4),
-                color: checked ? Colors.white : Colors.transparent,
-              ),
-              child: checked
-                  ? const Icon(Icons.check_rounded,
-                      color: AppColors.primaryDark, size: 16)
-                  : null,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -286,6 +285,11 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
     super.dispose();
   }
 
+  void _submit(String text) {
+    widget.onAdd(text);
+    _controller.clear();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -308,11 +312,12 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
-                    onSubmitted: widget.onAdd,
+                    onSubmitted: _submit,
+                    textInputAction: TextInputAction.search,
                     style: AppTextStyles.bodyMedium
                         .copyWith(color: AppColors.textPrimary),
                     decoration: const InputDecoration(
-                      hintText: 'Search',
+                      hintText: 'Search organisation units',
                       hintStyle:
                           TextStyle(color: AppColors.textHint),
                       border: InputBorder.none,
@@ -320,9 +325,15 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
                     ),
                   ),
                 ),
-                InkWell(
-                  onTap: () => widget.onAdd(_controller.text),
-                  child: Container(
+                IconButton(
+                  onPressed: () => _submit(_controller.text),
+                  tooltip: 'Add organisation unit filter',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: AppDimensions.buttonHeightSM,
+                    minHeight: AppDimensions.buttonHeightSM,
+                  ),
+                  icon: Container(
                     width: 28,
                     height: 28,
                     decoration: const BoxDecoration(
@@ -338,9 +349,10 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
           ),
         ),
         const SizedBox(width: AppDimensions.spaceSM),
-        InkWell(
-          onTap: widget.onOpenTree,
-          child: const Icon(
+        IconButton(
+          onPressed: widget.onOpenTree,
+          tooltip: 'Choose from organisation unit tree',
+          icon: const Icon(
             Icons.account_tree_rounded,
             color: Colors.white,
             size: AppDimensions.iconLG,
@@ -363,9 +375,11 @@ class _DateFilterGrid extends StatelessWidget {
       crossAxisCount: 3,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: AppDimensions.spaceSM,
+      mainAxisSpacing: AppDimensions.spaceXS,
       crossAxisSpacing: AppDimensions.spaceXS,
-      childAspectRatio: 3.4,
+      // Keeps each cell ~44dp tall so the radio rows meet the
+      // minimum touch-target size.
+      childAspectRatio: 2.4,
       children: kDateFilterOptions
           .map((option) => _DateRadioOption(
                 label: option,
@@ -390,41 +404,51 @@ class _DateRadioOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 16,
-            height: 16,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1.5),
-              color: Colors.transparent,
-            ),
-            child: selected
-                ? Center(
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                      ),
-                    ),
-                  )
-                : null,
+    return MergeSemantics(
+      child: Semantics(
+        inMutuallyExclusiveGroup: true,
+        checked: selected,
+        label: label,
+        child: InkWell(
+          onTap: onTap,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                  color: Colors.transparent,
+                ),
+                child: selected
+                    ? Center(
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                          ),
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: AppDimensions.spaceXS),
+              Flexible(
+                child: ExcludeSemantics(
+                  child: Text(
+                    label,
+                    style:
+                        AppTextStyles.bodySmall.copyWith(color: Colors.white),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: AppDimensions.spaceXS),
-          Flexible(
-            child: Text(
-              label,
-              style: AppTextStyles.bodySmall.copyWith(color: Colors.white),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -436,8 +460,6 @@ class _FilterRow extends StatelessWidget {
   final AppliedFilter? applied;
   final bool expanded;
   final VoidCallback onTap;
-  final List<String> optionLabels;
-  final ValueChanged<String> onOptionSelected;
   final VoidCallback onClear;
   final Widget? expandedContent;
   final bool fullBleedContent;
@@ -448,8 +470,6 @@ class _FilterRow extends StatelessWidget {
     required this.applied,
     required this.expanded,
     required this.onTap,
-    required this.optionLabels,
-    required this.onOptionSelected,
     required this.onClear,
     this.expandedContent,
     this.fullBleedContent = false,
@@ -460,104 +480,88 @@ class _FilterRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding:
-                const EdgeInsets.symmetric(vertical: AppDimensions.spaceXS),
-            child: Row(
-              children: [
-                Icon(icon, color: Colors.white, size: AppDimensions.iconMD),
-                const SizedBox(width: AppDimensions.spaceMD),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        style: AppTextStyles.labelMedium.copyWith(
+        Row(
+          children: [
+            Expanded(
+              child: Semantics(
+                button: true,
+                expanded: expanded,
+                label: '$label filter',
+                value: applied?.label ?? 'No filters applied',
+                excludeSemantics: true,
+                onTap: onTap,
+                child: InkWell(
+                  onTap: onTap,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: AppDimensions.spaceSM),
+                    child: Row(
+                      children: [
+                        Icon(icon,
+                            color: Colors.white, size: AppDimensions.iconMD),
+                        const SizedBox(width: AppDimensions.spaceMD),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                label,
+                                style: AppTextStyles.labelMedium.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                applied?.label ?? 'No filters applied',
+                                style: AppTextStyles.bodySmall.copyWith(
+                                  color: Colors.white,
+                                  fontStyle: applied == null
+                                      ? FontStyle.italic
+                                      : FontStyle.normal,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          expanded
+                              ? Icons.keyboard_arrow_up_rounded
+                              : Icons.keyboard_arrow_down_rounded,
                           color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5,
+                          size: AppDimensions.iconLG,
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        applied?.label ?? 'No filters applied',
-                        style: AppTextStyles.bodySmall.copyWith(
-                          color: Colors.white70,
-                          fontStyle: applied == null
-                              ? FontStyle.italic
-                              : FontStyle.normal,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-                if (applied != null)
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded,
-                        color: Colors.white70, size: AppDimensions.iconSM),
-                    onPressed: onClear,
-                    tooltip: 'Clear filter',
-                  ),
-                Icon(
-                  expanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  color: Colors.white,
-                  size: AppDimensions.iconLG,
-                ),
-              ],
+              ),
             ),
-          ),
+            if (applied != null)
+              IconButton(
+                icon: const Icon(Icons.close_rounded,
+                    color: Colors.white, size: AppDimensions.iconSM),
+                onPressed: onClear,
+                tooltip: 'Clear $label filter',
+              ),
+          ],
         ),
         AnimatedCrossFade(
           duration: const Duration(milliseconds: 200),
           crossFadeState: expanded
               ? CrossFadeState.showFirst
               : CrossFadeState.showSecond,
-          firstChild: fullBleedContent
-              ? Padding(
-            padding: const EdgeInsets.symmetric(
-                vertical: AppDimensions.spaceSM),
-            child: expandedContent,
-          )
-              : Padding(
-                  padding: const EdgeInsets.only(
+          firstChild: Padding(
+            padding: fullBleedContent
+                ? const EdgeInsets.symmetric(vertical: AppDimensions.spaceSM)
+                : const EdgeInsets.only(
                     left: AppDimensions.spaceXXL,
                     top: AppDimensions.spaceXS,
                     bottom: AppDimensions.spaceSM,
                   ),
-                  child: expandedContent ??
-                      Wrap(
-                        spacing: AppDimensions.spaceSM,
-                        runSpacing: AppDimensions.spaceSM,
-                        children: optionLabels
-                            .map(
-                              (option) => GestureDetector(
-                                onTap: () => onOptionSelected(option),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: AppDimensions.spaceMD,
-                                    vertical: AppDimensions.spaceXS,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(
-                                        AppDimensions.radiusFull),
-                                  ),
-                                  child: Text(
-                                    option,
-                                    style: AppTextStyles.bodySmall
-                                        .copyWith(color: AppColors.primary),
-                                  ),
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                ),
+            child: expandedContent ?? const SizedBox.shrink(),
+          ),
           secondChild: const SizedBox.shrink(),
         ),
       ],
