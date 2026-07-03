@@ -164,7 +164,14 @@ class _DataEntryRow extends StatelessWidget {
             ),
 
             // ── Input Cells ──────────────────────────
-            ...columns.map((col) {
+            // Use this element's own category option combos so a value
+            // is never saved against a combo that belongs to a
+            // different data element's category combo (rejected by the
+            // server with a 409/E7634 conflict).
+            ...(element.categoryOptionCombos.isNotEmpty
+                    ? element.categoryOptionCombos
+                    : columns)
+                .map((col) {
               final key = '${element.id}_${col.id}';
               final existing = dataValues[key];
 
