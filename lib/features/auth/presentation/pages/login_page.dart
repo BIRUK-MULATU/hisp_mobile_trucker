@@ -117,15 +117,29 @@ class _LogoSection extends StatelessWidget {
                   width: 2,
                 ),
               ),
-              child: const Icon(
-                Icons.local_hospital_rounded,
-                color: Colors.white,
-                size: AppDimensions.iconXXL,
+          child: Padding(
+            padding: const EdgeInsets.all(1.0),
+            child: ClipOval(
+              child: Image.asset(
+                'assets/images/ethiopia_flag.png',
+                fit: BoxFit.cover
               ),
             ),
-            const SizedBox(height: AppDimensions.spaceLG),
+          ),
+        ),
+
+
+        // child: ClipOval(
+          //   child: Image.asset(
+          //     'assets/images/ethiopia_flag.png',
+          //     width: AppDimensions.loginLogoSize * 0.7,
+          //     height: AppDimensions.loginLogoSize * 0.7,
+          //     fit: BoxFit.cover,
+          //   ),
+          // ),
+           const SizedBox(height: AppDimensions.spaceLG),
             Text(
-              'HISP Mobile Tracker',
+              'የጤና ሚኒስቴር የጤና አመራር መረጃ ስርዓት',
               style: AppTextStyles.headingLarge.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w700,
@@ -134,11 +148,11 @@ class _LogoSection extends StatelessWidget {
             ),
             const SizedBox(height: AppDimensions.spaceXS),
             Text(
-              'DHIS2 Data Entry',
+              'Health Management Information System',
               style: AppTextStyles.bodyMedium.copyWith(
                 color: Colors.white.withValues(alpha: 0.75),
                 letterSpacing: 0.5,
-              ),
+          ),
             ),
           ],
         ),
