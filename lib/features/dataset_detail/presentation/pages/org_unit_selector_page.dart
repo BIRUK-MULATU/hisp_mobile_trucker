@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
@@ -260,12 +261,43 @@ class _OrgUnitSelectorPageState extends State<OrgUnitSelectorPage> {
 }
 
 // ── Search Bar ─────────────────────────────────────────────────
-class _SearchBar extends StatelessWidget {
+class _SearchBar extends StatefulWidget {
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
 
   const _SearchBar(
       {required this.controller, required this.onChanged});
+
+  @override
+  State<_SearchBar> createState() => _SearchBarState();
+}
+
+class _SearchBarState extends State<_SearchBar> {
+  final FocusNode _focusNode = FocusNode();
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(
+        () => setState(() => _focused = _focusNode.hasFocus));
+    // Rebuild so the clear button appears/disappears with the text.
+    widget.controller.addListener(_onTextChanged);
+  }
+
+  void _onTextChanged() => setState(() {});
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTextChanged);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _clear() {
+    widget.controller.clear();
+    widget.onChanged('');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -275,28 +307,81 @@ class _SearchBar extends StatelessWidget {
         horizontal: AppDimensions.space,
         vertical: AppDimensions.spaceSM,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              onChanged: onChanged,
-              style: AppTextStyles.bodyMedium,
-              decoration: const InputDecoration(
-                hintText: 'Search',
-                hintStyle: TextStyle(color: AppColors.textHint),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-                isDense: true,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: AppConstants.animFast),
+        curve: Curves.easeOut,
+        height: 46,
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.spaceMD),
+        decoration: BoxDecoration(
+          color: _focused ? Colors.white : AppColors.backgroundGrey,
+          borderRadius:
+              BorderRadius.circular(AppDimensions.radiusFull),
+          border: Border.all(
+            color: _focused ? AppColors.primary : AppColors.divider,
+            width: _focused ? 1.5 : 1,
+          ),
+          boxShadow: [
+            if (_focused)
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              )
+            else
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.search_rounded,
+              color: _focused
+                  ? AppColors.primary
+                  : AppColors.textSecondary,
+              size: AppDimensions.iconMD,
+            ),
+            const SizedBox(width: AppDimensions.spaceSM),
+            Expanded(
+              child: TextField(
+                controller: widget.controller,
+                focusNode: _focusNode,
+                onChanged: widget.onChanged,
+                textInputAction: TextInputAction.search,
+                cursorColor: AppColors.primary,
+                style: AppTextStyles.bodyMedium,
+                decoration: const InputDecoration(
+                  filled: false,
+                  hintText: 'Search organisation units',
+                  hintStyle: TextStyle(color: AppColors.textHint),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                  isDense: true,
+                ),
               ),
             ),
-          ),
-          const Icon(Icons.search_rounded,
-              color: AppColors.textSecondary,
-              size: AppDimensions.iconLG),
-        ],
+            if (widget.controller.text.isNotEmpty)
+              GestureDetector(
+                onTap: _clear,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: const BoxDecoration(
+                    color: AppColors.textHint,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close_rounded,
+                      color: Colors.white, size: 14),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

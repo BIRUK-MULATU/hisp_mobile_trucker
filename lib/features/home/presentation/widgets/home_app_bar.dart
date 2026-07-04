@@ -67,6 +67,10 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                   color: Colors.black87,
                 ),
                 decoration: InputDecoration(
+                  // The global theme fills inputs with a grey
+                  // rectangle — disable it so the rounded white
+                  // pill container shows through.
+                  filled: false,
                   isDense: true,
                   hintText: 'Search datasets...',
                   hintStyle: AppTextStyles.bodyLarge.copyWith(

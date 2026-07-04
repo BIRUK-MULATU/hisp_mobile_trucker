@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'core/network/api_client.dart';
 import 'core/network/network_info.dart';
 import 'core/router/app_router.dart';
+import 'core/storage/secure_storage.dart';
 import 'core/sync/sync_coordinator.dart';
 import 'core/sync/sync_manager.dart';
 import 'shared/theme/app_theme.dart';
@@ -21,6 +23,12 @@ void main() async {
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
   ));
+
+  // A server URL saved in Settings overrides the compiled default.
+  final storedBaseUrl = await SecureStorage().getBaseUrl();
+  if (storedBaseUrl != null && storedBaseUrl.isNotEmpty) {
+    ApiClient().updateBaseUrl(storedBaseUrl);
+  }
 
   // Auto-sync: pushes queued offline writes whenever connectivity
   // returns. Swap NoopSyncManager for the SQLite-backed engine at
