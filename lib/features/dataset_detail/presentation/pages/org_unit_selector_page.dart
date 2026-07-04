@@ -84,7 +84,7 @@ class _OrgUnitSelectorPageState extends State<OrgUnitSelectorPage> {
 
       if (mounted) setState(() => _isLoading = false);
     } catch (e) {
-      print('Error loading org unit tree: $e');
+      debugPrint('Error loading org unit tree: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -109,7 +109,7 @@ class _OrgUnitSelectorPageState extends State<OrgUnitSelectorPage> {
           ..sort((a, b) => a.name.compareTo(b.name));
       }
     } catch (e) {
-      print('Error fetching children for $parentId: $e');
+      debugPrint('Error fetching children for $parentId: $e');
     }
     return [];
   }

@@ -6,7 +6,6 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../data_entry/data/datasources/data_entry_remote_datasource.dart';
 import '../../../data_entry/data/repositories/data_entry_repository_impl.dart';
-import '../../../data_entry/domain/entities/data_element_entity.dart';
 import '../../../data_entry/domain/usecases/get_data_elements_usecase.dart';
 import '../../../data_entry/domain/usecases/save_data_values_usecase.dart';
 import '../../../data_entry/presentation/bloc/data_entry_bloc.dart';

@@ -8,6 +8,7 @@ import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/widgets/app_loader.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/usecases/login_usecase.dart';
@@ -32,11 +33,13 @@ class LoginPage extends StatelessWidget {
     );
 
     return BlocProvider(
+      // Check for a stored session first — a previously logged-in
+      // user goes straight to home, even without internet.
       create: (_) => AuthBloc(
         loginUseCase: LoginUseCase(repository),
         logoutUseCase: LogoutUseCase(repository),
         authRepository: repository,
-      ),
+      )..add(const AuthCheckRequested()),
       child: const _LoginView(),
     );
   }
@@ -54,14 +57,21 @@ class _LoginView extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.primary,
-      body: BlocListener<AuthBloc, AuthState>(
+      body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state is AuthAuthenticated) {
             // ── Navigate to Home on successful login ──
             context.go(AppRouter.home);
           }
         },
-        child: const _LoginBody(),
+        builder: (context, state) {
+          // Session check in progress — show a splash instead of
+          // flashing the login form at an already logged-in user.
+          if (state is AuthInitial || state is AuthCheckInProgress) {
+            return const AppLoader(color: Colors.white);
+          }
+          return const _LoginBody();
+        },
       ),
     );
   }

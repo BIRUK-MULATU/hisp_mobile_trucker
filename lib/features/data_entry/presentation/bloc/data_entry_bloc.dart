@@ -21,10 +21,9 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
   DataEntryBloc({
     required GetDataElementsUseCase getDataElementsUseCase,
     required SaveDataValuesUseCase saveDataValuesUseCase,
-    required DataEntryRepository repository,
+    required this.repository,
   })  : _getDataElementsUseCase = getDataElementsUseCase,
         _saveDataValuesUseCase = saveDataValuesUseCase,
-        repository = repository,
         super(const DataEntryInitial()) {
     on<DataEntryLoad>(_onLoad);
     on<DataEntryValueChanged>(_onValueChanged);

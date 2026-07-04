@@ -408,7 +408,7 @@ class _ErrorView extends StatelessWidget {
                 size: AppDimensions.iconHuge,
                 color: AppColors.textSecondary),
             const SizedBox(height: AppDimensions.spaceLG),
-            Text('Could not load datasets',
+            const Text('Could not load datasets',
                 style: AppTextStyles.headingSmall,
                 textAlign: TextAlign.center),
             const SizedBox(height: AppDimensions.spaceSM),
@@ -433,17 +433,17 @@ class _EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.folder_open_rounded,
+          Icon(Icons.folder_open_rounded,
               size: AppDimensions.iconHuge,
               color: AppColors.textSecondary),
-          const SizedBox(height: AppDimensions.spaceLG),
+          SizedBox(height: AppDimensions.spaceLG),
           Text('No datasets found',
               style: AppTextStyles.headingSmall),
-          const SizedBox(height: AppDimensions.spaceSM),
+          SizedBox(height: AppDimensions.spaceSM),
           Text(
             'Check your server connection\nor contact your administrator.',
             style: AppTextStyles.bodySmall,

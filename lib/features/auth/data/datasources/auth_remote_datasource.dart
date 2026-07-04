@@ -79,8 +79,6 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       if (e is AppException) rethrow;
       throw ServerException(message: e.toString());
     }
-    // This line is required by Dart but never reached
-    throw const ServerException();
   }
 
   Never _handleDioError(DioException e) {
