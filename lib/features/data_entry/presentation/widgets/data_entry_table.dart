@@ -32,31 +32,45 @@ class DataEntryTable extends StatelessWidget {
     // Get all unique category option combos (columns)
     final List<CategoryOptionCombo> columns = _getColumns();
 
+    // The widest row decides the table width — rows use their own
+    // element's combos, which can differ in count per element.
+    var maxColumns = columns.length;
+    for (final element in dataElements) {
+      if (element.categoryOptionCombos.length > maxColumns) {
+        maxColumns = element.categoryOptionCombos.length;
+      }
+    }
+    final tableWidth = 140.0 + 90.0 * maxColumns;
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.vertical,
-        child: IntrinsicWidth(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Column Headers ──────────────────────
-              _buildColumnHeaders(columns),
-
-              const Divider(height: 1, color: AppColors.divider),
-
-              // ── Data Rows ───────────────────────────
-              ...dataElements.map(
-                (element) => _DataEntryRow(
-                  element: element,
-                  columns: columns,
-                  dataValues: dataValues,
-                  orgUnitId: orgUnitId,
-                  period: period,
-                ),
-              ),
-            ],
-          ),
+      child: SizedBox(
+        width: tableWidth,
+        // Rows are built lazily — large datasets would otherwise
+        // inflate thousands of text fields at once.
+        child: ListView.builder(
+          itemCount: dataElements.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Column Headers ──────────────────
+                  _buildColumnHeaders(columns),
+                  const Divider(
+                      height: 1, color: AppColors.divider),
+                ],
+              );
+            }
+            // ── Data Row ────────────────────────────
+            return _DataEntryRow(
+              element: dataElements[index - 1],
+              columns: columns,
+              dataValues: dataValues,
+              orgUnitId: orgUnitId,
+              period: period,
+            );
+          },
         ),
       ),
     );

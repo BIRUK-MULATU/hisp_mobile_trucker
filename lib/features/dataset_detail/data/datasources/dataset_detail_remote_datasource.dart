@@ -39,7 +39,9 @@ class DatasetDetailRemoteDataSourceImpl
           // because the server's Ethiopian calendar caps every month at 30.
           'startDate': '1970-01-01',
           'endDate': '${now.year + 5}-12-30',
-          'fields': 'id,period,orgUnit[id,displayName],dataSet[id],dataValues,completeDate,created,lastUpdated',
+          // dataValues are omitted — the record list never renders
+          // them and they dominate the payload for large datasets.
+          'fields': 'id,period,orgUnit[id,displayName],dataSet[id],completeDate,created,lastUpdated',
         },
       );
 

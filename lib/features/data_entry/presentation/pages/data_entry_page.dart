@@ -376,7 +376,9 @@ class _DataEntryViewState extends State<_DataEntryView> {
                     period: widget.period,
                   );
                 }
-                return const SizedBox.shrink();
+                // Initial state (load event not processed yet) —
+                // keep the spinner up instead of a blank page.
+                return const AppLoader(message: 'Loading form...');
               },
             ),
           ),

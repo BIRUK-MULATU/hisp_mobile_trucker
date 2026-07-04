@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/router/app_router.dart';
+import '../../../../core/storage/secure_storage.dart';
+import '../../../auth/data/datasources/auth_remote_datasource.dart';
+import '../../../auth/data/repositories/auth_repository_impl.dart';
+import '../../../auth/domain/usecases/logout_usecase.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -163,6 +170,90 @@ class _HomeViewState extends State<_HomeView> {
 class _HomeDrawer extends StatelessWidget {
   const _HomeDrawer();
 
+  Future<void> _logout(BuildContext context) async {
+    final secureStorage = SecureStorage();
+    final repository = AuthRepositoryImpl(
+      remoteDataSource: AuthRemoteDataSourceImpl(
+        apiClient: ApiClient(),
+        secureStorage: secureStorage,
+      ),
+      secureStorage: secureStorage,
+    );
+    await LogoutUseCase(repository).call();
+    if (context.mounted) context.go(AppRouter.login);
+  }
+
+  void _showAbout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.spaceLG),
+        ),
+        title: const Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: AppColors.primary,
+              child: Icon(Icons.info_rounded,
+                  color: Colors.white, size: AppDimensions.iconXL),
+            ),
+            SizedBox(width: AppDimensions.space),
+            Expanded(
+              child: Text(AppConstants.appName,
+                  style: AppTextStyles.headingSmall),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Version ${AppConstants.appVersion}',
+                  style: AppTextStyles.labelMedium
+                      .copyWith(color: AppColors.textSecondary)),
+              const SizedBox(height: AppDimensions.spaceLG),
+              const Text(
+                'HISP Mobile Tracker is a health data collection and '
+                'reporting application for the Ministry of Health. '
+                'It allows health workers to enter, review and sync '
+                'aggregate dataset values with the central DHIS2 '
+                    'HISP Mobile Tracker is a health data collection and '
+                    'reporting application for the Ministry of Health. '
+                    'It allows health workers to enter, review and sync '
+                    'aggregate dataset values with the central DHIS2 '                'HISP Mobile Tracker is a health data collection and '
+                    'reporting application for the Ministry of Health. '
+                    'It allows health workers to enter, review and sync '
+                    'aggregate dataset values with the central DHIS2 '                'HISP Mobile Tracker is a health data collection and '
+                    'reporting application for the Ministry of Health. '
+                    'It allows health workers to enter, review and sync '
+                    'aggregate dataset values with the central DHIS2 '
+                'server, even in areas with limited connectivity.',
+                style: AppTextStyles.bodyMedium,
+              ),
+              const SizedBox(height: AppDimensions.spaceLG),
+              Text(
+                'Developed by HISP Ethiopia in collaboration with the '
+                'Ministry of Health. For support, contact your system '
+                'administrator.',
+                style: AppTextStyles.bodySmall
+                    .copyWith(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
@@ -175,6 +266,31 @@ class _HomeDrawer extends StatelessWidget {
             width: double.infinity,
             height: MediaQuery.of(context).padding.top + 110,
             color: AppColors.primary,
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top,
+              left: AppDimensions.spaceLG,
+              right: AppDimensions.spaceLG,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  AppConstants.appName,
+                  style: AppTextStyles.headingMedium.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: AppDimensions.spaceXS),
+                Text(
+                  'Health Management Information System',
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: Colors.white.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppDimensions.spaceLG),
 
@@ -195,10 +311,7 @@ class _HomeDrawer extends StatelessWidget {
           _DrawerItem(
             icon: Icons.logout_rounded,
             label: 'Log Out',
-            onTap: () {
-              Navigator.pop(context);
-              // TODO: dispatch auth logout event
-            },
+            onTap: () => _logout(context),
           ),
 
           const SizedBox(height: AppDimensions.spaceGiant),
@@ -215,7 +328,7 @@ class _HomeDrawer extends StatelessWidget {
             filledCircleIcon: true,
             onTap: () {
               Navigator.pop(context);
-              // TODO: show about dialog
+              _showAbout(context);
             },
           ),
           const Padding(

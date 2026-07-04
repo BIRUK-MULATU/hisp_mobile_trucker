@@ -91,12 +91,14 @@ class DataSetCard extends StatelessWidget {
                           label: 'Synced',
                           isActive:
                               dataSet.syncStatus == SyncStatus.synced,
+                          activeColor: AppColors.success,
                         ),
                         const SizedBox(width: AppDimensions.spaceXS),
                         _StatusChip(
                           label: 'unsync',
                           isActive:
                               dataSet.syncStatus == SyncStatus.unsynced,
+                          activeColor: AppColors.error,
                         ),
                       ],
                     ),
@@ -121,10 +123,12 @@ class DataSetCard extends StatelessWidget {
 class _StatusChip extends StatelessWidget {
   final String label;
   final bool isActive;
+  final Color activeColor;
 
   const _StatusChip({
     required this.label,
     required this.isActive,
+    this.activeColor = AppColors.primary,
   });
 
   @override
@@ -136,12 +140,12 @@ class _StatusChip extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: isActive
-            ? AppColors.primary.withValues(alpha: 0.08)
+            ? activeColor.withValues(alpha: 0.08)
             : AppColors.backgroundGrey,
         borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
         border: Border.all(
           color: isActive
-              ? AppColors.primary.withValues(alpha: 0.2)
+              ? activeColor.withValues(alpha: 0.2)
               : AppColors.divider,
           width: 1,
         ),
@@ -149,7 +153,7 @@ class _StatusChip extends StatelessWidget {
       child: Text(
         label,
         style: AppTextStyles.caption.copyWith(
-          color: isActive ? AppColors.primary : AppColors.textSecondary,
+          color: isActive ? activeColor : AppColors.textSecondary,
           fontWeight: FontWeight.w500,
           fontSize: 11,
         ),

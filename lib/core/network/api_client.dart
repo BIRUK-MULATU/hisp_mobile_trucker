@@ -32,6 +32,10 @@ class ApiClient {
       ),
     );
 
+    // Decode large JSON responses on a background isolate so the
+    // UI (and loading spinners) never freeze during big downloads.
+    _dio.transformer = BackgroundTransformer();
+
     _dio.interceptors.addAll([
       AuthInterceptor(),
       LoggingInterceptor(),

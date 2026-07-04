@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 
 class LoggingInterceptor extends Interceptor {
@@ -14,20 +15,24 @@ class LoggingInterceptor extends Interceptor {
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    _logger.i(
-      '→ ${options.method} ${options.uri}\n'
-      'Headers: ${_sanitizeHeaders(options.headers)}\n'
-      'Data: ${options.data}',
-    );
+    if (kDebugMode) {
+      _logger.i(
+        '→ ${options.method} ${options.uri}\n'
+        'Headers: ${_sanitizeHeaders(options.headers)}\n'
+        'Data: ${_preview(options.data)}',
+      );
+    }
     handler.next(options);
   }
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    _logger.d(
-      '← ${response.statusCode} ${response.requestOptions.uri}\n'
-      'Data: ${response.data.toString().substring(0, _clamp(response.data.toString().length))}',
-    );
+    if (kDebugMode) {
+      _logger.d(
+        '← ${response.statusCode} ${response.requestOptions.uri}\n'
+        'Data: ${_preview(response.data)}',
+      );
+    }
     handler.next(response);
   }
 
@@ -49,5 +54,13 @@ class LoggingInterceptor extends Interceptor {
     return sanitized;
   }
 
-  int _clamp(int length) => length > 500 ? 500 : length;
+  // Never stringifies whole collections — large payloads would
+  // block the UI isolate just to be truncated afterwards.
+  String _preview(dynamic data) {
+    if (data == null) return 'null';
+    if (data is List) return 'List(${data.length} items)';
+    if (data is Map) return 'Map(keys: ${data.keys.join(', ')})';
+    final text = data.toString();
+    return text.length > 500 ? '${text.substring(0, 500)}…' : text;
+  }
 }
