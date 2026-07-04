@@ -140,7 +140,9 @@ class _DatasetDetailView extends StatelessWidget {
                   .add(DatasetDetailLoad(dataSetId, orgUnitId)),
             );
           }
-          return const SizedBox.shrink();
+          // Initial state (load event not processed yet) —
+          // keep the spinner up instead of a blank page.
+          return const AppLoader(message: 'Loading records...');
         },
       ),
       floatingActionButton: FloatingActionButton(
