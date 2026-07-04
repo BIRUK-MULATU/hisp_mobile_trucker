@@ -3,6 +3,7 @@ import '../../../../core/storage/secure_storage.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_remote_datasource.dart';
+import '../models/user_model.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource _remoteDataSource;
@@ -44,8 +45,14 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<UserEntity?> getCurrentUser() async {
-    // In a full app, you'd cache user data locally
-    // For now, return null and re-fetch on app start
-    return null;
+    // The /me response is stored at login, so the session can be
+    // restored without a network call (offline login).
+    final data = await _secureStorage.getUserData();
+    if (data == null) return null;
+    try {
+      return UserModel.fromJson(data);
+    } catch (_) {
+      return null;
+    }
   }
 }

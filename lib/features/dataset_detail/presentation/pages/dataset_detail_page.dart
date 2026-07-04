@@ -403,7 +403,7 @@ class _ErrorState extends StatelessWidget {
                 size: AppDimensions.iconHuge,
                 color: AppColors.textSecondary),
             const SizedBox(height: AppDimensions.spaceLG),
-            Text('Could not load records',
+            const Text('Could not load records',
                 style: AppTextStyles.headingSmall),
             const SizedBox(height: AppDimensions.spaceSM),
             Text(message,

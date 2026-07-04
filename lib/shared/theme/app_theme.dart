@@ -73,32 +73,32 @@ class AppTheme {
       ),
 
       // ── InputDecoration ──────────────────────────────────
-      inputDecorationTheme: InputDecorationTheme(
+      inputDecorationTheme: const InputDecorationTheme(
         filled: true,
         fillColor: AppColors.inputBackground,
         hintStyle: AppTextStyles.inputHint,
         labelStyle: AppTextStyles.inputLabel,
         errorStyle: AppTextStyles.inputError,
-        contentPadding: const EdgeInsets.symmetric(
+        contentPadding: EdgeInsets.symmetric(
           horizontal: AppDimensions.space,
           vertical: AppDimensions.spaceMD,
         ),
-        border: const UnderlineInputBorder(
+        border: UnderlineInputBorder(
           borderSide: BorderSide(color: AppColors.border),
         ),
-        enabledBorder: const UnderlineInputBorder(
+        enabledBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: AppColors.border),
         ),
-        focusedBorder: const UnderlineInputBorder(
+        focusedBorder: UnderlineInputBorder(
           borderSide: BorderSide(
             color: AppColors.primary,
             width: AppDimensions.inputBorderWidthFocused,
           ),
         ),
-        errorBorder: const UnderlineInputBorder(
+        errorBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: AppColors.error),
         ),
-        focusedErrorBorder: const UnderlineInputBorder(
+        focusedErrorBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: AppColors.error, width: 2),
         ),
       ),

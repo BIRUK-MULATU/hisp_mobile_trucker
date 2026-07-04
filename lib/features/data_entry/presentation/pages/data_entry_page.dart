@@ -11,7 +11,6 @@ import '../../data/repositories/data_entry_repository_impl.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
 import '../bloc/data_entry_bloc.dart';
-import '../widgets/complete_dataset_dialog.dart';
 import '../widgets/data_entry_table.dart';
 
 class DataEntryPage extends StatelessWidget {
@@ -470,7 +469,7 @@ class _ErrorView extends StatelessWidget {
                 size: AppDimensions.iconHuge,
                 color: AppColors.textSecondary),
             const SizedBox(height: AppDimensions.spaceLG),
-            Text('Could not load form',
+            const Text('Could not load form',
                 style: AppTextStyles.headingSmall),
             const SizedBox(height: AppDimensions.spaceSM),
             Text(message,
