@@ -14,6 +14,7 @@ import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
 import '../../../dataset_detail/presentation/pages/dataset_detail_page.dart';
 import '../../data/datasources/home_remote_datasource.dart';
+import '../../domain/entities/dataset_entity.dart';
 import '../../data/repositories/home_repository_impl.dart';
 import '../../domain/usecases/get_datasets_usecase.dart';
 import '../../domain/usecases/sync_dataset_usecase.dart';
@@ -109,6 +110,36 @@ class _HomeViewState extends State<_HomeView> {
     );
   }
 
+  List<DataSetEntity> _applyFilters(List<DataSetEntity> dataSets) {
+    var result = dataSets;
+
+    // ── Search ──────────────────────────────────────────
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isNotEmpty) {
+      result = result
+          .where((d) => d.name.toLowerCase().contains(query))
+          .toList();
+    }
+
+    // ── Sync status ─────────────────────────────────────
+    // The panel stores multi-selections as a comma-joined label
+    // ("Synced, UnSynced"). Options with no data equivalent yet
+    // (Sync Error, SMS Synced) match nothing.
+    final syncLabels = _syncFilter?.label.split(', ').toSet();
+    if (syncLabels != null && syncLabels.isNotEmpty) {
+      result = result.where((d) {
+        final isSynced = d.syncStatus == SyncStatus.synced;
+        return (syncLabels.contains('Synced') && isSynced) ||
+            (syncLabels.contains('UnSynced') && !isSynced);
+      }).toList();
+    }
+
+    // Date and org unit filters are not applied yet: datasets carry
+    // no date, and org unit assignments aren't fetched. Wire them
+    // here once that data exists (see _dateFilter/_orgUnitFilter).
+    return result;
+  }
+
   Widget _buildBody(BuildContext context, HomeState state) {
     if (state is HomeLoading) {
       return const AppLoader(message: 'Loading datasets...');
@@ -122,12 +153,7 @@ class _HomeViewState extends State<_HomeView> {
     }
     if (state is HomeLoaded) {
       if (state.dataSets.isEmpty) return const _EmptyView();
-      final query = _searchQuery.trim().toLowerCase();
-      final dataSets = query.isEmpty
-          ? state.dataSets
-          : state.dataSets
-              .where((d) => d.name.toLowerCase().contains(query))
-              .toList();
+      final dataSets = _applyFilters(state.dataSets);
       if (dataSets.isEmpty) return const _EmptyView();
       return RefreshIndicator(
         color: AppColors.primary,
@@ -305,7 +331,7 @@ class _HomeDrawer extends StatelessWidget {
             label: 'Setting',
             onTap: () {
               Navigator.pop(context);
-              // TODO: navigate to settings page when available
+              context.push(AppRouter.settings);
             },
           ),
           _DrawerItem(

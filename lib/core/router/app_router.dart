@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
+import '../../features/settings/presentation/pages/settings_page.dart';
 
 class AppRouter {
   AppRouter._();
@@ -11,6 +12,7 @@ class AppRouter {
   static const String home = '/home';
   static const String dataEntry = '/data-entry';
   static const String profile = '/profile';
+  static const String settings = '/settings';
 
   // ── Router ─────────────────────────────────────────────────
   static final GoRouter router = GoRouter(
@@ -32,6 +34,11 @@ class AppRouter {
         name: 'data-entry',
         builder: (context, state) =>
             const _PlaceholderPage(title: 'Data Entry'),
+      ),
+      GoRoute(
+        path: settings,
+        name: 'settings',
+        builder: (context, state) => const SettingsPage(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

@@ -317,6 +317,9 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
                     style: AppTextStyles.bodyMedium
                         .copyWith(color: AppColors.textPrimary),
                     decoration: const InputDecoration(
+                      // Disable the theme's grey fill so the rounded
+                      // white pill container shows through.
+                      filled: false,
                       hintText: 'Search organisation units',
                       hintStyle:
                           TextStyle(color: AppColors.textHint),
