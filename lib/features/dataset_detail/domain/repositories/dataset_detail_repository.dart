@@ -11,8 +11,4 @@ abstract class DatasetDetailRepository {
     required String periodId,
     required String orgUnitId,
   });
-
-  Future<void> deleteRecord(String recordId);
-
-  Future<DataRecordEntity> updateRecord(DataRecordEntity record);
 }

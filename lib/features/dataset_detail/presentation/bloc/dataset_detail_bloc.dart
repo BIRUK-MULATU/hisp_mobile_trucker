@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/errors/exceptions.dart';
 import '../../domain/entities/data_record_entity.dart';
 import '../../domain/usecases/get_records_usecase.dart';
 import '../../domain/usecases/create_record_usecase.dart';
@@ -34,8 +35,9 @@ class DatasetDetailBloc
       );
       emit(DatasetDetailLoaded(records));
     } catch (e) {
-      // Show empty state instead of error for new datasets
-      emit(const DatasetDetailLoaded([]));
+      // An empty dataset returns 200 with no records, so reaching
+      // here always means a real failure — show it, with retry.
+      emit(DatasetDetailError(_messageOf(e)));
     }
   }
 
@@ -43,6 +45,7 @@ class DatasetDetailBloc
     DatasetDetailRefresh event,
     Emitter<DatasetDetailState> emit,
   ) async {
+    final previous = state;
     try {
       final records = await _getRecordsUseCase.call(
         dataSetId: event.dataSetId,
@@ -50,7 +53,10 @@ class DatasetDetailBloc
       );
       emit(DatasetDetailLoaded(records));
     } catch (e) {
-      emit(const DatasetDetailLoaded([]));
+      // Keep the records already on screen; only surface the error
+      // when there is nothing to fall back to.
+      if (previous is DatasetDetailLoaded && !previous.isEmpty) return;
+      emit(DatasetDetailError(_messageOf(e)));
     }
   }
 
@@ -66,7 +72,11 @@ class DatasetDetailBloc
       );
       emit(DatasetDetailRecordCreated(record));
     } catch (e) {
-      emit(DatasetDetailError(e.toString()));
+      emit(DatasetDetailError(_messageOf(e)));
     }
   }
+
+  String _messageOf(Object e) => e is AppException
+      ? e.message
+      : e.toString().replaceAll('Exception: ', '');
 }

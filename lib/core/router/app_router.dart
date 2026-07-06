@@ -8,10 +8,10 @@ class AppRouter {
   AppRouter._();
 
   // ── Route Paths ────────────────────────────────────────────
+  // Detail flows (dataset detail, data entry) are pushed with
+  // MaterialPageRoute and are intentionally not listed here.
   static const String login = '/login';
   static const String home = '/home';
-  static const String dataEntry = '/data-entry';
-  static const String profile = '/profile';
   static const String settings = '/settings';
 
   // ── Router ─────────────────────────────────────────────────
@@ -22,18 +22,15 @@ class AppRouter {
       GoRoute(
         path: login,
         name: 'login',
-        builder: (context, state) => const LoginPage(),
+        builder: (context, state) => LoginPage(
+          sessionExpired:
+              state.uri.queryParameters['reason'] == 'session-expired',
+        ),
       ),
       GoRoute(
         path: home,
         name: 'home',
         builder: (context, state) => const HomePage(),
-      ),
-      GoRoute(
-        path: dataEntry,
-        name: 'data-entry',
-        builder: (context, state) =>
-            const _PlaceholderPage(title: 'Data Entry'),
       ),
       GoRoute(
         path: settings,
@@ -47,23 +44,4 @@ class AppRouter {
       ),
     ),
   );
-}
-
-class _PlaceholderPage extends StatelessWidget {
-  final String title;
-  const _PlaceholderPage({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Text(
-          '$title\n(Coming Soon)',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
-      ),
-    );
-  }
 }

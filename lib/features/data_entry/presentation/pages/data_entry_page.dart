@@ -101,6 +101,28 @@ class _DataEntryViewState extends State<_DataEntryView> {
   bool _isSaving = false;
   bool _isCompleting = false;
 
+  // ── Sync tapped — reload values from the server ───────────
+  void _onSyncTapped() {
+    final bloc = context.read<DataEntryBloc>();
+    final state = bloc.state;
+    // A reload replaces every cell — don't wipe unsaved edits.
+    if (state is DataEntryLoaded && state.hasChanges) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Save your changes before reloading.'),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    bloc.add(DataEntryLoad(
+      dataSetId: widget.dataSetId,
+      orgUnitId: widget.orgUnitId,
+      period: widget.period,
+    ));
+  }
+
   // ── FAB tapped — save first ───────────────────────────────
   Future<void> _onSaveTapped() async {
     setState(() => _isSaving = true);
@@ -329,7 +351,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
           IconButton(
             icon: const Icon(Icons.sync_rounded,
                 color: Colors.white),
-            onPressed: () {},
+            tooltip: 'Reload values',
+            onPressed: _onSyncTapped,
           ),
           const SizedBox(width: AppDimensions.spaceXS),
         ],

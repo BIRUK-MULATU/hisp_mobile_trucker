@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import '../../router/app_router.dart';
 import '../../storage/secure_storage.dart';
 
 class AuthInterceptor extends Interceptor {
@@ -20,10 +21,20 @@ class AuthInterceptor extends Interceptor {
   }
 
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) {
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
     if (err.response?.statusCode == 401) {
-      // Token expired — clear storage (router will redirect to login)
-      _secureStorage.clearAll();
+      // Credentials rejected — drop only the token (cached user data
+      // and org units stay for the next login) and send the user back
+      // to the login screen; the router has no auth guard of its own.
+      await _secureStorage.deleteToken();
+      final currentPath =
+          AppRouter.router.routerDelegate.currentConfiguration.uri.path;
+      if (currentPath != AppRouter.login) {
+        AppRouter.router.go('${AppRouter.login}?reason=session-expired');
+      }
     }
     handler.next(err);
   }

@@ -17,7 +17,11 @@ import '../bloc/auth_bloc.dart';
 import '../widgets/login_form.dart';
 
 class LoginPage extends StatelessWidget {
-  const LoginPage({super.key});
+  /// True when the user was sent here because the server rejected
+  /// the stored credentials (401) — shows a short explanation.
+  final bool sessionExpired;
+
+  const LoginPage({super.key, this.sessionExpired = false});
 
   @override
   Widget build(BuildContext context) {
@@ -40,13 +44,14 @@ class LoginPage extends StatelessWidget {
         logoutUseCase: LogoutUseCase(repository),
         authRepository: repository,
       )..add(const AuthCheckRequested()),
-      child: const _LoginView(),
+      child: _LoginView(sessionExpired: sessionExpired),
     );
   }
 }
 
 class _LoginView extends StatelessWidget {
-  const _LoginView();
+  final bool sessionExpired;
+  const _LoginView({required this.sessionExpired});
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +75,7 @@ class _LoginView extends StatelessWidget {
           if (state is AuthInitial || state is AuthCheckInProgress) {
             return const AppLoader(color: Colors.white);
           }
-          return const _LoginBody();
+          return _LoginBody(sessionExpired: sessionExpired);
         },
       ),
     );
@@ -78,7 +83,8 @@ class _LoginView extends StatelessWidget {
 }
 
 class _LoginBody extends StatelessWidget {
-  const _LoginBody();
+  final bool sessionExpired;
+  const _LoginBody({required this.sessionExpired});
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +102,10 @@ class _LoginBody extends StatelessWidget {
               child: const _LogoSection(),
             ),
             Expanded(
-              child: _BottomCard(topSectionHeight: topSectionHeight),
+              child: _BottomCard(
+                topSectionHeight: topSectionHeight,
+                sessionExpired: sessionExpired,
+              ),
             ),
           ],
         ),
@@ -173,7 +182,11 @@ class _LogoSection extends StatelessWidget {
 
 class _BottomCard extends StatelessWidget {
   final double topSectionHeight;
-  const _BottomCard({required this.topSectionHeight});
+  final bool sessionExpired;
+  const _BottomCard({
+    required this.topSectionHeight,
+    required this.sessionExpired,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -198,8 +211,13 @@ class _BottomCard extends StatelessWidget {
         child: BlocBuilder<AuthBloc, AuthState>(
           builder: (context, state) {
             final isLoading = state is AuthLoginInProgress;
-            final errorMessage =
-                state is AuthFailureState ? state.message : null;
+            final errorMessage = state is AuthFailureState
+                ? state.message
+                // Until the first login attempt replaces it, explain
+                // why the user was sent back here after a 401.
+                : (sessionExpired && state is AuthUnauthenticated)
+                    ? 'Your session has ended. Please log in again.'
+                    : null;
 
             return LoginForm(
               isLoading: isLoading,

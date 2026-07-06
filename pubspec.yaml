@@ -12,7 +12,6 @@ dependencies:
 
   # State Management
   flutter_bloc: ^8.1.6
-  equatable: ^2.0.5
 
   # Navigation
   go_router: ^14.2.7
@@ -22,15 +21,8 @@ dependencies:
 
   # Local Storage
   flutter_secure_storage: ^9.2.2
-  shared_preferences: ^2.3.2
-
-  # Dependency Injection
-  get_it: ^8.0.2
-  injectable: ^2.4.4
 
   # Utilities
-  freezed_annotation: ^2.4.4
-  json_annotation: ^4.9.0
   intl: ^0.19.0
   logger: ^2.4.0
   connectivity_plus: ^7.2.0
@@ -39,10 +31,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-  build_runner: ^2.4.12
-  freezed: ^2.5.7
-  json_serializable: ^6.8.0
-  injectable_generator: ^2.6.2
 
 flutter:
   uses-material-design: true
