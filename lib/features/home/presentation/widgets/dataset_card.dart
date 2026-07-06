@@ -4,6 +4,7 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../domain/entities/dataset_entity.dart';
+import 'dataset_icon.dart';
 import 'dataset_icon_helper.dart';
 
 class DataSetCard extends StatelessWidget {
@@ -21,7 +22,6 @@ class DataSetCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconColor = DataSetIconHelper.getColor(dataSet.name);
-    final icon = DataSetIconHelper.getIcon(dataSet.name);
 
     return GestureDetector(
       onTap: onTap,
@@ -57,10 +57,11 @@ class DataSetCard extends StatelessWidget {
                   borderRadius:
                       BorderRadius.circular(AppDimensions.radiusMD),
                 ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: AppDimensions.iconXL,
+                child: Center(
+                  child: DataSetIcon(
+                    dataSet: dataSet,
+                    size: AppDimensions.iconXL,
+                  ),
                 ),
               ),
 
