@@ -60,7 +60,15 @@ class _DataEntryCellState extends State<DataEntryCell> {
   List<TextInputFormatter> get _inputFormatters {
     switch (widget.valueType.toUpperCase()) {
       case 'NUMBER':
+        // Decimals allowed; the server validates the full format.
+        return [
+          FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]'))
+        ];
       case 'INTEGER':
+        return [
+          FilteringTextInputFormatter.allow(RegExp(r'[0-9\-]'))
+        ];
+      case 'PERCENTAGE':
       case 'INTEGER_POSITIVE':
       case 'INTEGER_ZERO_OR_POSITIVE':
         return [FilteringTextInputFormatter.digitsOnly];
@@ -72,7 +80,9 @@ class _DataEntryCellState extends State<DataEntryCell> {
   TextInputType get _keyboardType {
     switch (widget.valueType.toUpperCase()) {
       case 'NUMBER':
+        return const TextInputType.numberWithOptions(decimal: true);
       case 'INTEGER':
+      case 'PERCENTAGE':
       case 'INTEGER_POSITIVE':
       case 'INTEGER_ZERO_OR_POSITIVE':
         return TextInputType.number;
@@ -81,11 +91,7 @@ class _DataEntryCellState extends State<DataEntryCell> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 40,
-      decoration: BoxDecoration(
+  BoxDecoration get _cellDecoration => BoxDecoration(
         color: _isFocused
             ? AppColors.primarySurface
             : AppColors.inputBackground,
@@ -95,7 +101,87 @@ class _DataEntryCellState extends State<DataEntryCell> {
               : Colors.transparent,
           width: 1.5,
         ),
+      );
+
+  void _setValue(String value) {
+    _controller.text = value;
+    setState(() {});
+    widget.onChanged(value);
+  }
+
+  // YES/NO element — free text would be rejected by the server
+  // with E7619 (value_not_bool); only true/false/empty may be sent.
+  // A tap cycles — → Yes → No → —. Deliberately NOT a dropdown:
+  // its overlay menu outlives the bloc-driven table rebuild and
+  // crashes with a framework `_dependents.isEmpty` assertion.
+  Widget _buildBooleanCell() {
+    final current = _controller.text.trim().toLowerCase();
+    final value =
+        (current == 'true' || current == 'false') ? current : '';
+    final label = value == 'true'
+        ? 'Yes'
+        : value == 'false'
+            ? 'No'
+            : '—';
+    final color = value == 'true'
+        ? AppColors.success
+        : value == 'false'
+            ? AppColors.error
+            : AppColors.textSecondary;
+    return InkWell(
+      onTap: widget.isReadOnly
+          ? null
+          : () {
+              final next = value == ''
+                  ? 'true'
+                  : value == 'true'
+                      ? 'false'
+                      : '';
+              _setValue(next);
+            },
+      child: Container(
+        height: 40,
+        decoration: _cellDecoration,
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: color,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
+    );
+  }
+
+  // YES-only element — server accepts just "true" or empty.
+  Widget _buildTrueOnlyCell() {
+    final checked = _controller.text.trim().toLowerCase() == 'true';
+    return Container(
+      height: 40,
+      decoration: _cellDecoration,
+      alignment: Alignment.center,
+      child: Checkbox(
+        value: checked,
+        activeColor: AppColors.primary,
+        onChanged: widget.isReadOnly
+            ? null
+            : (v) => _setValue((v ?? false) ? 'true' : ''),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    switch (widget.valueType.toUpperCase()) {
+      case 'BOOLEAN':
+        return _buildBooleanCell();
+      case 'TRUE_ONLY':
+        return _buildTrueOnlyCell();
+    }
+    return Container(
+      height: 40,
+      decoration: _cellDecoration,
       child: TextField(
         controller: _controller,
         focusNode: _focusNode,

@@ -29,12 +29,26 @@ class DataEntryTable extends StatelessWidget {
       );
     }
 
-    // Get all unique category option combos (columns)
-    final List<CategoryOptionCombo> columns = _getColumns();
+    // A dataset can mix category combos (age/sex disaggregated
+    // elements next to plain ones), so elements are grouped by
+    // combo and every group gets its own header row — the same way
+    // the DHIS2 web data entry app renders it.
+    final groups = <String, List<DataElementEntity>>{};
+    for (final element in dataElements) {
+      final key = element.categoryComboId ?? 'default';
+      groups.putIfAbsent(key, () => []).add(element);
+    }
 
-    // The widest row decides the table width — rows use their own
-    // element's combos, which can differ in count per element.
-    var maxColumns = columns.length;
+    final items = <_TableItem>[];
+    for (final group in groups.values) {
+      items.add(_TableItem.header(_columnsFor(group.first)));
+      for (final element in group) {
+        items.add(_TableItem.row(element));
+      }
+    }
+
+    // The widest group decides the table width.
+    var maxColumns = 1;
     for (final element in dataElements) {
       if (element.categoryOptionCombos.length > maxColumns) {
         maxColumns = element.categoryOptionCombos.length;
@@ -49,23 +63,25 @@ class DataEntryTable extends StatelessWidget {
         // Rows are built lazily — large datasets would otherwise
         // inflate thousands of text fields at once.
         child: ListView.builder(
-          itemCount: dataElements.length + 1,
+          itemCount: items.length,
           itemBuilder: (context, index) {
-            if (index == 0) {
+            final item = items[index];
+            if (item.columns != null) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Column Headers ──────────────────
-                  _buildColumnHeaders(columns),
+                  // ── Column Headers (one per combo group) ──
+                  _buildColumnHeaders(item.columns!),
                   const Divider(
                       height: 1, color: AppColors.divider),
                 ],
               );
             }
             // ── Data Row ────────────────────────────
+            final element = item.element!;
             return _DataEntryRow(
-              element: dataElements[index - 1],
-              columns: columns,
+              element: element,
+              columns: _columnsFor(element),
               dataValues: dataValues,
               orgUnitId: orgUnitId,
               period: period,
@@ -76,23 +92,13 @@ class DataEntryTable extends StatelessWidget {
     );
   }
 
-  List<CategoryOptionCombo> _getColumns() {
-    if (dataElements.isEmpty) return [];
-
-    // Use first element's category combos as columns
-    // (all elements in a section share same category combo)
-    final first = dataElements.first;
-    if (first.categoryOptionCombos.isNotEmpty) {
-      return first.categoryOptionCombos;
+  static List<CategoryOptionCombo> _columnsFor(
+      DataElementEntity element) {
+    if (element.categoryOptionCombos.isNotEmpty) {
+      return element.categoryOptionCombos;
     }
-
     // Fallback — default combo
-    return [
-      const CategoryOptionCombo(
-        id: 'default',
-        name: 'Value',
-      )
-    ];
+    return const [CategoryOptionCombo(id: 'default', name: 'Value')];
   }
 
   Widget _buildColumnHeaders(List<CategoryOptionCombo> columns) {
@@ -124,6 +130,17 @@ class DataEntryTable extends StatelessWidget {
       ],
     );
   }
+}
+
+// ── Lazy-list item: either a group header or a data row ────────
+class _TableItem {
+  final List<CategoryOptionCombo>? columns;
+  final DataElementEntity? element;
+
+  const _TableItem.header(List<CategoryOptionCombo> this.columns)
+      : element = null;
+  const _TableItem.row(DataElementEntity this.element)
+      : columns = null;
 }
 
 // ── Single Data Row ────────────────────────────────────────────
@@ -178,14 +195,10 @@ class _DataEntryRow extends StatelessWidget {
             ),
 
             // ── Input Cells ──────────────────────────
-            // Use this element's own category option combos so a value
-            // is never saved against a combo that belongs to a
-            // different data element's category combo (rejected by the
-            // server with a 409/E7634 conflict).
-            ...(element.categoryOptionCombos.isNotEmpty
-                    ? element.categoryOptionCombos
-                    : columns)
-                .map((col) {
+            // `columns` is always this element's own combos, so a
+            // value is never saved against a combo from a different
+            // category combo (server rejects those with 409/E7634).
+            ...columns.map((col) {
               final key = '${element.id}_${col.id}';
               final existing = dataValues[key];
 
