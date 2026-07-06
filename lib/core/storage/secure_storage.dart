@@ -76,5 +76,13 @@ class SecureStorage {
     return token != null && token.isNotEmpty;
   }
 
+  /// Ends the user session but keeps device settings (server URL).
+  Future<void> clearSession() async {
+    await _storage.delete(key: 'auth_token');
+    await _storage.delete(key: 'username');
+    await _storage.delete(key: 'user_data');
+    await _storage.delete(key: 'org_units');
+  }
+
   Future<void> clearAll() async => await _storage.deleteAll();
 }

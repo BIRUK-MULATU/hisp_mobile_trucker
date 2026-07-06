@@ -100,7 +100,14 @@ class _DatasetDetailView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: _DetailAppBar(dataSetName: dataSetName),
+      appBar: _DetailAppBar(
+        dataSetName: dataSetName,
+        // Full reload with the loading spinner — visible feedback
+        // that the sync actually happened.
+        onSync: () => context
+            .read<DatasetDetailBloc>()
+            .add(DatasetDetailLoad(dataSetId, orgUnitId)),
+      ),
       body: BlocBuilder<DatasetDetailBloc, DatasetDetailState>(
         builder: (context, state) {
           if (state is DatasetDetailLoading) {
@@ -177,7 +184,8 @@ class _DatasetDetailView extends StatelessWidget {
 class _DetailAppBar extends StatelessWidget
     implements PreferredSizeWidget {
   final String dataSetName;
-  const _DetailAppBar({required this.dataSetName});
+  final VoidCallback onSync;
+  const _DetailAppBar({required this.dataSetName, required this.onSync});
 
   @override
   Size get preferredSize =>
@@ -201,11 +209,8 @@ class _DetailAppBar extends StatelessWidget
         IconButton(
             icon:
                 const Icon(Icons.sync_rounded, color: Colors.white),
-            onPressed: () {}),
-        IconButton(
-            icon: const Icon(Icons.format_list_bulleted_rounded,
-                color: Colors.white),
-            onPressed: () {}),
+            tooltip: 'Reload records',
+            onPressed: onSync),
         const SizedBox(width: AppDimensions.spaceXS),
       ],
     );

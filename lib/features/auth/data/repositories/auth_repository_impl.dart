@@ -35,7 +35,8 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
-    await _secureStorage.clearAll();
+    // Keeps device settings (e.g. the configured server URL).
+    await _secureStorage.clearSession();
   }
 
   @override

@@ -80,12 +80,4 @@ class DatasetDetailRepositoryImpl implements DatasetDetailRepository {
       throw ServerException(message: e.toString());
     }
   }
-
-  @override
-  Future<void> deleteRecord(String recordId) async {}
-
-  @override
-  Future<DataRecordEntity> updateRecord(DataRecordEntity record) async {
-    throw UnimplementedError();
-  }
 }
