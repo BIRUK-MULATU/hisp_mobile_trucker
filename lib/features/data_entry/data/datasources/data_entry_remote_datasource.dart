@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../../../core/network/api_client.dart';
 import '../models/data_element_model.dart';
@@ -42,8 +43,12 @@ class DataEntryRemoteDataSourceImpl
       final response = await _apiClient.get(
         '/dataSets/$dataSetId',
         queryParameters: {
-          'fields':
-              'dataSetElements[dataElement[id,displayName,shortName,'
+          // The dataset can override an element's category combo
+          // (dataSetElement.categoryCombo) — fetch both and prefer
+          // the override, like the DHIS2 web data entry app does.
+          'fields': 'dataSetElements[categoryCombo[id,'
+              'categoryOptionCombos[id,displayName,shortName]],'
+              'dataElement[id,displayName,shortName,'
               'valueType,categoryCombo[id,categoryOptionCombos'
               '[id,displayName,shortName]]]]',
         },
@@ -53,10 +58,12 @@ class DataEntryRemoteDataSourceImpl
         final data = response.data as Map<String, dynamic>;
         final elements =
             data['dataSetElements'] as List<dynamic>? ?? [];
-        return elements
-            .map((e) => DataElementModel.fromJson(
-                e['dataElement'] as Map<String, dynamic>))
-            .toList();
+        return elements.map((e) {
+          final json = e['dataElement'] as Map<String, dynamic>;
+          final override = e['categoryCombo'] as Map<String, dynamic>?;
+          if (override != null) json['categoryCombo'] = override;
+          return DataElementModel.fromJson(json);
+        }).toList();
       }
       throw const ServerException();
     } catch (e) {
@@ -120,10 +127,36 @@ class DataEntryRemoteDataSourceImpl
         throw const ServerException(
             message: 'Failed to save data values');
       }
+    } on DioException catch (e) {
+      // A 409 carries an import summary whose conflicts say exactly
+      // which values the server refused — surface those, not the
+      // raw exception dump.
+      throw ServerException(
+          message: _importConflictMessage(e) ??
+              'Failed to save data values');
     } catch (e) {
       if (e is AppException) rethrow;
       throw ServerException(message: e.toString());
     }
+  }
+
+  String? _importConflictMessage(DioException e) {
+    final data = e.response?.data;
+    if (data is! Map<String, dynamic>) return null;
+    final response = data['response'];
+    if (response is Map<String, dynamic>) {
+      final conflicts = response['conflicts'];
+      if (conflicts is List && conflicts.isNotEmpty) {
+        return conflicts
+            .whereType<Map<String, dynamic>>()
+            .map((c) => c['value'])
+            .whereType<String>()
+            .toSet()
+            .join('\n');
+      }
+    }
+    final message = data['message'];
+    return message is String ? message : null;
   }
 
   // Registers completion only — deliberately separate from

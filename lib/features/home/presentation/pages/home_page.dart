@@ -242,28 +242,28 @@ class _HomeDrawer extends StatelessWidget {
                       .copyWith(color: AppColors.textSecondary)),
               const SizedBox(height: AppDimensions.spaceLG),
               const Text(
-                'HISP Mobile Tracker is a health data collection and '
-                'reporting application for the Ministry of Health. '
-                'It allows health workers to enter, review and sync '
-                'aggregate dataset values with the central DHIS2 '
-                    'HISP Mobile Tracker is a health data collection and '
-                    'reporting application for the Ministry of Health. '
-                    'It allows health workers to enter, review and sync '
-                    'aggregate dataset values with the central DHIS2 '                'HISP Mobile Tracker is a health data collection and '
-                    'reporting application for the Ministry of Health. '
-                    'It allows health workers to enter, review and sync '
-                    'aggregate dataset values with the central DHIS2 '                'HISP Mobile Tracker is a health data collection and '
-                    'reporting application for the Ministry of Health. '
-                    'It allows health workers to enter, review and sync '
-                    'aggregate dataset values with the central DHIS2 '
-                'server, even in areas with limited connectivity.',
+                'HISP Mobile Tracker is the official mobile data '
+                'collection and reporting application of the Ministry '
+                'of Health, built on the DHIS2 Health Management '
+                'Information System. It enables health workers to '
+                'record, review, and submit aggregate health data for '
+                'their facility directly from a mobile device.',
+                style: AppTextStyles.bodyMedium,
+              ),
+              const SizedBox(height: AppDimensions.spaceMD),
+              const Text(
+                'The application is designed for the realities of '
+                'field work: data can be entered at any time and '
+                'synchronized with the national DHIS2 server whenever '
+                'a connection is available, helping keep facility '
+                'reports timely, complete, and accurate.',
                 style: AppTextStyles.bodyMedium,
               ),
               const SizedBox(height: AppDimensions.spaceLG),
               Text(
                 'Developed by HISP Ethiopia in collaboration with the '
-                'Ministry of Health. For support, contact your system '
-                'administrator.',
+                'Ministry of Health. For assistance, please contact '
+                'your system administrator or district health office.',
                 style: AppTextStyles.bodySmall
                     .copyWith(color: AppColors.textSecondary),
               ),

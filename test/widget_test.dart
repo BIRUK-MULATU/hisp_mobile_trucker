@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hisp_mobile_trucker/features/data_entry/domain/entities/data_element_entity.dart';
 import 'package:hisp_mobile_trucker/features/data_entry/domain/repositories/data_entry_repository.dart';
 import 'package:hisp_mobile_trucker/features/data_entry/domain/usecases/save_data_values_usecase.dart';
+import 'package:hisp_mobile_trucker/features/data_entry/presentation/widgets/data_entry_table.dart';
 import 'package:hisp_mobile_trucker/features/home/domain/entities/dataset_entity.dart';
 import 'package:hisp_mobile_trucker/features/home/presentation/widgets/dataset_card.dart';
 
@@ -106,6 +107,51 @@ void main() {
       expect(find.text('Malaria Monthly Report'), findsOneWidget);
       expect(find.text('Synced'), findsOneWidget);
       expect(find.text('unsync'), findsOneWidget);
+    });
+  });
+
+  group('DataEntryTable', () {
+    testWidgets(
+        'shows every category combo group with its own headers',
+        (tester) async {
+      const disaggregated = DataElementEntity(
+        id: 'de1',
+        name: 'Malaria cases',
+        categoryComboId: 'ccAgeSex',
+        categoryOptionCombos: [
+          CategoryOptionCombo(id: 'c1', name: 'Under 5'),
+          CategoryOptionCombo(id: 'c2', name: '5 and above'),
+        ],
+      );
+      // Different combo than the first element — before the grouping
+      // fix its columns were never shown as headers.
+      const plain = DataElementEntity(
+        id: 'de2',
+        name: 'Stock-outs',
+        categoryComboId: 'ccDefault',
+        categoryOptionCombos: [
+          CategoryOptionCombo(id: 'c3', name: 'Value'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: [disaggregated, plain],
+              dataValues: {},
+              orgUnitId: 'ou1',
+              period: '202607',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Under 5'), findsOneWidget);
+      expect(find.text('5 and above'), findsOneWidget);
+      expect(find.text('Value'), findsOneWidget);
+      expect(find.text('Malaria cases'), findsOneWidget);
+      expect(find.text('Stock-outs'), findsOneWidget);
     });
   });
 }
