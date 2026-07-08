@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/network/api_client.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
-import '../../data/datasources/capture_remote_datasource.dart';
 import '../../data/repositories/capture_repository_impl.dart';
 import '../../domain/entities/org_unit_tree_node.dart';
 import '../../domain/usecases/get_org_unit_children_usecase.dart';
@@ -42,9 +40,7 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
   void initState() {
     super.initState();
     _getChildren = GetOrgUnitChildrenUseCase(
-      CaptureRepositoryImpl(
-        remoteDataSource: CaptureRemoteDataSourceImpl(apiClient: ApiClient()),
-      ),
+      CaptureRepositoryImpl(),
     );
     _loadRoots();
   }
