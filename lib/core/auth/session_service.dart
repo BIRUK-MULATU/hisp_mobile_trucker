@@ -1,0 +1,194 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+
+import '../database/app_database.dart';
+import '../data/data_value_store.dart';
+import '../data/period_access.dart';
+import '../metadata/metadata_sync_service.dart';
+import '../network/api_client.dart';
+import '../utils/app_logger.dart';
+import 'credential_store.dart';
+
+/// Outcome of a login attempt.
+enum LoginResult {
+  /// Online, first time on this device: authenticated + full sync done.
+  onlineFirstSync,
+
+  /// Online, returning user: authenticated, delta sync kicked off.
+  onlineReturning,
+
+  /// Offline, verified against the stored hash: local data only.
+  offline,
+
+  /// Offline and no local database/verifier — first login needs a
+  /// connection.
+  offlineNoCache,
+
+  /// Credentials rejected (by server when online, by verifier offline).
+  invalidCredentials,
+}
+
+/// Owns the login/logout/wipe lifecycle and the per-user database
+/// handle for the active session. The ApiClient it holds is the app's
+/// single network capability for metadata.
+class SessionService {
+  SessionService({CredentialStore? credentials})
+      : _credentials = credentials ?? CredentialStore();
+
+  final CredentialStore _credentials;
+
+  AppDatabase? _db;
+  String? _userKey;
+  DateTime? _serverDate;
+
+  /// True when the last session-start check flagged a backwards clock
+  /// jump. UI contract: show an error and refuse past-period entry
+  /// while true. Cleared by any online login (server anchor).
+  bool clockTampered = false;
+
+  AppDatabase get db {
+    final d = _db;
+    if (d == null) throw StateError('No active session — call login first.');
+    return d;
+  }
+
+  bool get isLoggedIn => _db != null;
+
+  /// The full decision tree. [online] is whatever your connectivity
+  /// check reports at the moment of login.
+  Future<LoginResult> login({
+    required String serverUrl,
+    required String username,
+    required String password,
+    required bool online,
+  }) async {
+    final userKey = AppDatabase.sanitizeUserKey(username);
+
+    if (online) {
+      // Verify against the server by making one authenticated call.
+      final api = ApiClient.withBasicAuth(
+          baseUrl: serverUrl, username: username, password: password);
+      final ok = await _serverAccepts(api);
+      if (!ok) return LoginResult.invalidCredentials;
+
+      final firstTime = !await _databaseExistsFor(userKey);
+
+      _db = AppDatabase.forUser(username);
+      _userKey = userKey;
+
+      // Clock: anchor to server truth (HTTP Date header of the auth
+      // probe) — heals tampering and clears any tamper flag.
+      final serverDate = _serverDate;
+      final periodAccess = PeriodAccess(_db!);
+      if (serverDate != null && !await hasUnsyncedLocalData(_db!)) {
+        // ANCHOR GATE: only recalibrate when nothing local is pending —
+        // otherwise sync those values first; a later settled contact
+        // (DataValueSync) will anchor.
+        await periodAccess.anchorToServer(serverDate);
+      } else if (serverDate != null) {
+        log.i('[clock] login anchor deferred — pending local data exists');
+      }
+      clockTampered = await periodAccess.checkAtSessionStart();
+
+      // Persist/refresh the offline verifier every online login.
+      await _credentials.store(
+        userKey: userKey,
+        serverUrl: serverUrl,
+        username: username,
+        password: password,
+      );
+
+      final sync = MetadataSyncService(_db!, api);
+      if (firstTime) {
+        log.i('first online login for $userKey — full sync');
+        await sync.syncMetadata();
+        return LoginResult.onlineFirstSync;
+      } else {
+        log.i('returning online login for $userKey — delta sync');
+        // Fire-and-forget: the user shouldn't wait on a delta.
+        // Caller may await if it wants a definite finish.
+        unawaited(sync.syncMetadataDelta());
+        return LoginResult.onlineReturning;
+      }
+    }
+
+    // ── Offline ──
+    if (!await _databaseExistsFor(userKey)) {
+      return LoginResult.offlineNoCache;
+    }
+    final verified = await _credentials.verify(
+      userKey: userKey,
+      serverUrl: serverUrl,
+      username: username,
+      password: password,
+    );
+    if (!verified) return LoginResult.invalidCredentials;
+
+    _db = AppDatabase.forUser(username);
+    _userKey = userKey;
+
+    // Offline session: no server truth available — run the local
+    // backwards-jump check. If it flags, the login still succeeds but
+    // clockTampered is true; UI must warn and refuse back-period entry.
+    clockTampered = await PeriodAccess(_db!).checkAtSessionStart();
+
+    log.i('offline login for $userKey — local data only'
+        '${clockTampered ? ' (CLOCK TAMPER FLAGGED)' : ''}');
+    return LoginResult.offline;
+  }
+
+  /// Ends the session but KEEPS the database and verifier — the same
+  /// user can log in again later, offline. NOT a data-clearing action.
+  Future<void> logout() async {
+    await _db?.close();
+    _db = null;
+    _userKey = null;
+    log.i('logged out (data retained)');
+  }
+
+  /// Completely removes this user from the device: closes and deletes
+  /// the database, clears the verifier. Re-login is a fresh online
+  /// first-sync.
+  ///
+  /// [pendingDataCount] is passed by the caller (computed from the data
+  /// value tables); a UI must confirm loss when it's > 0 BEFORE calling
+  /// this. This method itself does not prompt — it just destroys.
+  Future<void> wipe() async {
+    final key = _userKey;
+    await _db?.close();
+    _db = null;
+    if (key != null) {
+      await _credentials.clear(key);
+      await deleteUserDatabase(key);
+    }
+    _userKey = null;
+    log.w('wiped user $key from device');
+  }
+
+  // ── internals ──
+
+  Future<bool> _serverAccepts(ApiClient api) async {
+    try {
+      // /api/me is the canonical "are these credentials valid" probe.
+      final res = await api.get('/api/me.json', queryParameters: {
+        'fields': 'id',
+      });
+      final dateHeader = res.headers.value('date');
+      if (dateHeader != null) {
+        // HTTP-date is RFC 1123; HttpDate parses it.
+        try {
+          _serverDate = HttpDate.parse(dateHeader);
+        } catch (_) {}
+      }
+      return res.statusCode == 200 && res.data is Map;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) return false; // bad credentials
+      rethrow; // network error — caller decides (maybe retry offline)
+    }
+  }
+
+  Future<bool> _databaseExistsFor(String userKey) =>
+      userDatabaseExists(userKey);
+}
