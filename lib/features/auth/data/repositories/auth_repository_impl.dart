@@ -4,6 +4,7 @@ import '../../../../core/auth/app_session.dart';
 import '../../../../core/auth/session_service.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/errors/exceptions.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/network/network_info.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../domain/entities/user_entity.dart';
@@ -71,10 +72,14 @@ class AuthRepositoryImpl implements AuthRepository {
           username: username,
           password: password,
         );
+        _attachSyncApi(serverUrl, username, password);
         AppSession.instance.sessionChanged();
         return user;
 
       case LoginResult.offline:
+        // Verifier accepted -> these ARE the real credentials; keep an
+        // authorized client so auto-sync can push when we come online.
+        _attachSyncApi(serverUrl, username, password);
         final user = await _userFromDatabase(username);
         // Persist so legacy screens reading SecureStorage keep working.
         await _secureStorage.saveUserData(user.toJson());
@@ -99,6 +104,7 @@ class AuthRepositoryImpl implements AuthRepository {
     // verifier, so the same user can log back in offline.
     await _session.logout();
     await _secureStorage.clearSession();
+    AppSession.instance.api = null;
     AppSession.instance.sessionChanged();
   }
 
@@ -117,6 +123,14 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   // ── internals ──────────────────────────────────────────────────────
+
+  void _attachSyncApi(String serverUrl, String username, String password) {
+    AppSession.instance.api = ApiClient.withBasicAuth(
+      baseUrl: serverUrl,
+      username: username,
+      password: password,
+    );
+  }
 
   /// SessionService expects the server ROOT (it appends /api/... itself),
   /// while ApiConstants.baseUrl / the stored URL include the /api suffix.
