@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../core/network/api_client.dart';
 import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
-import '../../../data_entry/data/datasources/data_entry_remote_datasource.dart';
 import '../../../data_entry/data/repositories/data_entry_repository_impl.dart';
 import '../../../data_entry/domain/usecases/get_data_elements_usecase.dart';
 import '../../../data_entry/domain/usecases/save_data_values_usecase.dart';
@@ -55,9 +53,7 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
   @override
   void initState() {
     super.initState();
-    _repository = DataEntryRepositoryImpl(
-      remoteDataSource: DataEntryRemoteDataSourceImpl(apiClient: ApiClient()),
-    );
+    _repository = DataEntryRepositoryImpl();
     _getDataElementsUseCase = GetDataElementsUseCase(_repository);
     _dataEntryBloc = DataEntryBloc(
       getDataElementsUseCase: _getDataElementsUseCase,
