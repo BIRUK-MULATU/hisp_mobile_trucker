@@ -4,14 +4,16 @@ import 'package:drift/drift.dart';
 import '../database/app_database.dart';
 import '../network/api_client.dart';
 import '../utils/app_logger.dart';
+import 'period_access.dart';
 
 /// Complete / incomplete a dataset for a form instance. Same offline
 /// pattern as data values (sync-stated, push-first), simpler (no
 /// per-cell conflict — a registration is one boolean fact).
 class CompletenessStore {
-  CompletenessStore(this._db);
+  CompletenessStore(this._db) : _clock = PeriodAccess(_db);
 
   final AppDatabase _db;
+  final PeriodAccess _clock;
 
   /// Mark a form complete or incomplete locally, pending push.
   Future<void> setComplete({
@@ -30,9 +32,12 @@ class CompletenessStore {
             attributeOptionComboUid: attributeOptionComboUid,
             completed: completed,
             storedBy: Value(storedBy),
-            date: DateTime.now(),
+            // effectiveNow (monotonic high-water clock), NOT
+            // DateTime.now() — same rule as DataValueStore, so a
+            // backdated device can't fake completion timestamps.
+            date: await _clock.effectiveNow(),
             syncState: SyncState.pending,
-            lastModified: DateTime.now(),
+            lastModified: await _clock.effectiveNow(),
           ),
         );
   }
@@ -92,6 +97,10 @@ class CompletenessSync {
                 'ds': r.dataSetUid,
                 'pe': r.period,
                 'ou': r.orgUnitUid,
+                // TODO(backend): datasets with non-default attribute
+                // combos need cc (categoryCombo) + cp (option uids)
+                // here or the wrong registration gets un-completed.
+                // The app currently only writes the default combo.
               });
         }
         await _markSynced(r);
