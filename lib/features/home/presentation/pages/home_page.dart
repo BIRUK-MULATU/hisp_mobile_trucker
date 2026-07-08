@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../../../../core/sync/drift_sync_manager.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
@@ -44,6 +47,13 @@ class _HomePageState extends State<HomePage> {
   int _syncTick = 0;
 
   void _onSyncTapped() {
+    // Real sync: push queued offline writes, then refresh metadata.
+    // Fire-and-forget — the capture view below remounts immediately
+    // and shows current local state; failures leave rows pending.
+    unawaited(DriftSyncManager.instance
+        .pushPending()
+        .then((_) => DriftSyncManager.instance.pullLatest())
+        .catchError((Object e) => debugPrint('manual sync failed: $e')));
     setState(() {
       _syncTick++;
       // Sync is only visible in Capture mode — switch so the
