@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../../../core/network/api_client.dart';
 import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
-import '../../data/datasources/capture_remote_datasource.dart';
 import '../../data/repositories/capture_repository_impl.dart';
 import '../../domain/entities/dataset_section_entity.dart';
 import '../../domain/usecases/get_dataset_sections_usecase.dart';
@@ -44,9 +42,7 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
   void initState() {
     super.initState();
     _getSections = GetDataSetSectionsUseCase(
-      CaptureRepositoryImpl(
-        remoteDataSource: CaptureRemoteDataSourceImpl(apiClient: ApiClient()),
-      ),
+      CaptureRepositoryImpl(),
     );
     _load();
   }

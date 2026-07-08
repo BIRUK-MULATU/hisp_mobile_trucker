@@ -201,6 +201,7 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
                 PeriodSelectorField(
                   selectedPeriod: _selectedPeriodId,
                   periodType: widget.periodType,
+                  dataSetId: widget.dataSetId,
                   onChanged: (value) {
                     setState(() => _selectedPeriodId = value);
                   },
