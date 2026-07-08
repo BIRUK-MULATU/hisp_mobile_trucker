@@ -7,12 +7,10 @@ class CategoryOptionComboModel extends CategoryOptionCombo {
     super.shortName,
   });
 
-  factory CategoryOptionComboModel.fromJson(
-      Map<String, dynamic> json) {
+  factory CategoryOptionComboModel.fromJson(Map<String, dynamic> json) {
     return CategoryOptionComboModel(
       id: json['id'] as String? ?? '',
-      name: json['displayName'] as String? ??
-          json['name'] as String? ?? '',
+      name: json['displayName'] as String? ?? json['name'] as String? ?? '',
       shortName: json['shortName'] as String?,
     );
   }
@@ -30,21 +28,17 @@ class DataElementModel extends DataElementEntity {
 
   factory DataElementModel.fromJson(Map<String, dynamic> json) {
     final categoryOptionCombos =
-        (json['categoryCombo']?['categoryOptionCombos']
-                    as List<dynamic>? ??
-                [])
-            .map((e) => CategoryOptionComboModel.fromJson(
-                e as Map<String, dynamic>))
+        (json['categoryCombo']?['categoryOptionCombos'] as List<dynamic>? ?? [])
+            .map((e) =>
+                CategoryOptionComboModel.fromJson(e as Map<String, dynamic>))
             .toList();
 
     return DataElementModel(
       id: json['id'] as String? ?? '',
-      name: json['displayName'] as String? ??
-          json['name'] as String? ?? '',
+      name: json['displayName'] as String? ?? json['name'] as String? ?? '',
       shortName: json['shortName'] as String?,
       valueType: json['valueType'] as String? ?? 'NUMBER',
-      categoryComboId:
-          json['categoryCombo']?['id'] as String?,
+      categoryComboId: json['categoryCombo']?['id'] as String?,
       categoryOptionCombos: categoryOptionCombos,
     );
   }
@@ -63,8 +57,7 @@ class DataValueModel extends DataValueEntity {
   factory DataValueModel.fromJson(Map<String, dynamic> json) {
     return DataValueModel(
       dataElementId: json['dataElement'] as String? ?? '',
-      categoryOptionComboId:
-          json['categoryOptionCombo'] as String? ?? '',
+      categoryOptionComboId: json['categoryOptionCombo'] as String? ?? '',
       orgUnitId: json['orgUnit'] as String? ?? '',
       period: json['period'] as String? ?? '',
       value: json['value'] as String? ?? '',

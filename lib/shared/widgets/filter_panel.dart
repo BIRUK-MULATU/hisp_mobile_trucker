@@ -13,10 +13,18 @@ class AppliedFilter {
 /// The 12 quick date-range options shown in the DATE filter grid,
 /// laid out 3 columns x 4 rows to match the Figma design.
 const List<String> kDateFilterOptions = [
-  'Today', 'Yesterday', 'Tomorrow',
-  'This Week', 'Last Week', 'Next week',
-  'This month', 'Last month', 'Next month',
-  'From -To', 'Other', 'Any time',
+  'Today',
+  'Yesterday',
+  'Tomorrow',
+  'This Week',
+  'Last Week',
+  'Next week',
+  'This month',
+  'Last month',
+  'Next month',
+  'From -To',
+  'Other',
+  'Any time',
 ];
 
 /// Dropdown filter panel shown under the app bar when the
@@ -128,9 +136,7 @@ class _FilterPanelState extends State<FilterPanel> {
               selected: _syncSelected,
               onChanged: (updated) {
                 widget.onSyncChanged?.call(
-                  updated.isEmpty
-                      ? null
-                      : AppliedFilter(updated.join(', ')),
+                  updated.isEmpty ? null : AppliedFilter(updated.join(', ')),
                 );
               },
             ),
@@ -239,8 +245,8 @@ class _SyncOptionTile extends StatelessWidget {
                   child: ExcludeSemantics(
                     child: Text(
                       option.label,
-                      style: AppTextStyles.bodyLarge
-                          .copyWith(color: Colors.white),
+                      style:
+                          AppTextStyles.bodyLarge.copyWith(color: Colors.white),
                     ),
                   ),
                 ),
@@ -297,8 +303,8 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
         Expanded(
           child: Container(
             height: 44,
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppDimensions.spaceMD),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppDimensions.spaceMD),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
@@ -306,8 +312,7 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
             child: Row(
               children: [
                 const Icon(Icons.search_rounded,
-                    color: AppColors.textSecondary,
-                    size: AppDimensions.iconMD),
+                    color: AppColors.textSecondary, size: AppDimensions.iconMD),
                 const SizedBox(width: AppDimensions.spaceSM),
                 Expanded(
                   child: TextField(
@@ -321,8 +326,7 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
                       // white pill container shows through.
                       filled: false,
                       hintText: 'Search organisation units',
-                      hintStyle:
-                          TextStyle(color: AppColors.textHint),
+                      hintStyle: TextStyle(color: AppColors.textHint),
                       border: InputBorder.none,
                       isDense: true,
                     ),
@@ -552,9 +556,8 @@ class _FilterRow extends StatelessWidget {
         ),
         AnimatedCrossFade(
           duration: const Duration(milliseconds: 200),
-          crossFadeState: expanded
-              ? CrossFadeState.showFirst
-              : CrossFadeState.showSecond,
+          crossFadeState:
+              expanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
           firstChild: Padding(
             padding: fullBleedContent
                 ? const EdgeInsets.symmetric(vertical: AppDimensions.spaceSM)

@@ -1,9 +1,11 @@
 import '../entities/data_element_entity.dart';
 
 abstract class DataEntryRepository {
-  /// Fetch data elements and category combos for a dataset
+  /// Fetch data elements and category combos for a dataset —
+  /// restricted to one section when [sectionId] is given.
   Future<List<DataElementEntity>> getDataElements({
     required String dataSetId,
+    String? sectionId,
   });
 
   /// Fetch existing data values for editing

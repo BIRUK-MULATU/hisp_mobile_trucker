@@ -24,23 +24,26 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
   @override
   Future<List<DataElementEntity>> getDataElements({
     required String dataSetId,
+    String? sectionId,
   }) async {
-    final cached = _dataElementsCache[dataSetId];
+    // A section is a different form than the whole dataset — cache
+    // (memory and local) under a key that separates the two.
+    final cacheKey = sectionId == null ? dataSetId : '$dataSetId#$sectionId';
+    final cached = _dataElementsCache[cacheKey];
     if (cached != null) return cached;
 
     try {
       final elements = await _remoteDataSource.getDataElements(
-          dataSetId: dataSetId);
-      await _localDataSource.cacheDataElements(dataSetId, elements);
-      _dataElementsCache[dataSetId] = elements;
+          dataSetId: dataSetId, sectionId: sectionId);
+      await _localDataSource.cacheDataElements(cacheKey, elements);
+      _dataElementsCache[cacheKey] = elements;
       return elements;
     } on AppException catch (e) {
       // Offline/unreachable — serve cached form metadata if any.
       if (e is! NetworkException && e is! TimeoutException) rethrow;
-      final local =
-          await _localDataSource.getCachedDataElements(dataSetId);
+      final local = await _localDataSource.getCachedDataElements(cacheKey);
       if (local.isEmpty) rethrow;
-      _dataElementsCache[dataSetId] = local;
+      _dataElementsCache[cacheKey] = local;
       return local;
     } catch (e) {
       throw ServerException(message: e.toString());

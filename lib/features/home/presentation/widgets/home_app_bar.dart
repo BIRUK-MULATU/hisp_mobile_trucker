@@ -12,6 +12,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool isSyncing;
   final bool filtersShown;
   final bool searchActive;
+  final String searchHint;
 
   const HomeAppBar({
     super.key,
@@ -23,6 +24,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.isSyncing = false,
     this.filtersShown = false,
     this.searchActive = false,
+    this.searchHint = 'Search...',
   });
 
   @override
@@ -72,7 +74,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                   // pill container shows through.
                   filled: false,
                   isDense: true,
-                  hintText: 'Search datasets...',
+                  hintText: searchHint,
                   hintStyle: AppTextStyles.bodyLarge.copyWith(
                     color: Colors.black38,
                   ),
@@ -103,7 +105,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             size: AppDimensions.iconLG,
           ),
           onPressed: onSearchTap,
-          tooltip: searchActive ? 'Close search' : 'Search datasets',
+          tooltip: searchActive ? 'Close search' : 'Search',
         ),
 
         // ── Sync Button (hidden while searching) ─
