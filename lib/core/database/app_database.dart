@@ -1,10 +1,6 @@
-import 'dart:io';
-
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import 'connection/connection.dart' as connection;
 import '../metadata/category.dart';
 import '../metadata/category_combo.dart';
 import '../metadata/category_option.dart';
@@ -163,7 +159,7 @@ class AppDatabase extends _$AppDatabase {
   /// unsynced data values are fully isolated from other users of the
   /// same device.
   AppDatabase.forUser(String userKey)
-      : super(_openConnectionFor(sanitizeUserKey(userKey)));
+      : super(connection.openConnectionFor(sanitizeUserKey(userKey)));
   AppDatabase.forTesting(super.e);
 
   /// 'Nurse.Alem@HC' -> 'nurse_alem_hc' (safe as a filename).
@@ -210,31 +206,11 @@ class AppDatabase extends _$AppDatabase {
   }
 }
 
-LazyDatabase _openConnectionFor(String userKey) {
-  return LazyDatabase(() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, 'hisp_$userKey.sqlite'));
-    return NativeDatabase.createInBackground(file);
-  });
-}
-
 /// True if this user has logged in on this device before (their
-/// database file exists) — the gate for allowing OFFLINE login.
-Future<bool> userDatabaseExists(String userKey) async {
-  final dir = await getApplicationDocumentsDirectory();
-  return File(p.join(
-          dir.path, 'hisp_${AppDatabase.sanitizeUserKey(userKey)}.sqlite'))
-      .exists();
-}
+/// database exists) — the gate for allowing OFFLINE login.
+Future<bool> userDatabaseExists(String userKey) =>
+    connection.databaseExistsFor(AppDatabase.sanitizeUserKey(userKey));
 
-/// Delete a user's database file(s) entirely — part of WIPE. Removes the
-/// main file plus WAL/SHM sidecars left by WAL journal mode.
-Future<void> deleteUserDatabase(String userKey) async {
-  final dir = await getApplicationDocumentsDirectory();
-  final base =
-      p.join(dir.path, 'hisp_${AppDatabase.sanitizeUserKey(userKey)}.sqlite');
-  for (final suffix in ['', '-wal', '-shm']) {
-    final f = File('$base$suffix');
-    if (await f.exists()) await f.delete();
-  }
-}
+/// Delete a user's database entirely — part of WIPE.
+Future<void> deleteUserDatabase(String userKey) =>
+    connection.deleteDatabaseFor(AppDatabase.sanitizeUserKey(userKey));

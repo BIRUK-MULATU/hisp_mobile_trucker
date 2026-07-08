@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import '../utils/http_date.dart';
 
 import 'package:dio/dio.dart';
 
@@ -177,9 +177,9 @@ class SessionService {
       });
       final dateHeader = res.headers.value('date');
       if (dateHeader != null) {
-        // HTTP-date is RFC 1123; HttpDate parses it.
+        // HTTP-date is RFC 1123; parseHttpDate handles it web-safely.
         try {
-          _serverDate = HttpDate.parse(dateHeader);
+          _serverDate = parseHttpDate(dateHeader);
         } catch (_) {}
       }
       return res.statusCode == 200 && res.data is Map;
