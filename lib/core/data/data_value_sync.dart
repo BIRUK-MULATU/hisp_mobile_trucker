@@ -1,4 +1,4 @@
-import 'dart:io' show HttpDate;
+import '../utils/http_date.dart';
 
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
@@ -258,7 +258,7 @@ class DataValueSync {
     final raw = res.headers.value('date');
     if (raw == null) return;
     try {
-      _serverDate = HttpDate.parse(raw);
+      _serverDate = parseHttpDate(raw);
     } catch (_) {}
   }
 
