@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/ethiopian_calendar.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
-import '../../data/datasources/data_entry_remote_datasource.dart';
 import '../../data/repositories/data_entry_repository_impl.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
@@ -55,11 +53,7 @@ class DataEntryPage extends StatelessWidget {
       );
     }
 
-    final repository = DataEntryRepositoryImpl(
-      remoteDataSource: DataEntryRemoteDataSourceImpl(
-        apiClient: ApiClient(),
-      ),
-    );
+    final repository = DataEntryRepositoryImpl();
 
     return BlocProvider(
       create: (_) => DataEntryBloc(
