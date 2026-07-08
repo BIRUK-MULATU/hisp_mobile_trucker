@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -54,46 +55,62 @@ class DataEntryTable extends StatelessWidget {
         maxColumns = element.categoryOptionCombos.length;
       }
     }
-    final tableWidth = 140.0 + 90.0 * maxColumns;
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SizedBox(
-        width: tableWidth,
-        // Rows are built lazily — large datasets would otherwise
-        // inflate thousands of text fields at once.
-        child: ListView.builder(
-          itemCount: items.length,
-          itemBuilder: (context, index) {
-            final item = items[index];
-            if (item.columns != null) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Column Headers (one per combo group) ──
-                  _buildColumnHeaders(item.columns!),
-                  const Divider(
-                      height: 1, color: AppColors.divider),
-                ],
-              );
-            }
-            // ── Data Row ────────────────────────────
-            final element = item.element!;
-            return _DataEntryRow(
-              element: element,
-              columns: _columnsFor(element),
-              dataValues: dataValues,
-              orgUnitId: orgUnitId,
-              period: period,
-            );
-          },
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Phone-sized minimums; on wider screens the label column
+        // grows and the cells stretch to fill the viewport so the
+        // table doesn't sit in a narrow strip on tablets.
+        final labelWidth =
+            constraints.maxWidth >= AppBreakpoints.tablet ? 220.0 : 140.0;
+        var cellWidth = 90.0;
+        final naturalWidth = labelWidth + cellWidth * maxColumns;
+        if (constraints.maxWidth > naturalWidth) {
+          cellWidth = ((constraints.maxWidth - labelWidth) / maxColumns)
+              .clamp(90.0, 220.0);
+        }
+        final tableWidth = labelWidth + cellWidth * maxColumns;
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: tableWidth,
+            // Rows are built lazily — large datasets would otherwise
+            // inflate thousands of text fields at once.
+            child: ListView.builder(
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                if (item.columns != null) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Column Headers (one per combo group) ──
+                      _buildColumnHeaders(item.columns!, labelWidth, cellWidth),
+                      const Divider(height: 1, color: AppColors.divider),
+                    ],
+                  );
+                }
+                // ── Data Row ────────────────────────────
+                final element = item.element!;
+                return _DataEntryRow(
+                  element: element,
+                  columns: _columnsFor(element),
+                  dataValues: dataValues,
+                  orgUnitId: orgUnitId,
+                  period: period,
+                  labelWidth: labelWidth,
+                  cellWidth: cellWidth,
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 
-  static List<CategoryOptionCombo> _columnsFor(
-      DataElementEntity element) {
+  static List<CategoryOptionCombo> _columnsFor(DataElementEntity element) {
     if (element.categoryOptionCombos.isNotEmpty) {
       return element.categoryOptionCombos;
     }
@@ -101,16 +118,17 @@ class DataEntryTable extends StatelessWidget {
     return const [CategoryOptionCombo(id: 'default', name: 'Value')];
   }
 
-  Widget _buildColumnHeaders(List<CategoryOptionCombo> columns) {
+  Widget _buildColumnHeaders(
+      List<CategoryOptionCombo> columns, double labelWidth, double cellWidth) {
     return Row(
       children: [
         // ── Empty left cell (row label space) ────────
-        const SizedBox(width: 140),
+        SizedBox(width: labelWidth),
 
         // ── Column headers ────────────────────────────
         ...columns.map(
           (col) => Container(
-            width: 90,
+            width: cellWidth,
             padding: const EdgeInsets.symmetric(
               horizontal: AppDimensions.spaceXS,
               vertical: AppDimensions.spaceSM,
@@ -139,8 +157,7 @@ class _TableItem {
 
   const _TableItem.header(List<CategoryOptionCombo> this.columns)
       : element = null;
-  const _TableItem.row(DataElementEntity this.element)
-      : columns = null;
+  const _TableItem.row(DataElementEntity this.element) : columns = null;
 }
 
 // ── Single Data Row ────────────────────────────────────────────
@@ -150,6 +167,8 @@ class _DataEntryRow extends StatelessWidget {
   final Map<String, DataValueEntity> dataValues;
   final String orgUnitId;
   final String period;
+  final double labelWidth;
+  final double cellWidth;
 
   const _DataEntryRow({
     required this.element,
@@ -157,6 +176,8 @@ class _DataEntryRow extends StatelessWidget {
     required this.dataValues,
     required this.orgUnitId,
     required this.period,
+    required this.labelWidth,
+    required this.cellWidth,
   });
 
   @override
@@ -168,9 +189,8 @@ class _DataEntryRow extends StatelessWidget {
           children: [
             // ── Row Label with blue left border ─────
             Container(
-              width: 140,
-              constraints:
-                  const BoxConstraints(minHeight: 48),
+              width: labelWidth,
+              constraints: const BoxConstraints(minHeight: 48),
               padding: const EdgeInsets.symmetric(
                 horizontal: AppDimensions.spaceSM,
                 vertical: AppDimensions.spaceSM,
@@ -203,7 +223,7 @@ class _DataEntryRow extends StatelessWidget {
               final existing = dataValues[key];
 
               return SizedBox(
-                width: 90,
+                width: cellWidth,
                 child: Padding(
                   padding: const EdgeInsets.all(4),
                   child: DataEntryCell(

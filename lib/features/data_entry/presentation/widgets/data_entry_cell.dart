@@ -33,8 +33,7 @@ class _DataEntryCellState extends State<DataEntryCell> {
   @override
   void initState() {
     super.initState();
-    _controller =
-        TextEditingController(text: widget.initialValue);
+    _controller = TextEditingController(text: widget.initialValue);
     _focusNode = FocusNode();
     _focusNode.addListener(() {
       setState(() => _isFocused = _focusNode.hasFocus);
@@ -44,8 +43,7 @@ class _DataEntryCellState extends State<DataEntryCell> {
   @override
   void didUpdateWidget(DataEntryCell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialValue != widget.initialValue &&
-        !_isFocused) {
+    if (oldWidget.initialValue != widget.initialValue && !_isFocused) {
       _controller.text = widget.initialValue;
     }
   }
@@ -61,13 +59,9 @@ class _DataEntryCellState extends State<DataEntryCell> {
     switch (widget.valueType.toUpperCase()) {
       case 'NUMBER':
         // Decimals allowed; the server validates the full format.
-        return [
-          FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]'))
-        ];
+        return [FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]'))];
       case 'INTEGER':
-        return [
-          FilteringTextInputFormatter.allow(RegExp(r'[0-9\-]'))
-        ];
+        return [FilteringTextInputFormatter.allow(RegExp(r'[0-9\-]'))];
       case 'PERCENTAGE':
       case 'INTEGER_POSITIVE':
       case 'INTEGER_ZERO_OR_POSITIVE':
@@ -92,13 +86,10 @@ class _DataEntryCellState extends State<DataEntryCell> {
   }
 
   BoxDecoration get _cellDecoration => BoxDecoration(
-        color: _isFocused
-            ? AppColors.primarySurface
-            : AppColors.inputBackground,
+        color:
+            _isFocused ? AppColors.primarySurface : AppColors.inputBackground,
         border: Border.all(
-          color: _isFocused
-              ? AppColors.primary
-              : Colors.transparent,
+          color: _isFocused ? AppColors.primary : Colors.transparent,
           width: 1.5,
         ),
       );
@@ -116,8 +107,7 @@ class _DataEntryCellState extends State<DataEntryCell> {
   // crashes with a framework `_dependents.isEmpty` assertion.
   Widget _buildBooleanCell() {
     final current = _controller.text.trim().toLowerCase();
-    final value =
-        (current == 'true' || current == 'false') ? current : '';
+    final value = (current == 'true' || current == 'false') ? current : '';
     final label = value == 'true'
         ? 'Yes'
         : value == 'false'

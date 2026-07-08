@@ -43,7 +43,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
     try {
       final results = await Future.wait([
         _getDataElementsUseCase.call(
-            dataSetId: event.dataSetId),
+            dataSetId: event.dataSetId, sectionId: event.sectionId),
         repository.getDataValues(
           dataSetId: event.dataSetId,
           orgUnitId: event.orgUnitId,
@@ -51,10 +51,8 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
         ),
       ]);
 
-      final dataElements =
-          results[0] as List<DataElementEntity>;
-      final existingValues =
-          results[1] as List<DataValueEntity>;
+      final dataElements = results[0] as List<DataElementEntity>;
+      final existingValues = results[1] as List<DataValueEntity>;
 
       final valueMap = <String, DataValueEntity>{};
       for (final v in existingValues) {
@@ -66,8 +64,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
         dataValues: valueMap,
       ));
     } catch (e) {
-      emit(DataEntryError(
-          e.toString().replaceAll('Exception: ', '')));
+      emit(DataEntryError(e.toString().replaceAll('Exception: ', '')));
     }
   }
 
@@ -77,8 +74,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
   ) {
     if (state is DataEntryLoaded) {
       final current = state as DataEntryLoaded;
-      final key =
-          '${event.dataElementId}_${event.categoryOptionComboId}';
+      final key = '${event.dataElementId}_${event.categoryOptionComboId}';
 
       final updatedValues =
           Map<String, DataValueEntity>.from(current.dataValues);
@@ -113,9 +109,17 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
       final current = state as DataEntryLoaded;
       emit(current.copyWith(isSaving: true));
 
+      // Only the loaded form's values — when a single section is
+      // open, the map also holds the other sections' existing
+      // values, which must not be re-posted on every save.
+      final formElementIds = current.dataElements.map((e) => e.id).toSet();
+      final valuesToSave = current.dataValues.values
+          .where((v) => formElementIds.contains(v.dataElementId))
+          .toList();
+
       try {
         await _saveDataValuesUseCase.call(
-          dataValues: current.dataValues.values.toList(),
+          dataValues: valuesToSave,
           dataSetId: _dataSetId,
           orgUnitId: _orgUnitId,
           period: _period,
@@ -123,8 +127,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
         emit(const DataEntrySaved());
       } catch (e) {
         emit(current.copyWith(isSaving: false));
-        emit(DataEntryError(
-            e.toString().replaceAll('Exception: ', '')));
+        emit(DataEntryError(e.toString().replaceAll('Exception: ', '')));
       }
     }
   }

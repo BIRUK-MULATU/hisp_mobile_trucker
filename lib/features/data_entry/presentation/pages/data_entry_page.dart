@@ -20,6 +20,11 @@ class DataEntryPage extends StatelessWidget {
   final String orgUnitName;
   final String period;
   final String periodType;
+
+  /// When set, the form covers a single dataset section.
+  final String? sectionId;
+  final String? sectionName;
+
   final DataEntryBloc? preloadedBloc;
 
   const DataEntryPage({
@@ -30,6 +35,8 @@ class DataEntryPage extends StatelessWidget {
     required this.orgUnitName,
     required this.period,
     required this.periodType,
+    this.sectionId,
+    this.sectionName,
     this.preloadedBloc,
   });
 
@@ -43,6 +50,8 @@ class DataEntryPage extends StatelessWidget {
         orgUnitName: orgUnitName,
         period: period,
         periodType: periodType,
+        sectionId: sectionId,
+        sectionName: sectionName,
       );
     }
 
@@ -54,15 +63,14 @@ class DataEntryPage extends StatelessWidget {
 
     return BlocProvider(
       create: (_) => DataEntryBloc(
-        getDataElementsUseCase:
-            GetDataElementsUseCase(repository),
-        saveDataValuesUseCase:
-            SaveDataValuesUseCase(repository),
+        getDataElementsUseCase: GetDataElementsUseCase(repository),
+        saveDataValuesUseCase: SaveDataValuesUseCase(repository),
         repository: repository,
       )..add(DataEntryLoad(
           dataSetId: dataSetId,
           orgUnitId: orgUnitId,
           period: period,
+          sectionId: sectionId,
         )),
       child: _DataEntryView(
         dataSetId: dataSetId,
@@ -71,6 +79,8 @@ class DataEntryPage extends StatelessWidget {
         orgUnitName: orgUnitName,
         period: period,
         periodType: periodType,
+        sectionId: sectionId,
+        sectionName: sectionName,
       ),
     );
   }
@@ -83,6 +93,8 @@ class _DataEntryView extends StatefulWidget {
   final String orgUnitName;
   final String period;
   final String periodType;
+  final String? sectionId;
+  final String? sectionName;
 
   const _DataEntryView({
     required this.dataSetId,
@@ -91,6 +103,8 @@ class _DataEntryView extends StatefulWidget {
     required this.orgUnitName,
     required this.period,
     required this.periodType,
+    this.sectionId,
+    this.sectionName,
   });
 
   @override
@@ -120,6 +134,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
       dataSetId: widget.dataSetId,
       orgUnitId: widget.orgUnitId,
       period: widget.period,
+      sectionId: widget.sectionId,
     ));
   }
 
@@ -133,8 +148,14 @@ class _DataEntryViewState extends State<_DataEntryView> {
       // Save data values via use case directly
       final state = bloc.state;
       if (state is DataEntryLoaded) {
+        // Only the loaded form's values — with a single section
+        // open the map also holds the other sections' existing
+        // values, which must not be re-posted.
+        final formElementIds = state.dataElements.map((e) => e.id).toSet();
         await bloc.repository.saveDataValues(
-          dataValues: state.dataValues.values.toList(),
+          dataValues: state.dataValues.values
+              .where((v) => formElementIds.contains(v.dataElementId))
+              .toList(),
           dataSetId: widget.dataSetId,
           orgUnitId: widget.orgUnitId,
           period: widget.period,
@@ -212,8 +233,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                 // Not now
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () =>
-                        Navigator.pop(ctx, false),
+                    onPressed: () => Navigator.pop(ctx, false),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primary,
                       side: const BorderSide(
@@ -221,8 +241,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
                         width: 1.5,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                            AppDimensions.radiusFull),
+                        borderRadius:
+                            BorderRadius.circular(AppDimensions.radiusFull),
                       ),
                       padding: const EdgeInsets.symmetric(
                           vertical: AppDimensions.spaceMD),
@@ -230,27 +250,24 @@ class _DataEntryViewState extends State<_DataEntryView> {
                     child: Text(
                       'Not now',
                       style: AppTextStyles.buttonMedium
-                          .copyWith(
-                              color: AppColors.primary),
+                          .copyWith(color: AppColors.primary),
                     ),
                   ),
                 ),
 
-                const SizedBox(
-                    width: AppDimensions.spaceMD),
+                const SizedBox(width: AppDimensions.spaceMD),
 
                 // Complete
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () =>
-                        Navigator.pop(ctx, true),
+                    onPressed: () => Navigator.pop(ctx, true),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                            AppDimensions.radiusFull),
+                        borderRadius:
+                            BorderRadius.circular(AppDimensions.radiusFull),
                       ),
                       padding: const EdgeInsets.symmetric(
                           vertical: AppDimensions.spaceMD),
@@ -275,17 +292,15 @@ class _DataEntryViewState extends State<_DataEntryView> {
       // User chose Complete
       setState(() => _isCompleting = true);
       try {
-        await context.read<DataEntryBloc>().repository
-            .completeDataSet(
-          dataSetId: widget.dataSetId,
-          orgUnitId: widget.orgUnitId,
-          period: widget.period,
-        );
+        await context.read<DataEntryBloc>().repository.completeDataSet(
+              dataSetId: widget.dataSetId,
+              orgUnitId: widget.orgUnitId,
+              period: widget.period,
+            );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content:
-                  Text('Data set completed successfully!'),
+              content: Text('Data set completed successfully!'),
               backgroundColor: AppColors.success,
               behavior: SnackBarBehavior.floating,
             ),
@@ -337,20 +352,18 @@ class _DataEntryViewState extends State<_DataEntryView> {
         backgroundColor: AppColors.primary,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: Colors.white),
+          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          widget.dataSetName,
+          widget.sectionName ?? widget.dataSetName,
           style: AppTextStyles.appBarTitle,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.sync_rounded,
-                color: Colors.white),
+            icon: const Icon(Icons.sync_rounded, color: Colors.white),
             tooltip: 'Reload values',
             onPressed: _onSyncTapped,
           ),
@@ -365,29 +378,26 @@ class _DataEntryViewState extends State<_DataEntryView> {
             period: widget.period,
             orgUnitName: widget.orgUnitName,
           ),
-          const Divider(
-              height: 1, color: AppColors.divider),
+          const Divider(height: 1, color: AppColors.divider),
 
           // ── Table ─────────────────────────────────
           Expanded(
-            child:
-                BlocBuilder<DataEntryBloc, DataEntryState>(
+            child: BlocBuilder<DataEntryBloc, DataEntryState>(
               builder: (context, state) {
                 if (state is DataEntryLoading) {
-                  return const AppLoader(
-                      message: 'Loading form...');
+                  return const AppLoader(message: 'Loading form...');
                 }
                 if (state is DataEntryError) {
                   return _ErrorView(
                     message: state.message,
-                    onRetry: () =>
-                        context.read<DataEntryBloc>().add(
-                              DataEntryLoad(
-                                dataSetId: widget.dataSetId,
-                                orgUnitId: widget.orgUnitId,
-                                period: widget.period,
-                              ),
-                            ),
+                    onRetry: () => context.read<DataEntryBloc>().add(
+                          DataEntryLoad(
+                            dataSetId: widget.dataSetId,
+                            orgUnitId: widget.orgUnitId,
+                            period: widget.period,
+                            sectionId: widget.sectionId,
+                          ),
+                        ),
                   );
                 }
                 if (state is DataEntryLoaded) {
@@ -409,8 +419,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
 
       // ── Save FAB ──────────────────────────────────
       floatingActionButton: FloatingActionButton(
-        onPressed:
-            (_isSaving || _isCompleting) ? null : _onSaveTapped,
+        onPressed: (_isSaving || _isCompleting) ? null : _onSaveTapped,
         backgroundColor: AppColors.primary,
         elevation: 4,
         shape: const CircleBorder(),
@@ -437,8 +446,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
 class _SubHeader extends StatelessWidget {
   final String period;
   final String orgUnitName;
-  const _SubHeader(
-      {required this.period, required this.orgUnitName});
+  const _SubHeader({required this.period, required this.orgUnitName});
 
   @override
   Widget build(BuildContext context) {
@@ -477,8 +485,7 @@ class _SubHeader extends StatelessWidget {
 class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
-  const _ErrorView(
-      {required this.message, required this.onRetry});
+  const _ErrorView({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -489,15 +496,13 @@ class _ErrorView extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.error_outline_rounded,
-                size: AppDimensions.iconHuge,
-                color: AppColors.textSecondary),
+                size: AppDimensions.iconHuge, color: AppColors.textSecondary),
             const SizedBox(height: AppDimensions.spaceLG),
             const Text('Could not load form',
                 style: AppTextStyles.headingSmall),
             const SizedBox(height: AppDimensions.spaceSM),
             Text(message,
-                style: AppTextStyles.bodySmall,
-                textAlign: TextAlign.center),
+                style: AppTextStyles.bodySmall, textAlign: TextAlign.center),
             const SizedBox(height: AppDimensions.spaceXXL),
             ElevatedButton.icon(
               onPressed: onRetry,

@@ -5,8 +5,8 @@ import 'package:hisp_mobile_trucker/features/data_entry/domain/entities/data_ele
 import 'package:hisp_mobile_trucker/features/data_entry/domain/repositories/data_entry_repository.dart';
 import 'package:hisp_mobile_trucker/features/data_entry/domain/usecases/save_data_values_usecase.dart';
 import 'package:hisp_mobile_trucker/features/data_entry/presentation/widgets/data_entry_table.dart';
-import 'package:hisp_mobile_trucker/features/home/domain/entities/dataset_entity.dart';
-import 'package:hisp_mobile_trucker/features/home/presentation/widgets/dataset_card.dart';
+import 'package:hisp_mobile_trucker/features/capture/domain/entities/dataset_entity.dart';
+import 'package:hisp_mobile_trucker/features/capture/presentation/widgets/dataset_card.dart';
 
 class _FakeDataEntryRepository implements DataEntryRepository {
   List<DataValueEntity>? savedValues;
@@ -23,7 +23,7 @@ class _FakeDataEntryRepository implements DataEntryRepository {
 
   @override
   Future<List<DataElementEntity>> getDataElements(
-          {required String dataSetId}) =>
+          {required String dataSetId, String? sectionId}) =>
       throw UnimplementedError();
 
   @override
@@ -89,6 +89,35 @@ void main() {
   });
 
   group('DataSetCard', () {
+    testWidgets(
+        'fits a long two-line title inside a narrow grid tile '
+        'without overflowing', (tester) async {
+      // Mirrors the dataset grid: fixed 128px tile, narrow width.
+      // The test framework fails on any RenderFlex overflow.
+      const dataSet = DataSetEntity(
+        id: 'ds1',
+        name: '05.2 - Nutrition | Hospital, Health center, '
+            'Comprehensive HP, Clinic | Monthly',
+        periodType: 'Monthly',
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 280,
+                height: 128,
+                child: DataSetCard(dataSet: dataSet),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('shows the dataset name and both sync chips',
         (tester) async {
       const dataSet = DataSetEntity(
