@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/theme/app_dimensions.dart';
+import '../../../../shared/widgets/connectivity_indicator.dart';
 
 class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onMenuTap;
@@ -97,6 +98,9 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
       centerTitle: false,
       actions: [
+        // ── Online/offline pill ────────────────
+        if (!searchActive) const ConnectivityIndicator(),
+
         // ── Search Button ──────────────────────
         IconButton(
           icon: Icon(

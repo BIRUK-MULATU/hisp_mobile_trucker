@@ -125,6 +125,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
           orgUnitId: r.orgUnitUid,
           period: r.period,
           value: r.value ?? '',
+          syncError: r.syncState == SyncState.error ? r.syncError : null,
         ),
     ];
   }

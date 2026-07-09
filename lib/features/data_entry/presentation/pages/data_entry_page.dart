@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../../core/utils/ethiopian_calendar.dart';
+import '../../../../core/data/ethiopian_period_service.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
+import '../../../../shared/widgets/connectivity_indicator.dart';
 import '../../data/repositories/data_entry_repository_impl.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
@@ -356,6 +357,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
+          const ConnectivityIndicator(),
           IconButton(
             icon: const Icon(Icons.sync_rounded, color: Colors.white),
             tooltip: 'Reload values',
@@ -452,7 +454,7 @@ class _SubHeader extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            EthiopianCalendar.formatPeriodId(period),
+            EthiopianPeriodService.formatPeriodId(period),
             style: AppTextStyles.bodyMedium.copyWith(
               color: AppColors.primary,
               fontWeight: FontWeight.w600,
