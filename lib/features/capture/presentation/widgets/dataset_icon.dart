@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../../core/network/api_client.dart';
+import '../../../../core/auth/app_session.dart';
 import '../../domain/entities/dataset_entity.dart';
 import 'dataset_icon_helper.dart';
 
@@ -27,9 +27,12 @@ class DataSetIcon extends StatelessWidget {
   static Future<Uint8List?> _fetch(String iconKey) {
     return _cache.putIfAbsent(iconKey, () async {
       try {
-        // ApiClient's interceptor attaches the Basic auth header.
-        final response = await ApiClient().get(
-          '/icons/$iconKey/icon.svg',
+        // The per-session client carries the auth; logged out (or
+        // session not attached yet) just means the fallback icon.
+        final api = AppSession.instance.api;
+        if (api == null) return null;
+        final response = await api.get(
+          '/api/icons/$iconKey/icon.svg',
           options: Options(responseType: ResponseType.bytes),
         );
         if (response.statusCode == 200 && response.data is List<int>) {

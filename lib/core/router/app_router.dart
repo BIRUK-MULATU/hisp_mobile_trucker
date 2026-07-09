@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/app_session.dart';
@@ -18,7 +19,7 @@ class AppRouter {
   // ── Router ─────────────────────────────────────────────────
   static final GoRouter router = GoRouter(
     initialLocation: login,
-    debugLogDiagnostics: true,
+    debugLogDiagnostics: kDebugMode,
     // Auth guard: every screen except login requires an active session.
     // AppSession notifies on login/logout so this re-evaluates.
     refreshListenable: AppSession.instance,
