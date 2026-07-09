@@ -8,10 +8,15 @@ class DataEntryLoad extends DataEntryEvent {
   final String dataSetId;
   final String orgUnitId;
   final String period;
+
+  /// Restricts the form to one dataset section; null = whole dataset.
+  final String? sectionId;
+
   const DataEntryLoad({
     required this.dataSetId,
     required this.orgUnitId,
     required this.period,
+    this.sectionId,
   });
 }
 

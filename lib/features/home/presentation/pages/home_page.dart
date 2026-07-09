@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/auth/app_session.dart';
+import '../../../../core/data/completeness.dart';
+import '../../../../core/data/data_value_store.dart';
+import '../../../../core/network/connectivity_service.dart';
+import '../../../../core/sync/drift_sync_manager.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
@@ -8,51 +12,31 @@ import '../../../../core/storage/secure_storage.dart';
 import '../../../auth/data/datasources/auth_remote_datasource.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
 import '../../../auth/domain/usecases/logout_usecase.dart';
+import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
-import '../../../../shared/widgets/app_loader.dart';
-import '../../../dataset_detail/presentation/pages/dataset_detail_page.dart';
-import '../../data/datasources/home_remote_datasource.dart';
-import '../../domain/entities/dataset_entity.dart';
-import '../../data/repositories/home_repository_impl.dart';
-import '../../domain/usecases/get_datasets_usecase.dart';
-import '../../domain/usecases/sync_dataset_usecase.dart';
-import '../bloc/home_bloc.dart';
-import '../widgets/dataset_card.dart';
-import '../widgets/home_app_bar.dart';
 import '../../../../shared/widgets/filter_panel.dart';
+import '../../../capture/presentation/views/capture_org_unit_view.dart';
+import '../widgets/home_app_bar.dart';
 
-class HomePage extends StatelessWidget {
+/// Home is a shell with two modes behind a toggle:
+/// Visualization (left) and Capture (right). Capture starts the
+/// org unit → dataset → section → period → data entry workflow.
+enum HomeMode { visualization, capture }
+
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final apiClient = ApiClient();
-    final remoteDataSource =
-        HomeRemoteDataSourceImpl(apiClient: apiClient);
-    final repository =
-        HomeRepositoryImpl(remoteDataSource: remoteDataSource);
-
-    return BlocProvider(
-      create: (_) => HomeBloc(
-        getDataSetsUseCase: GetDataSetsUseCase(repository),
-        syncDataSetUseCase: SyncDataSetUseCase(repository),
-      )..add(const HomeLoadDataSets()),
-      child: const _HomeView(),
-    );
-  }
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _HomeView extends StatefulWidget {
-  const _HomeView();
-
-  @override
-  State<_HomeView> createState() => _HomeViewState();
-}
-
-class _HomeViewState extends State<_HomeView> {
+class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  HomeMode _mode = HomeMode.visualization;
+
+  // ── App-bar controls (search / sync / filters) ─────────────
   bool _showFilters = false;
   bool _searchActive = false;
   String _searchQuery = '';
@@ -60,139 +44,318 @@ class _HomeViewState extends State<_HomeView> {
   AppliedFilter? _orgUnitFilter;
   AppliedFilter? _syncFilter;
 
+  // Bumped after a sync — remounts the capture view so the sync
+  // chips and org unit tree reflect the new local state.
+  int _syncTick = 0;
+  bool _isSyncing = false;
+
+  Future<void> _onSyncTapped() async {
+    if (_isSyncing) return;
+    final session = AppSession.instance;
+    if (!session.isLoggedIn) return;
+
+    // Sync results are only visible in Capture mode.
+    setState(() => _mode = HomeMode.capture);
+
+    final db = session.service.db;
+    final store = DataValueStore(db);
+    final pendingValues = await store.pendingCount();
+    final pendingCompletions = (await CompletenessStore(db).pending()).length;
+    final pendingTotal = pendingValues + pendingCompletions;
+
+    // Fresh reachability probe — the cached flag can be up to 30s stale.
+    await ConnectivityService.instance.checkNow();
+    final online = ConnectivityService.instance.online ?? false;
+    if (!mounted) return;
+
+    if (!online) {
+      _showSyncMessage(
+        pendingTotal > 0
+            ? 'No internet connection — $pendingTotal unsynced '
+                '${pendingTotal == 1 ? 'entry' : 'entries'} will upload '
+                'automatically when you are back online.'
+            : 'No internet connection.',
+        color: AppColors.error,
+      );
+      return;
+    }
+    if (pendingTotal == 0) {
+      _showSyncMessage('Everything is already synced.',
+          color: AppColors.success);
+      return;
+    }
+
+    setState(() => _isSyncing = true);
+    try {
+      await DriftSyncManager.instance.pushPending();
+      // Refresh metadata too, but a metadata hiccup must not mask a
+      // successful upload.
+      try {
+        await DriftSyncManager.instance.pullLatest();
+      } catch (e) {
+        debugPrint('metadata refresh after sync failed: $e');
+      }
+      final remaining = await store.pendingCount() +
+          (await CompletenessStore(db).pending()).length;
+      if (!mounted) return;
+      if (remaining == 0) {
+        _showSyncMessage(
+          'Sync complete — $pendingTotal '
+          '${pendingTotal == 1 ? 'entry' : 'entries'} uploaded.',
+          color: AppColors.success,
+        );
+      } else {
+        _showSyncMessage(
+          '$remaining of $pendingTotal entries could not be uploaded '
+          'and will retry later.',
+          color: AppColors.warning,
+        );
+      }
+    } catch (e) {
+      debugPrint('manual sync failed: $e');
+      if (mounted) {
+        _showSyncMessage(
+          'Sync failed — your entries are safe on this device and '
+          'will retry automatically.',
+          color: AppColors.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+          _syncTick++;
+        });
+      }
+    }
+  }
+
+  void _showSyncMessage(String message, {required Color color}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+      ));
+  }
+
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<HomeBloc, HomeState>(
-      builder: (context, state) {
-        final isSyncing = state is HomeLoaded && state.isSyncing;
-        return Scaffold(
-          key: _scaffoldKey,
-          backgroundColor: AppColors.backgroundGrey,
-          appBar: HomeAppBar(
-            isSyncing: isSyncing,
-            searchActive: _searchActive,
-            onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
-            onSyncTap: () =>
-                context.read<HomeBloc>().add(const HomeSyncAll()),
-            onListViewTap: () =>
-                setState(() => _showFilters = !_showFilters),
-            onSearchTap: () => setState(() {
-              _searchActive = !_searchActive;
-              if (!_searchActive) _searchQuery = '';
-            }),
-            onSearchChanged: (query) =>
-                setState(() => _searchQuery = query),
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: Colors.white,
+      appBar: HomeAppBar(
+        searchActive: _searchActive,
+        filtersShown: _showFilters,
+        isSyncing: _isSyncing,
+        searchHint: 'Search organisation units...',
+        onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
+        onSyncTap: _onSyncTapped,
+        onListViewTap: () => setState(() => _showFilters = !_showFilters),
+        onSearchTap: () => setState(() {
+          _searchActive = !_searchActive;
+          if (!_searchActive) {
+            _searchQuery = '';
+          } else {
+            // Searching targets the org unit tree — make it visible.
+            _mode = HomeMode.capture;
+          }
+        }),
+        onSearchChanged: (query) => setState(() => _searchQuery = query),
+      ),
+      drawer: const _HomeDrawer(),
+      body: Column(
+        children: [
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            child: _showFilters
+                ? FilterPanel(
+                    dateFilter: _dateFilter,
+                    orgUnitFilter: _orgUnitFilter,
+                    syncFilter: _syncFilter,
+                    onDateChanged: (f) => setState(() => _dateFilter = f),
+                    onOrgUnitChanged: (f) => setState(() => _orgUnitFilter = f),
+                    onSyncChanged: (f) => setState(() => _syncFilter = f),
+                  )
+                : const SizedBox.shrink(),
           ),
-          drawer: const _HomeDrawer(),
-          body: Column(
-            children: [
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                child: _showFilters
-                    ? FilterPanel(
-                        dateFilter: _dateFilter,
-                        orgUnitFilter: _orgUnitFilter,
-                        syncFilter: _syncFilter,
-                        onDateChanged: (f) =>
-                            setState(() => _dateFilter = f),
-                        onOrgUnitChanged: (f) =>
-                            setState(() => _orgUnitFilter = f),
-                        onSyncChanged: (f) =>
-                            setState(() => _syncFilter = f),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-              Expanded(child: _buildBody(context, state)),
-            ],
+          // The toggle stays a hand-sized pill even on wide screens.
+          ResponsiveContent(
+            maxWidth: AppBreakpoints.formMaxWidth,
+            child: _ModeToggleBar(
+              mode: _mode,
+              onChanged: (mode) => setState(() => _mode = mode),
+            ),
           ),
-        );
-      },
-    );
-  }
-
-  List<DataSetEntity> _applyFilters(List<DataSetEntity> dataSets) {
-    var result = dataSets;
-
-    // ── Search ──────────────────────────────────────────
-    final query = _searchQuery.trim().toLowerCase();
-    if (query.isNotEmpty) {
-      result = result
-          .where((d) => d.name.toLowerCase().contains(query))
-          .toList();
-    }
-
-    // ── Sync status ─────────────────────────────────────
-    // The panel stores multi-selections as a comma-joined label
-    // ("Synced, UnSynced"). Options with no data equivalent yet
-    // (Sync Error, SMS Synced) match nothing.
-    final syncLabels = _syncFilter?.label.split(', ').toSet();
-    if (syncLabels != null && syncLabels.isNotEmpty) {
-      result = result.where((d) {
-        final isSynced = d.syncStatus == SyncStatus.synced;
-        return (syncLabels.contains('Synced') && isSynced) ||
-            (syncLabels.contains('UnSynced') && !isSynced);
-      }).toList();
-    }
-
-    // Date and org unit filters are not applied yet: datasets carry
-    // no date, and org unit assignments aren't fetched. Wire them
-    // here once that data exists (see _dateFilter/_orgUnitFilter).
-    return result;
-  }
-
-  Widget _buildBody(BuildContext context, HomeState state) {
-    if (state is HomeLoading) {
-      return const AppLoader(message: 'Loading datasets...');
-    }
-    if (state is HomeError) {
-      return _ErrorView(
-        message: state.message,
-        onRetry: () =>
-            context.read<HomeBloc>().add(const HomeLoadDataSets()),
-      );
-    }
-    if (state is HomeLoaded) {
-      if (state.dataSets.isEmpty) return const _EmptyView();
-      final dataSets = _applyFilters(state.dataSets);
-      if (dataSets.isEmpty) return const _EmptyView();
-      return RefreshIndicator(
-        color: AppColors.primary,
-        onRefresh: () async {
-          context.read<HomeBloc>().add(const HomeRefresh());
-          await Future.delayed(const Duration(seconds: 1));
-        },
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(
-              vertical: AppDimensions.spaceMD),
-          itemCount: dataSets.length,
-          itemBuilder: (context, index) {
-            final dataSet = dataSets[index];
-            return DataSetCard(
-              dataSet: dataSet,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => DatasetDetailPage(
-                      dataSetId: dataSet.id,
-                      dataSetName: dataSet.name,
-                      periodType: dataSet.periodType, // ← pass it
+          const Divider(height: 1, color: AppColors.divider),
+          Expanded(
+            child: ResponsiveContent(
+              child: _mode == HomeMode.visualization
+                  ? const _VisualizationPlaceholder()
+                  : CaptureOrgUnitView(
+                      key: ValueKey('capture-$_syncTick'),
+                      searchQuery: _searchActive ? _searchQuery : null,
                     ),
-                  ),
-                );
-              },
-              onSync: () => context
-                  .read<HomeBloc>()
-                  .add(HomeSyncDataSet(dataSet.id)),
-            );
-          },
-        ),
-      );
-    }
-    return const SizedBox.shrink();
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
+// ── Mode toggle bar ────────────────────────────────────────────
+class _ModeToggleBar extends StatelessWidget {
+  final HomeMode mode;
+  final ValueChanged<HomeMode> onChanged;
+
+  const _ModeToggleBar({required this.mode, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.space,
+        vertical: AppDimensions.spaceSM,
+      ),
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundGrey,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+          border: Border.all(color: AppColors.divider),
+        ),
+        child: Row(
+          children: [
+            _ModeButton(
+              label: 'Visualization',
+              icon: Icons.insights_rounded,
+              isActive: mode == HomeMode.visualization,
+              onTap: () => onChanged(HomeMode.visualization),
+            ),
+            _ModeButton(
+              label: 'Capture',
+              icon: Icons.edit_note_rounded,
+              isActive: mode == HomeMode.capture,
+              onTap: () => onChanged(HomeMode.capture),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _ModeButton({
+    required this.label,
+    required this.icon,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: AppConstants.animNormal),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+            boxShadow: [
+              if (isActive)
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: AppDimensions.iconMD,
+                color: isActive ? Colors.white : AppColors.textSecondary,
+              ),
+              const SizedBox(width: AppDimensions.spaceXS),
+              Text(
+                label,
+                style: AppTextStyles.labelMedium.copyWith(
+                  color: isActive ? Colors.white : AppColors.textSecondary,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Visualization placeholder ──────────────────────────────────
+class _VisualizationPlaceholder extends StatelessWidget {
+  const _VisualizationPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppDimensions.spaceXXXL),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              decoration: const BoxDecoration(
+                color: AppColors.primarySurface,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.insights_rounded,
+                size: 48,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: AppDimensions.spaceXL),
+            const Text(
+              'Visualizations coming soon',
+              style: AppTextStyles.headingSmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppDimensions.spaceSM),
+            Text(
+              'Dashboards and charts for your organisation unit '
+              'will appear here.\nSwitch to Capture to start '
+              'entering data.',
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.6,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Drawer (unchanged behavior) ────────────────────────────────
 class _HomeDrawer extends StatelessWidget {
   const _HomeDrawer();
 
@@ -227,8 +390,8 @@ class _HomeDrawer extends StatelessWidget {
             ),
             SizedBox(width: AppDimensions.space),
             Expanded(
-              child: Text(AppConstants.appName,
-                  style: AppTextStyles.headingSmall),
+              child:
+                  Text(AppConstants.appName, style: AppTextStyles.headingSmall),
             ),
           ],
         ),
@@ -344,8 +507,7 @@ class _HomeDrawer extends StatelessWidget {
 
           // ── About section between dividers ─────────────────
           const Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: AppDimensions.spaceLG),
+            padding: EdgeInsets.symmetric(horizontal: AppDimensions.spaceLG),
             child: Divider(color: Colors.black45, height: 1),
           ),
           _DrawerItem(
@@ -358,8 +520,7 @@ class _HomeDrawer extends StatelessWidget {
             },
           ),
           const Padding(
-            padding: EdgeInsets.symmetric(
-                horizontal: AppDimensions.spaceLG),
+            padding: EdgeInsets.symmetric(horizontal: AppDimensions.spaceLG),
             child: Divider(color: Colors.black45, height: 1),
           ),
         ],
@@ -406,76 +567,11 @@ class _DrawerItem extends StatelessWidget {
                     ),
                   )
                 : Icon(icon,
-                    color: AppColors.primary,
-                    size: AppDimensions.iconXL),
+                    color: AppColors.primary, size: AppDimensions.iconXL),
             const SizedBox(width: AppDimensions.spaceLG),
             Text(label, style: AppTextStyles.bodyLarge),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.spaceXXL),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.cloud_off_rounded,
-                size: AppDimensions.iconHuge,
-                color: AppColors.textSecondary),
-            const SizedBox(height: AppDimensions.spaceLG),
-            const Text('Could not load datasets',
-                style: AppTextStyles.headingSmall,
-                textAlign: TextAlign.center),
-            const SizedBox(height: AppDimensions.spaceSM),
-            Text(message,
-                style: AppTextStyles.bodySmall,
-                textAlign: TextAlign.center),
-            const SizedBox(height: AppDimensions.spaceXXL),
-            ElevatedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Try Again'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyView extends StatelessWidget {
-  const _EmptyView();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.folder_open_rounded,
-              size: AppDimensions.iconHuge,
-              color: AppColors.textSecondary),
-          SizedBox(height: AppDimensions.spaceLG),
-          Text('No datasets found',
-              style: AppTextStyles.headingSmall),
-          SizedBox(height: AppDimensions.spaceSM),
-          Text(
-            'Check your server connection\nor contact your administrator.',
-            style: AppTextStyles.bodySmall,
-            textAlign: TextAlign.center,
-          ),
-        ],
       ),
     );
   }

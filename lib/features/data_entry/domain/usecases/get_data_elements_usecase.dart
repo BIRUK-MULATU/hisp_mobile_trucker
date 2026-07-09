@@ -7,7 +7,9 @@ class GetDataElementsUseCase {
 
   Future<List<DataElementEntity>> call({
     required String dataSetId,
+    String? sectionId,
   }) async {
-    return await _repository.getDataElements(dataSetId: dataSetId);
+    return await _repository.getDataElements(
+        dataSetId: dataSetId, sectionId: sectionId);
   }
 }

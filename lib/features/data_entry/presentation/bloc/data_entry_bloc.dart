@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/data/value_type_validator.dart';
 import '../../domain/entities/data_element_entity.dart';
 import '../../domain/repositories/data_entry_repository.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
@@ -6,6 +7,22 @@ import '../../domain/usecases/save_data_values_usecase.dart';
 
 part 'data_entry_event.dart';
 part 'data_entry_state.dart';
+
+/// "Element — problem" for every user-EDITED value in the loaded form
+/// that violates its element's valueType. Values that arrived from the
+/// server unedited are not judged here.
+List<String> invalidEditedValues(DataEntryLoaded state) {
+  final typeOf = {for (final e in state.dataElements) e.id: e};
+  final problems = <String>[];
+  for (final v in state.dataValues.values) {
+    if (!v.isModified) continue;
+    final element = typeOf[v.dataElementId];
+    if (element == null) continue; // not part of the loaded form
+    final why = validateDataValue(element.valueType, v.value);
+    if (why != null) problems.add('${element.displayName}: $why');
+  }
+  return problems;
+}
 
 class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
   final GetDataElementsUseCase _getDataElementsUseCase;
@@ -43,7 +60,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
     try {
       final results = await Future.wait([
         _getDataElementsUseCase.call(
-            dataSetId: event.dataSetId),
+            dataSetId: event.dataSetId, sectionId: event.sectionId),
         repository.getDataValues(
           dataSetId: event.dataSetId,
           orgUnitId: event.orgUnitId,
@@ -51,10 +68,8 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
         ),
       ]);
 
-      final dataElements =
-          results[0] as List<DataElementEntity>;
-      final existingValues =
-          results[1] as List<DataValueEntity>;
+      final dataElements = results[0] as List<DataElementEntity>;
+      final existingValues = results[1] as List<DataValueEntity>;
 
       final valueMap = <String, DataValueEntity>{};
       for (final v in existingValues) {
@@ -66,8 +81,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
         dataValues: valueMap,
       ));
     } catch (e) {
-      emit(DataEntryError(
-          e.toString().replaceAll('Exception: ', '')));
+      emit(DataEntryError(e.toString().replaceAll('Exception: ', '')));
     }
   }
 
@@ -77,8 +91,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
   ) {
     if (state is DataEntryLoaded) {
       final current = state as DataEntryLoaded;
-      final key =
-          '${event.dataElementId}_${event.categoryOptionComboId}';
+      final key = '${event.dataElementId}_${event.categoryOptionComboId}';
 
       final updatedValues =
           Map<String, DataValueEntity>.from(current.dataValues);
@@ -87,6 +100,9 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
       if (existing != null) {
         existing.value = event.value;
         existing.isModified = true;
+        // Editing a rejected cell resolves it: saving re-queues the
+        // value as pending, so the stale server error no longer applies.
+        existing.syncError = null;
       } else {
         updatedValues[key] = DataValueEntity(
           dataElementId: event.dataElementId,
@@ -111,11 +127,30 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
   ) async {
     if (state is DataEntryLoaded) {
       final current = state as DataEntryLoaded;
+
+      // Same value-type gate as the page's save button — no path may
+      // queue an invalid value.
+      final invalid = invalidEditedValues(current);
+      if (invalid.isNotEmpty) {
+        emit(current.copyWith(isSaving: false));
+        emit(DataEntryError(
+            'Invalid values not saved: ${invalid.join('; ')}'));
+        return;
+      }
+
       emit(current.copyWith(isSaving: true));
+
+      // Only the loaded form's values — when a single section is
+      // open, the map also holds the other sections' existing
+      // values, which must not be re-posted on every save.
+      final formElementIds = current.dataElements.map((e) => e.id).toSet();
+      final valuesToSave = current.dataValues.values
+          .where((v) => formElementIds.contains(v.dataElementId))
+          .toList();
 
       try {
         await _saveDataValuesUseCase.call(
-          dataValues: current.dataValues.values.toList(),
+          dataValues: valuesToSave,
           dataSetId: _dataSetId,
           orgUnitId: _orgUnitId,
           period: _period,
@@ -123,8 +158,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
         emit(const DataEntrySaved());
       } catch (e) {
         emit(current.copyWith(isSaving: false));
-        emit(DataEntryError(
-            e.toString().replaceAll('Exception: ', '')));
+        emit(DataEntryError(e.toString().replaceAll('Exception: ', '')));
       }
     }
   }

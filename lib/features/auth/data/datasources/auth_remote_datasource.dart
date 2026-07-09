@@ -57,7 +57,6 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       }
 
       if (response.statusCode == 200 && data is Map<String, dynamic>) {
-        await _secureStorage.saveToken(token);
         await _secureStorage.saveUsername(username);
         await _secureStorage.saveUserData(data);
 

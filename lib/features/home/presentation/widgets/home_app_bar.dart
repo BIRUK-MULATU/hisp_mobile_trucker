@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/theme/app_dimensions.dart';
+import '../../../../shared/widgets/connectivity_indicator.dart';
 
 class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback? onMenuTap;
@@ -12,6 +13,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool isSyncing;
   final bool filtersShown;
   final bool searchActive;
+  final String searchHint;
 
   const HomeAppBar({
     super.key,
@@ -23,6 +25,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.isSyncing = false,
     this.filtersShown = false,
     this.searchActive = false,
+    this.searchHint = 'Search...',
   });
 
   @override
@@ -72,7 +75,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                   // pill container shows through.
                   filled: false,
                   isDense: true,
-                  hintText: 'Search datasets...',
+                  hintText: searchHint,
                   hintStyle: AppTextStyles.bodyLarge.copyWith(
                     color: Colors.black38,
                   ),
@@ -95,6 +98,9 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
       centerTitle: false,
       actions: [
+        // ── Online/offline pill ────────────────
+        if (!searchActive) const ConnectivityIndicator(),
+
         // ── Search Button ──────────────────────
         IconButton(
           icon: Icon(
@@ -103,7 +109,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             size: AppDimensions.iconLG,
           ),
           onPressed: onSearchTap,
-          tooltip: searchActive ? 'Close search' : 'Search datasets',
+          tooltip: searchActive ? 'Close search' : 'Search',
         ),
 
         // ── Sync Button (hidden while searching) ─

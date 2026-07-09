@@ -8,6 +8,7 @@ import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/widgets/server_url_dialog.dart';
 import '../../../auth/data/datasources/auth_remote_datasource.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
 import '../../../auth/domain/usecases/logout_usecase.dart';
@@ -49,68 +50,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _editServerUrl() async {
-    final controller = TextEditingController(text: _serverUrl);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimensions.radiusXL),
-        ),
-        title: const Row(
-          children: [
-            _TileIcon(icon: Icons.dns_rounded, color: AppColors.primary),
-            SizedBox(width: AppDimensions.spaceMD),
-            Expanded(
-              child: Text('DHIS2 Server',
-                  style: AppTextStyles.headingSmall),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'The app will send and fetch data from this server.',
-              style: AppTextStyles.bodySmall
-                  .copyWith(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: AppDimensions.spaceMD),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              autofocus: true,
-              style: AppTextStyles.bodyMedium,
-              decoration: const InputDecoration(
-                hintText: 'http://server:port/api',
-                prefixIcon: Icon(Icons.link_rounded,
-                    size: AppDimensions.iconMD),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-
-    final url = result?.trim();
-    if (url == null || url.isEmpty || url == _serverUrl) return;
-
-    await _secureStorage.saveBaseUrl(url);
-    ApiClient().updateBaseUrl(url);
-    if (!mounted) return;
+    final url = await showServerUrlDialog(context);
+    if (url == null || !mounted) return;
     setState(() => _serverUrl = url);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(

@@ -5,10 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/storage/secure_storage.dart';
+import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
+import '../../../../shared/widgets/connectivity_indicator.dart';
+import '../../../../shared/widgets/server_url_dialog.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/usecases/login_usecase.dart';
@@ -89,8 +92,7 @@ class _LoginBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final topSectionHeight =
-        screenHeight * AppDimensions.loginTopSectionRatio;
+    final topSectionHeight = screenHeight * AppDimensions.loginTopSectionRatio;
 
     return Stack(
       children: [
@@ -108,6 +110,36 @@ class _LoginBody extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        // Offline logins are a first-class flow — show the connection
+        // state before the user even types.
+        const Positioned(
+          top: 0,
+          right: AppDimensions.space,
+          child: SafeArea(child: ConnectivityIndicator()),
+        ),
+        // First login happens BEFORE Settings is reachable — the
+        // server must be changeable from here.
+        Positioned(
+          top: 0,
+          left: AppDimensions.spaceXS,
+          child: SafeArea(
+            child: IconButton(
+              icon: const Icon(Icons.dns_rounded, color: Colors.white70),
+              tooltip: 'Change DHIS2 server',
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final url = await showServerUrlDialog(context);
+                if (url != null) {
+                  messenger.showSnackBar(SnackBar(
+                    content: Text('Server set to $url'),
+                    backgroundColor: AppColors.success,
+                    behavior: SnackBarBehavior.floating,
+                  ));
+                }
+              },
+            ),
+          ),
         ),
       ],
     );
@@ -136,27 +168,24 @@ class _LogoSection extends StatelessWidget {
                   width: 2,
                 ),
               ),
-          child: Padding(
-            padding: const EdgeInsets.all(1.0),
-            child: ClipOval(
-              child: Image.asset(
-                'assets/images/ethiopia_flag.png',
-                fit: BoxFit.cover
+              child: Padding(
+                padding: const EdgeInsets.all(1.0),
+                child: ClipOval(
+                  child: Image.asset('assets/images/ethiopia_flag.png',
+                      fit: BoxFit.cover),
+                ),
               ),
             ),
-          ),
-        ),
 
-
-        // child: ClipOval(
-          //   child: Image.asset(
-          //     'assets/images/ethiopia_flag.png',
-          //     width: AppDimensions.loginLogoSize * 0.7,
-          //     height: AppDimensions.loginLogoSize * 0.7,
-          //     fit: BoxFit.cover,
-          //   ),
-          // ),
-           const SizedBox(height: AppDimensions.spaceLG),
+            // child: ClipOval(
+            //   child: Image.asset(
+            //     'assets/images/ethiopia_flag.png',
+            //     width: AppDimensions.loginLogoSize * 0.7,
+            //     height: AppDimensions.loginLogoSize * 0.7,
+            //     fit: BoxFit.cover,
+            //   ),
+            // ),
+            const SizedBox(height: AppDimensions.spaceLG),
             Text(
               'የጤና ሚኒስቴር የጤና አመራር መረጃ ስርዓት',
               style: AppTextStyles.headingLarge.copyWith(
@@ -171,7 +200,7 @@ class _LogoSection extends StatelessWidget {
               style: AppTextStyles.bodyMedium.copyWith(
                 color: Colors.white.withValues(alpha: 0.75),
                 letterSpacing: 0.5,
-          ),
+              ),
             ),
           ],
         ),
@@ -195,10 +224,8 @@ class _BottomCard extends StatelessWidget {
       decoration: const BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.only(
-          topLeft:
-              Radius.circular(AppDimensions.loginCardBorderRadius),
-          topRight:
-              Radius.circular(AppDimensions.loginCardBorderRadius),
+          topLeft: Radius.circular(AppDimensions.loginCardBorderRadius),
+          topRight: Radius.circular(AppDimensions.loginCardBorderRadius),
         ),
       ),
       child: SingleChildScrollView(
@@ -208,30 +235,34 @@ class _BottomCard extends StatelessWidget {
           AppDimensions.pagePaddingH,
           AppDimensions.spaceXXXL,
         ),
-        child: BlocBuilder<AuthBloc, AuthState>(
-          builder: (context, state) {
-            final isLoading = state is AuthLoginInProgress;
-            final errorMessage = state is AuthFailureState
-                ? state.message
-                // Until the first login attempt replaces it, explain
-                // why the user was sent back here after a 401.
-                : (sessionExpired && state is AuthUnauthenticated)
-                    ? 'Your session has ended. Please log in again.'
-                    : null;
+        // Cap the form width so it doesn't stretch across tablets.
+        child: ResponsiveContent(
+          maxWidth: AppBreakpoints.formMaxWidth,
+          child: BlocBuilder<AuthBloc, AuthState>(
+            builder: (context, state) {
+              final isLoading = state is AuthLoginInProgress;
+              final errorMessage = state is AuthFailureState
+                  ? state.message
+                  // Until the first login attempt replaces it, explain
+                  // why the user was sent back here after a 401.
+                  : (sessionExpired && state is AuthUnauthenticated)
+                      ? 'Your session has ended. Please log in again.'
+                      : null;
 
-            return LoginForm(
-              isLoading: isLoading,
-              errorMessage: errorMessage,
-              onSubmit: (username, password) {
-                context.read<AuthBloc>().add(
-                      LoginSubmitted(
-                        username: username,
-                        password: password,
-                      ),
-                    );
-              },
-            );
-          },
+              return LoginForm(
+                isLoading: isLoading,
+                errorMessage: errorMessage,
+                onSubmit: (username, password) {
+                  context.read<AuthBloc>().add(
+                        LoginSubmitted(
+                          username: username,
+                          password: password,
+                        ),
+                      );
+                },
+              );
+            },
+          ),
         ),
       ),
     );

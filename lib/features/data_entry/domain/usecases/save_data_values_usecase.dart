@@ -12,8 +12,7 @@ class SaveDataValuesUseCase {
     required String period,
   }) async {
     // Only save modified values
-    final modified =
-        dataValues.where((v) => v.isModified).toList();
+    final modified = dataValues.where((v) => v.isModified).toList();
     if (modified.isEmpty) return;
 
     await _repository.saveDataValues(

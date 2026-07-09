@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../core/data/value_type_validator.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 
@@ -11,6 +12,10 @@ class DataEntryCell extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final bool isReadOnly;
 
+  /// Server rejection text — marks the cell red until it is re-edited.
+  /// Long-pressing the cell shows the message.
+  final String? errorText;
+
   const DataEntryCell({
     super.key,
     required this.dataElementId,
@@ -19,6 +24,7 @@ class DataEntryCell extends StatefulWidget {
     this.valueType = 'NUMBER',
     required this.onChanged,
     this.isReadOnly = false,
+    this.errorText,
   });
 
   @override
@@ -33,8 +39,7 @@ class _DataEntryCellState extends State<DataEntryCell> {
   @override
   void initState() {
     super.initState();
-    _controller =
-        TextEditingController(text: widget.initialValue);
+    _controller = TextEditingController(text: widget.initialValue);
     _focusNode = FocusNode();
     _focusNode.addListener(() {
       setState(() => _isFocused = _focusNode.hasFocus);
@@ -44,8 +49,7 @@ class _DataEntryCellState extends State<DataEntryCell> {
   @override
   void didUpdateWidget(DataEntryCell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialValue != widget.initialValue &&
-        !_isFocused) {
+    if (oldWidget.initialValue != widget.initialValue && !_isFocused) {
       _controller.text = widget.initialValue;
     }
   }
@@ -61,13 +65,9 @@ class _DataEntryCellState extends State<DataEntryCell> {
     switch (widget.valueType.toUpperCase()) {
       case 'NUMBER':
         // Decimals allowed; the server validates the full format.
-        return [
-          FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]'))
-        ];
+        return [FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]'))];
       case 'INTEGER':
-        return [
-          FilteringTextInputFormatter.allow(RegExp(r'[0-9\-]'))
-        ];
+        return [FilteringTextInputFormatter.allow(RegExp(r'[0-9\-]'))];
       case 'PERCENTAGE':
       case 'INTEGER_POSITIVE':
       case 'INTEGER_ZERO_OR_POSITIVE':
@@ -91,17 +91,45 @@ class _DataEntryCellState extends State<DataEntryCell> {
     }
   }
 
+  /// Value-type violation for the current text (null = valid). Local
+  /// invalidity outranks a stale server rejection: it describes what is
+  /// in the cell right now.
+  String? get _localError =>
+      validateDataValue(widget.valueType, _controller.text);
+
+  bool get _hasError => widget.errorText != null || _localError != null;
+
   BoxDecoration get _cellDecoration => BoxDecoration(
         color: _isFocused
             ? AppColors.primarySurface
-            : AppColors.inputBackground,
+            : _hasError
+                ? AppColors.error.withValues(alpha: 0.08)
+                : AppColors.inputBackground,
         border: Border.all(
-          color: _isFocused
-              ? AppColors.primary
-              : Colors.transparent,
+          color: _hasError
+              ? AppColors.error
+              : _isFocused
+                  ? AppColors.primary
+                  : Colors.transparent,
           width: 1.5,
         ),
       );
+
+  /// The problem must be reachable on a phone: long-press the red
+  /// cell (Tooltip) — no hover needed.
+  Widget _withErrorHint(Widget cell) {
+    final local = _localError;
+    final message = local ?? // current text problem wins
+        (widget.errorText != null
+            ? 'Rejected by server: ${widget.errorText}'
+            : null);
+    if (message == null) return cell;
+    return Tooltip(
+      message: message,
+      triggerMode: TooltipTriggerMode.longPress,
+      child: cell,
+    );
+  }
 
   void _setValue(String value) {
     _controller.text = value;
@@ -116,8 +144,7 @@ class _DataEntryCellState extends State<DataEntryCell> {
   // crashes with a framework `_dependents.isEmpty` assertion.
   Widget _buildBooleanCell() {
     final current = _controller.text.trim().toLowerCase();
-    final value =
-        (current == 'true' || current == 'false') ? current : '';
+    final value = (current == 'true' || current == 'false') ? current : '';
     final label = value == 'true'
         ? 'Yes'
         : value == 'false'
@@ -175,11 +202,11 @@ class _DataEntryCellState extends State<DataEntryCell> {
   Widget build(BuildContext context) {
     switch (widget.valueType.toUpperCase()) {
       case 'BOOLEAN':
-        return _buildBooleanCell();
+        return _withErrorHint(_buildBooleanCell());
       case 'TRUE_ONLY':
-        return _buildTrueOnlyCell();
+        return _withErrorHint(_buildTrueOnlyCell());
     }
-    return Container(
+    return _withErrorHint(Container(
       height: 40,
       decoration: _cellDecoration,
       child: TextField(
@@ -200,8 +227,11 @@ class _DataEntryCellState extends State<DataEntryCell> {
           contentPadding: EdgeInsets.zero,
           isDense: true,
         ),
-        onChanged: widget.onChanged,
+        onChanged: (value) {
+          setState(() {}); // repaint the validity border live
+          widget.onChanged(value);
+        },
       ),
-    );
+    ));
   }
 }
