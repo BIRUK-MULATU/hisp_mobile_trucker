@@ -106,24 +106,48 @@ class CompletenessSync {
         await _markSynced(r);
         ok++;
       } on DioException catch (e) {
-        log.e('[completeness] push error for ${r.dataSetUid}/${r.period}: '
-            '${e.message}');
-        // leave pending, retry later
+        // A 409 is a server VERDICT (conflicts in the body), not a
+        // transport failure — retrying the same registration forever
+        // can't succeed, so settle it as an error the UI can surface.
+        final data = e.response?.data;
+        if (e.response?.statusCode == 409 && data is Map<String, dynamic>) {
+          final summary =
+              (data['response'] ?? data) as Map<String, dynamic>;
+          final conflicts = (summary['conflicts'] as List? ?? const [])
+              .cast<Map<String, dynamic>>();
+          final why = conflicts.isNotEmpty
+              ? conflicts.map((c) => c['value']).join('; ')
+              : (data['message'] ?? 'Rejected by server').toString();
+          log.w('[completeness] ${r.dataSetUid}/${r.period} rejected: $why');
+          await _markError(r, why);
+        } else {
+          log.e('[completeness] push error for ${r.dataSetUid}/${r.period}: '
+              '${e.message}');
+          // leave pending, retry later
+        }
       }
     }
     log.i('[completeness] pushed $ok/${pending.length}');
     return ok;
   }
 
-  Future<void> _markSynced(CompleteDataSetRegistration r) {
+  Future<void> _markSynced(CompleteDataSetRegistration r) =>
+      _writeState(r, SyncState.synced);
+
+  Future<void> _markError(CompleteDataSetRegistration r, String error) =>
+      _writeState(r, SyncState.error, error);
+
+  Future<void> _writeState(CompleteDataSetRegistration r, SyncState state,
+      [String? error]) {
     return (_db.update(_db.completeDataSetRegistrationsTable)
           ..where((t) =>
               t.dataSetUid.equals(r.dataSetUid) &
               t.period.equals(r.period) &
               t.orgUnitUid.equals(r.orgUnitUid) &
               t.attributeOptionComboUid.equals(r.attributeOptionComboUid)))
-        .write(const CompleteDataSetRegistrationsTableCompanion(
-      syncState: Value(SyncState.synced),
+        .write(CompleteDataSetRegistrationsTableCompanion(
+      syncState: Value(state),
+      syncError: Value(error),
     ));
   }
 }

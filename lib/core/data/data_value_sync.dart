@@ -6,6 +6,7 @@ import 'package:drift/drift.dart';
 import '../database/app_database.dart';
 import '../network/api_client.dart';
 import '../utils/app_logger.dart';
+import 'data_value_push.dart';
 import 'data_value_store.dart';
 import 'period_access.dart';
 
@@ -189,73 +190,19 @@ class DataValueSync {
   }
 
   /// PUSH pending values. importStrategy CREATE_AND_UPDATE + atomicMode
-  /// NONE => partial success. Returns (imported+updated, rejected).
+  /// NONE => partial success. Returns (accepted, rejected).
   Future<(int, int)> _push(List<DataValue> values) async {
-    final payload = {
-      'dataValues': [
-        for (final v in values)
-          {
-            'dataElement': v.dataElementUid,
-            'period': v.period,
-            'orgUnit': v.orgUnitUid,
-            'categoryOptionCombo': v.categoryOptionComboUid,
-            'attributeOptionCombo': v.attributeOptionComboUid,
-            'value': v.value ?? '',
-            if (v.comment != null) 'comment': v.comment,
-          }
-      ],
-    };
-
-    try {
-      final Response res = await _api.post('/api/dataValueSets.json',
-          data: payload,
-          queryParameters: {
-            'importStrategy': 'CREATE_AND_UPDATE',
-            'atomicMode': 'NONE',
-          });
-      _captureServerDate(res);
-
-      final body = res.data as Map<String, dynamic>;
-      final summary = (body['response'] ?? body) as Map<String, dynamic>;
-      final counts =
-          (summary['importCount'] ?? const {}) as Map<String, dynamic>;
-      final imported = (counts['imported'] ?? 0) as int;
-      final updated = (counts['updated'] ?? 0) as int;
-      final ignored = (counts['ignored'] ?? 0) as int;
-      final conflicts = (summary['conflicts'] as List? ?? const [])
-          .cast<Map<String, dynamic>>();
-
-      if (conflicts.isEmpty && ignored == 0) {
-        for (final v in values) {
-          await _store.markSynced(v);
-        }
-        log.i('[dataValues] pushed ok: imported=$imported updated=$updated');
-        return (imported + updated, 0);
-      }
-
-      // Partial success: conflicted -> error, rest -> synced. Heuristic
-      // matcher; tighten against your instance's conflict payload if a
-      // rejected value ever shows synced.
-      final conflictText =
-          conflicts.map((c) => '${c['object']} ${c['value']}').join(' ');
-      var failed = 0;
-      for (final v in values) {
-        final hit = conflictText.contains(v.dataElementUid) &&
-            conflictText.contains(v.period);
-        if (hit) {
-          await _store.markError(v, conflictText);
-          failed++;
-        } else {
-          await _store.markSynced(v);
-        }
-      }
-      log.w('[dataValues] partial push: $failed rejected of '
-          '${values.length}');
-      return (imported + updated, failed);
-    } on DioException catch (e) {
-      log.e('[dataValues] push error: ${e.message}');
+    final result = await pushDataValueBatch(
+      api: _api,
+      store: _store,
+      values: values,
+      onResponse: _captureServerDate,
+    );
+    if (result.transportFailed) {
       return (0, 0); // everything stays pending; retry later
     }
+    log.i('[dataValues] pushed ok: ${result.accepted}');
+    return (result.accepted, result.rejected);
   }
 
   void _captureServerDate(Response res) {

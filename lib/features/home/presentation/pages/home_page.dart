@@ -1,6 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import '../../../../core/auth/app_session.dart';
+import '../../../../core/data/completeness.dart';
+import '../../../../core/data/data_value_store.dart';
+import '../../../../core/network/connectivity_service.dart';
 import '../../../../core/sync/drift_sync_manager.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
@@ -42,27 +44,100 @@ class _HomePageState extends State<HomePage> {
   AppliedFilter? _orgUnitFilter;
   AppliedFilter? _syncFilter;
 
-  // Bumped by the sync button — remounts the capture view so the
-  // org unit tree is re-fetched from the server.
+  // Bumped after a sync — remounts the capture view so the sync
+  // chips and org unit tree reflect the new local state.
   int _syncTick = 0;
+  bool _isSyncing = false;
 
-  void _onSyncTapped() {
-    // Real sync: push queued offline writes, then refresh metadata.
-    // Fire-and-forget — the capture view below remounts immediately
-    // and shows current local state; failures leave rows pending.
-    // A second remount after the push lands updates the sync chips.
-    unawaited(DriftSyncManager.instance
-        .pushPending()
-        .then((_) => DriftSyncManager.instance.pullLatest())
-        .then((_) {
-      if (mounted) setState(() => _syncTick++);
-    }).catchError((Object e) => debugPrint('manual sync failed: $e')));
-    setState(() {
-      _syncTick++;
-      // Sync is only visible in Capture mode — switch so the
-      // reload is actually seen.
-      _mode = HomeMode.capture;
-    });
+  Future<void> _onSyncTapped() async {
+    if (_isSyncing) return;
+    final session = AppSession.instance;
+    if (!session.isLoggedIn) return;
+
+    // Sync results are only visible in Capture mode.
+    setState(() => _mode = HomeMode.capture);
+
+    final db = session.service.db;
+    final store = DataValueStore(db);
+    final pendingValues = await store.pendingCount();
+    final pendingCompletions = (await CompletenessStore(db).pending()).length;
+    final pendingTotal = pendingValues + pendingCompletions;
+
+    // Fresh reachability probe — the cached flag can be up to 30s stale.
+    await ConnectivityService.instance.checkNow();
+    final online = ConnectivityService.instance.online ?? false;
+    if (!mounted) return;
+
+    if (!online) {
+      _showSyncMessage(
+        pendingTotal > 0
+            ? 'No internet connection — $pendingTotal unsynced '
+                '${pendingTotal == 1 ? 'entry' : 'entries'} will upload '
+                'automatically when you are back online.'
+            : 'No internet connection.',
+        color: AppColors.error,
+      );
+      return;
+    }
+    if (pendingTotal == 0) {
+      _showSyncMessage('Everything is already synced.',
+          color: AppColors.success);
+      return;
+    }
+
+    setState(() => _isSyncing = true);
+    try {
+      await DriftSyncManager.instance.pushPending();
+      // Refresh metadata too, but a metadata hiccup must not mask a
+      // successful upload.
+      try {
+        await DriftSyncManager.instance.pullLatest();
+      } catch (e) {
+        debugPrint('metadata refresh after sync failed: $e');
+      }
+      final remaining = await store.pendingCount() +
+          (await CompletenessStore(db).pending()).length;
+      if (!mounted) return;
+      if (remaining == 0) {
+        _showSyncMessage(
+          'Sync complete — $pendingTotal '
+          '${pendingTotal == 1 ? 'entry' : 'entries'} uploaded.',
+          color: AppColors.success,
+        );
+      } else {
+        _showSyncMessage(
+          '$remaining of $pendingTotal entries could not be uploaded '
+          'and will retry later.',
+          color: AppColors.warning,
+        );
+      }
+    } catch (e) {
+      debugPrint('manual sync failed: $e');
+      if (mounted) {
+        _showSyncMessage(
+          'Sync failed — your entries are safe on this device and '
+          'will retry automatically.',
+          color: AppColors.error,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+          _syncTick++;
+        });
+      }
+    }
+  }
+
+  void _showSyncMessage(String message, {required Color color}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+      ));
   }
 
   @override
@@ -73,6 +148,7 @@ class _HomePageState extends State<HomePage> {
       appBar: HomeAppBar(
         searchActive: _searchActive,
         filtersShown: _showFilters,
+        isSyncing: _isSyncing,
         searchHint: 'Search organisation units...',
         onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
         onSyncTap: _onSyncTapped,
