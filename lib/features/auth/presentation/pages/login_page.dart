@@ -11,6 +11,7 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
 import '../../../../shared/widgets/connectivity_indicator.dart';
+import '../../../../shared/widgets/server_url_dialog.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/usecases/login_usecase.dart';
@@ -116,6 +117,29 @@ class _LoginBody extends StatelessWidget {
           top: 0,
           right: AppDimensions.space,
           child: SafeArea(child: ConnectivityIndicator()),
+        ),
+        // First login happens BEFORE Settings is reachable — the
+        // server must be changeable from here.
+        Positioned(
+          top: 0,
+          left: AppDimensions.spaceXS,
+          child: SafeArea(
+            child: IconButton(
+              icon: const Icon(Icons.dns_rounded, color: Colors.white70),
+              tooltip: 'Change DHIS2 server',
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                final url = await showServerUrlDialog(context);
+                if (url != null) {
+                  messenger.showSnackBar(SnackBar(
+                    content: Text('Server set to $url'),
+                    backgroundColor: AppColors.success,
+                    behavior: SnackBarBehavior.floating,
+                  ));
+                }
+              },
+            ),
+          ),
         ),
       ],
     );

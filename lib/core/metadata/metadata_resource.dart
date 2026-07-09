@@ -57,6 +57,23 @@ abstract class MetadataResource<Row> {
   /// letting companionFromJson throw).
   bool isValid(Map<String, dynamic> json) => true;
 
+  /// Server-side filters applied to the LIST requests (fetchJson +
+  /// fetchLastUpdated) — the scope cap for oversized resources. More
+  /// than one filter is combined with rootJunction=OR. NOT applied to
+  /// fetchByIds: delta's stale set is already computed from the
+  /// filtered lastUpdated list, so id fetches stay in scope by
+  /// construction.
+  List<String> get filters => const [];
+
+  Map<String, dynamic> _withFilters(Map<String, dynamic> params) {
+    if (filters.isEmpty) return params;
+    return {
+      ...params,
+      'filter': filters,
+      if (filters.length > 1) 'rootJunction': 'OR',
+    };
+  }
+
   // ── Local (SQLite) — inherited by every resource ──
 
   Future<List<Row>> getAll() => db.select(table).get();
@@ -180,7 +197,8 @@ abstract class MetadataResource<Row> {
   /// cast error deep in parsing.
   Future<List<Map<String, dynamic>>> fetchJson(ApiClient api) async {
     final Response res = await api.get('/api/$resource.json',
-        queryParameters: {'fields': fields.join(','), 'paging': 'false'});
+        queryParameters:
+            _withFilters({'fields': fields.join(','), 'paging': 'false'}));
     final data = res.data;
     if (data is! Map<String, dynamic>) {
       throw StateError('[$resource] expected a JSON object, got '
@@ -204,7 +222,8 @@ abstract class MetadataResource<Row> {
   /// the basis for delta sync: compare, then fetchByIds the stale ones).
   Future<Map<String, String>> fetchLastUpdated(ApiClient api) async {
     final Response res = await api.get('/api/$resource.json',
-        queryParameters: {'fields': 'id,lastUpdated', 'paging': 'false'});
+        queryParameters: _withFilters(
+            {'fields': 'id,lastUpdated', 'paging': 'false'}));
     final data = res.data;
     if (data is! Map<String, dynamic>) {
       throw StateError('[$resource] lastUpdated fetch: non-JSON response');

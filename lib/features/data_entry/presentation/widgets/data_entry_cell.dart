@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../../core/data/value_type_validator.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 
@@ -90,7 +91,13 @@ class _DataEntryCellState extends State<DataEntryCell> {
     }
   }
 
-  bool get _hasError => widget.errorText != null;
+  /// Value-type violation for the current text (null = valid). Local
+  /// invalidity outranks a stale server rejection: it describes what is
+  /// in the cell right now.
+  String? get _localError =>
+      validateDataValue(widget.valueType, _controller.text);
+
+  bool get _hasError => widget.errorText != null || _localError != null;
 
   BoxDecoration get _cellDecoration => BoxDecoration(
         color: _isFocused
@@ -99,22 +106,26 @@ class _DataEntryCellState extends State<DataEntryCell> {
                 ? AppColors.error.withValues(alpha: 0.08)
                 : AppColors.inputBackground,
         border: Border.all(
-          color: _isFocused
-              ? AppColors.primary
-              : _hasError
-                  ? AppColors.error
+          color: _hasError
+              ? AppColors.error
+              : _isFocused
+                  ? AppColors.primary
                   : Colors.transparent,
           width: 1.5,
         ),
       );
 
-  /// The server's rejection reason must be reachable on a phone:
-  /// long-press the red cell (Tooltip) — no hover needed.
+  /// The problem must be reachable on a phone: long-press the red
+  /// cell (Tooltip) — no hover needed.
   Widget _withErrorHint(Widget cell) {
-    final error = widget.errorText;
-    if (error == null) return cell;
+    final local = _localError;
+    final message = local ?? // current text problem wins
+        (widget.errorText != null
+            ? 'Rejected by server: ${widget.errorText}'
+            : null);
+    if (message == null) return cell;
     return Tooltip(
-      message: 'Rejected by server: $error',
+      message: message,
       triggerMode: TooltipTriggerMode.longPress,
       child: cell,
     );
@@ -216,7 +227,10 @@ class _DataEntryCellState extends State<DataEntryCell> {
           contentPadding: EdgeInsets.zero,
           isDense: true,
         ),
-        onChanged: widget.onChanged,
+        onChanged: (value) {
+          setState(() {}); // repaint the validity border live
+          widget.onChanged(value);
+        },
       ),
     ));
   }

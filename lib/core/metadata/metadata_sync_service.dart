@@ -68,9 +68,13 @@ class MetadataSyncService {
     counts['dataElementGroups'] =
         await DataElementGroupResource(_db).syncAll(_api);
 
-    // ── 4. Org hierarchy, then the user's capture roots from /me ──
-    counts['organisationUnits'] = await OrgUnitResource(_db).syncAll(_api);
-    await _markUserCaptureRoots();
+    // ── 4. The user's capture roots from /me, then ONLY that org
+    //       subtree — a facility user must not pull the national tree.
+    final rootUids = await _fetchUserCaptureRoots();
+    counts['organisationUnits'] =
+        await (OrgUnitResource(_db)..captureRootUids = rootUids)
+            .syncAll(_api);
+    await _flagCaptureRoots(rootUids);
 
     // ── 5. Data sets and sections (reference nearly everything) ──
     counts['dataSets'] = await DataSetResource(_db).syncAll(_api);
@@ -128,7 +132,9 @@ class MetadataSyncService {
     log.i('metadata cleared for full re-sync');
   }
 
-  Future<void> _markUserCaptureRoots() async {
+  /// /api/me: caches the user row for offline login and returns the
+  /// capture org unit uids — which also SCOPE the org unit sync.
+  Future<List<String>> _fetchUserCaptureRoots() async {
     final res = await _api.get('/api/me.json', queryParameters: {
       'fields': 'id,username,displayName,organisationUnits[id]',
     });
@@ -142,12 +148,14 @@ class MetadataSyncService {
           ),
         );
 
-    final rootUids = [
+    return [
       for (final ou in (me['organisationUnits'] as List? ?? [])
           .cast<Map<String, dynamic>>())
         ou['id'] as String,
     ];
+  }
 
+  Future<void> _flagCaptureRoots(List<String> rootUids) async {
     // Clear old flags, set new ones (capture assignment can change).
     await (_db.update(_db.orgUnitsTable))
         .write(const OrgUnitsTableCompanion(isUserCaptureRoot: Value(false)));
@@ -180,8 +188,11 @@ class MetadataSyncService {
     r['indicators'] = await IndicatorResource(_db).syncDelta(_api);
     r['dataElementGroups'] =
         await DataElementGroupResource(_db).syncDelta(_api);
-    r['organisationUnits'] = await OrgUnitResource(_db).syncDelta(_api);
-    await _markUserCaptureRoots();
+    final rootUids = await _fetchUserCaptureRoots();
+    r['organisationUnits'] =
+        await (OrgUnitResource(_db)..captureRootUids = rootUids)
+            .syncDelta(_api);
+    await _flagCaptureRoots(rootUids);
     r['dataSets'] = await DataSetResource(_db).syncDelta(_api);
     r['sections'] = await SectionResource(_db).syncDelta(_api);
     r['validationRules'] = await ValidationRuleResource(_db).syncDelta(_api);

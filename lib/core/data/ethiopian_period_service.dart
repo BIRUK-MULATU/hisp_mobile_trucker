@@ -92,6 +92,17 @@ class EthiopianPeriodService {
         .toGregorian(year, month, 1)
         .subtract(const Duration(days: 1));
 
+    // Daily: EC yyyyMMdd — one Ethiopian day.
+    final daily = RegExp(r'^(\d{4})(\d{2})(\d{2})$').firstMatch(id);
+    if (daily != null) {
+      final y = int.parse(daily.group(1)!);
+      final m = int.parse(daily.group(2)!);
+      final d = int.parse(daily.group(3)!);
+      if (m >= 1 && m <= 13) {
+        final day = EthiopianCalendar.toGregorian(y, m, d);
+        return (day, day);
+      }
+    }
     // Monthly: yyyyMM (Ethiopian year, months 01–13 incl. Pagume)
     final monthly = RegExp(r'^(\d{4})(\d{2})$').firstMatch(id);
     if (monthly != null) {
@@ -99,6 +110,20 @@ class EthiopianPeriodService {
       final m = int.parse(monthly.group(2)!);
       final end = m >= 13 ? dayBefore(y + 1, 1) : dayBefore(y, m + 1);
       return (EthiopianCalendar.toGregorian(y, m, 1), end);
+    }
+    // QuarterlyNov: yyyyNovQn — EFY quarters, Hamle-anchored:
+    // Q1 Hamle(y-1)–Meskerem(y) incl. Pagume, Q2 Tikimt–Tahsas,
+    // Q3 Tir–Megabit, Q4 Miyazia–Sene.
+    final novQ = RegExp(r'^(\d{4})NovQ([1-4])$').firstMatch(id);
+    if (novQ != null) {
+      final y = int.parse(novQ.group(1)!);
+      final q = int.parse(novQ.group(2)!);
+      return switch (q) {
+        1 => (EthiopianCalendar.toGregorian(y - 1, 11, 1), dayBefore(y, 2)),
+        2 => (EthiopianCalendar.toGregorian(y, 2, 1), dayBefore(y, 5)),
+        3 => (EthiopianCalendar.toGregorian(y, 5, 1), dayBefore(y, 8)),
+        _ => (EthiopianCalendar.toGregorian(y, 8, 1), dayBefore(y, 11)),
+      };
     }
     // Quarterly: yyyyQn — Q1 Meskerem–Hidar … Q4 Sene–Pagume
     final quarterly = RegExp(r'^(\d{4})Q([1-4])$').firstMatch(id);
@@ -108,6 +133,14 @@ class EthiopianPeriodService {
       final end = q == 4 ? dayBefore(y + 1, 1) : dayBefore(y, q * 3 + 1);
       return (EthiopianCalendar.toGregorian(y, (q - 1) * 3 + 1, 1), end);
     }
+    // SixMonthlyNov: yyyyNovSn — S1 Hamle(y-1)–Tahsas(y), S2 Tir–Sene.
+    final novS = RegExp(r'^(\d{4})NovS([12])$').firstMatch(id);
+    if (novS != null) {
+      final y = int.parse(novS.group(1)!);
+      return novS.group(2) == '1'
+          ? (EthiopianCalendar.toGregorian(y - 1, 11, 1), dayBefore(y, 5))
+          : (EthiopianCalendar.toGregorian(y, 5, 1), dayBefore(y, 11));
+    }
     // SixMonthly: yyyySn — S1 Meskerem–Yekatit, S2 Megabit–Pagume
     final six = RegExp(r'^(\d{4})S([12])$').firstMatch(id);
     if (six != null) {
@@ -115,6 +148,24 @@ class EthiopianPeriodService {
       final s = int.parse(six.group(2)!);
       final end = s == 1 ? dayBefore(y, 7) : dayBefore(y + 1, 1);
       return (EthiopianCalendar.toGregorian(y, s == 1 ? 1 : 7, 1), end);
+    }
+    // FinancialNov & friends: yyyyNov — Hamle (y-1) to Sene (y).
+    final financial =
+        RegExp(r'^(\d{4})(Nov|Jul|April|Oct)$').firstMatch(id);
+    if (financial != null) {
+      final y = int.parse(financial.group(1)!);
+      final m = {'Nov': 11, 'Jul': 7, 'April': 4, 'Oct': 10}[
+          financial.group(2)!]!;
+      return (EthiopianCalendar.toGregorian(y - 1, m, 1), dayBefore(y, m));
+    }
+    // BiWeekly: yyyyBiWn — 14 EC days from Meskerem 1.
+    final biW = RegExp(r'^(\d{4})BiW(\d{1,2})$').firstMatch(id);
+    if (biW != null) {
+      final y = int.parse(biW.group(1)!);
+      final n = int.parse(biW.group(2)!);
+      final start = EthiopianCalendar.toGregorian(y, 1, 1)
+          .add(Duration(days: (n - 1) * 14));
+      return (start, start.add(const Duration(days: 13)));
     }
     // Weekly: yyyyWn — the generator emits Gregorian ISO-week ids,
     // so these stay Gregorian.

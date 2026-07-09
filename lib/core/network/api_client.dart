@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../constants/api_constants.dart';
 import 'interceptors/auth_interceptor.dart';
 import '../utils/app_logger.dart';
@@ -29,7 +30,7 @@ class ApiClient {
         'Accept': 'application/json',
       },
     ));
-    _dio.interceptors.add(_apiLogInterceptor());
+    if (kDebugMode) _dio.interceptors.add(_apiLogInterceptor());
   }
 
   /// Logs every request/response/error. NEVER logs headers — the

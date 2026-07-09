@@ -65,12 +65,19 @@ class DataSetResource extends MetadataResource<DataSet> {
   /// Nested endpoint: also (re)writes data_set_elements — resolving the
   /// EFFECTIVE combo (override ?? element's own) at write time — and
   /// data_set_org_units. One transaction.
-  ///
-  /// NOTE: org unit assignments can be huge on national instances; the
-  /// sync service should intersect with the user's capture org units
-  /// before calling saveAll (fine as-is against a dev instance).
   @override
   Future<void> saveAll(List<Map<String, dynamic>> items) async {
+    // A national dataset is assigned to tens of thousands of org
+    // units; only links into the locally-synced (capture-subtree)
+    // org units are usable, so only those rows are kept. Org units
+    // sync BEFORE data sets — see MetadataSyncService order.
+    final localOuRows =
+        await (db.selectOnly(db.orgUnitsTable)..addColumns([db.orgUnitsTable.uid]))
+            .get();
+    final localOus = {
+      for (final r in localOuRows) r.read(db.orgUnitsTable.uid)!,
+    };
+
     await db.transaction(() async {
       for (final ds in items) {
         final dsUid = ds['id'] as String;
@@ -110,11 +117,13 @@ class DataSetResource extends MetadataResource<DataSet> {
           }
           for (final ou in (ds['organisationUnits'] as List? ?? [])
               .cast<Map<String, dynamic>>()) {
+            final ouUid = ou['id'] as String;
+            if (!localOus.contains(ouUid)) continue;
             b.insert(
               db.dataSetOrgUnitsTable,
               DataSetOrgUnitsTableCompanion.insert(
                 dataSetUid: dsUid,
-                orgUnitUid: ou['id'] as String,
+                orgUnitUid: ouUid,
               ),
             );
           }
