@@ -1,9 +1,8 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
-
 import '../auth/app_session.dart';
 import '../data/completeness.dart';
+import '../data/data_value_push.dart';
 import '../data/data_value_store.dart';
 import '../database/app_database.dart';
 import '../metadata/metadata_sync_service.dart';
@@ -74,65 +73,13 @@ class DriftSyncManager implements SyncManager {
     final store = DataValueStore(db);
     final pending = await store.pendingValues();
     if (pending.isEmpty) return 0;
-    final api = AppSession.instance.api!;
 
-    final payload = {
-      'dataValues': [
-        for (final v in pending)
-          {
-            'dataElement': v.dataElementUid,
-            'period': v.period,
-            'orgUnit': v.orgUnitUid,
-            'categoryOptionCombo': v.categoryOptionComboUid,
-            'attributeOptionCombo': v.attributeOptionComboUid,
-            'value': v.value ?? '',
-            if (v.comment != null) 'comment': v.comment,
-          }
-      ],
-    };
-
-    try {
-      final res = await api.post('/api/dataValueSets.json',
-          data: payload,
-          queryParameters: {
-            'importStrategy': 'CREATE_AND_UPDATE',
-            'atomicMode': 'NONE',
-          });
-
-      final body = res.data as Map<String, dynamic>;
-      final summary = (body['response'] ?? body) as Map<String, dynamic>;
-      final ignored =
-          ((summary['importCount'] ?? const {}) as Map<String, dynamic>)['ignored'] ??
-              0;
-      final conflicts = (summary['conflicts'] as List? ?? const [])
-          .cast<Map<String, dynamic>>();
-
-      if (conflicts.isEmpty && ignored == 0) {
-        for (final v in pending) {
-          await store.markSynced(v);
-        }
-        return pending.length;
-      }
-
-      // Partial success — same heuristic as DataValueSync._push.
-      final conflictText =
-          conflicts.map((c) => '${c['object']} ${c['value']}').join(' ');
-      var ok = 0;
-      for (final v in pending) {
-        final hit = conflictText.contains(v.dataElementUid) &&
-            conflictText.contains(v.period);
-        if (hit) {
-          await store.markError(v, conflictText);
-        } else {
-          await store.markSynced(v);
-          ok++;
-        }
-      }
-      log.w('[autoSync] ${pending.length - ok} values rejected by server');
-      return ok;
-    } on DioException catch (e) {
-      log.e('[autoSync] push failed, values stay pending: ${e.message}');
-      return 0;
-    }
+    final result = await pushDataValueBatch(
+      api: AppSession.instance.api!,
+      store: store,
+      values: pending,
+      logTag: 'autoSync',
+    );
+    return result.accepted;
   }
 }
