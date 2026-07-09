@@ -3,7 +3,6 @@ import '../../../../core/auth/app_session.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
 import '../../../../core/data/period_access.dart';
 import '../../../../core/metadata/data_set.dart';
-import '../../../../core/utils/ethiopian_calendar.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -61,12 +60,12 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
   }
 
   Future<void> _load() async {
-    final plain = EthiopianCalendar.generatePeriods(
+    final plain = EthiopianPeriodService.plainPeriodsFor(
       periodType: widget.periodType,
       count: 24,
     );
     var choices = [
-      for (final p in plain) _Choice(p.id, p.label, true, null),
+      for (final p in plain) _Choice(p.id, p.labelAmharic, true, null),
     ];
     var tampered = false;
 

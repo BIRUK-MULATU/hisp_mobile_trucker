@@ -83,6 +83,9 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
       if (existing != null) {
         existing.value = event.value;
         existing.isModified = true;
+        // Editing a rejected cell resolves it: saving re-queues the
+        // value as pending, so the stale server error no longer applies.
+        existing.syncError = null;
       } else {
         updatedValues[key] = DataValueEntity(
           dataElementId: event.dataElementId,

@@ -97,6 +97,10 @@ class ApiClient {
     _dio.options.baseUrl = baseUrl;
   }
 
+  /// The server currently targeted (compiled default or Settings
+  /// override) — reachability probes ping this.
+  String get baseUrl => _dio.options.baseUrl;
+
   Future<Response> get(
       String path, {
         Map<String, dynamic>? queryParameters,

@@ -44,6 +44,10 @@ class DataValueEntity {
   String value;
   bool isModified;
 
+  /// Server rejection text for this cell (null = not rejected).
+  /// Cleared when the user edits the cell — saving re-queues it.
+  String? syncError;
+
   DataValueEntity({
     required this.dataElementId,
     required this.categoryOptionComboId,
@@ -51,6 +55,7 @@ class DataValueEntity {
     required this.period,
     this.value = '',
     this.isModified = false,
+    this.syncError,
   });
 
   String get key => '${dataElementId}_$categoryOptionComboId';

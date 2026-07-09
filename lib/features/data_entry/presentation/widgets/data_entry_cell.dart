@@ -11,6 +11,10 @@ class DataEntryCell extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final bool isReadOnly;
 
+  /// Server rejection text — marks the cell red until it is re-edited.
+  /// Long-pressing the cell shows the message.
+  final String? errorText;
+
   const DataEntryCell({
     super.key,
     required this.dataElementId,
@@ -19,6 +23,7 @@ class DataEntryCell extends StatefulWidget {
     this.valueType = 'NUMBER',
     required this.onChanged,
     this.isReadOnly = false,
+    this.errorText,
   });
 
   @override
@@ -85,14 +90,35 @@ class _DataEntryCellState extends State<DataEntryCell> {
     }
   }
 
+  bool get _hasError => widget.errorText != null;
+
   BoxDecoration get _cellDecoration => BoxDecoration(
-        color:
-            _isFocused ? AppColors.primarySurface : AppColors.inputBackground,
+        color: _isFocused
+            ? AppColors.primarySurface
+            : _hasError
+                ? AppColors.error.withValues(alpha: 0.08)
+                : AppColors.inputBackground,
         border: Border.all(
-          color: _isFocused ? AppColors.primary : Colors.transparent,
+          color: _isFocused
+              ? AppColors.primary
+              : _hasError
+                  ? AppColors.error
+                  : Colors.transparent,
           width: 1.5,
         ),
       );
+
+  /// The server's rejection reason must be reachable on a phone:
+  /// long-press the red cell (Tooltip) — no hover needed.
+  Widget _withErrorHint(Widget cell) {
+    final error = widget.errorText;
+    if (error == null) return cell;
+    return Tooltip(
+      message: 'Rejected by server: $error',
+      triggerMode: TooltipTriggerMode.longPress,
+      child: cell,
+    );
+  }
 
   void _setValue(String value) {
     _controller.text = value;
@@ -165,11 +191,11 @@ class _DataEntryCellState extends State<DataEntryCell> {
   Widget build(BuildContext context) {
     switch (widget.valueType.toUpperCase()) {
       case 'BOOLEAN':
-        return _buildBooleanCell();
+        return _withErrorHint(_buildBooleanCell());
       case 'TRUE_ONLY':
-        return _buildTrueOnlyCell();
+        return _withErrorHint(_buildTrueOnlyCell());
     }
-    return Container(
+    return _withErrorHint(Container(
       height: 40,
       decoration: _cellDecoration,
       child: TextField(
@@ -192,6 +218,6 @@ class _DataEntryCellState extends State<DataEntryCell> {
         ),
         onChanged: widget.onChanged,
       ),
-    );
+    ));
   }
 }

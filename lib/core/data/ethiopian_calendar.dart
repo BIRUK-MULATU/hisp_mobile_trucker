@@ -26,6 +26,15 @@ class EthiopianCalendar {
 
   static EthiopianDate today() => toEthiopian(DateTime.now());
 
+  // ── Convert Ethiopian to Gregorian ────────────────────────
+  static DateTime toGregorian(int year, int month, int day) =>
+      _jdnToGregorian(_ethiopianToJdn(year, month, day));
+
+  /// Days in an Ethiopian month: 1–12 have 30, Pagume has 5
+  /// (6 in leap years, i.e. when year % 4 == 3).
+  static int daysInMonth(int year, int month) =>
+      month < 13 ? 30 : (year % 4 == 3 ? 6 : 5);
+
   // ── Generate periods based on DHIS2 period type ───────────
   static List<EthiopianPeriod> generatePeriods({
     required String periodType,
@@ -407,6 +416,23 @@ class EthiopianCalendar {
         y ~/ 100 +
         y ~/ 400 -
         32045;
+  }
+
+  static int _ethiopianToJdn(int year, int month, int day) =>
+      1723856 + 365 * year + year ~/ 4 + 30 * (month - 1) + day - 1;
+
+  static DateTime _jdnToGregorian(int jdn) {
+    final a = jdn + 32044;
+    final b = (4 * a + 3) ~/ 146097;
+    final c = a - 146097 * b ~/ 4;
+    final d = (4 * c + 3) ~/ 1461;
+    final e = c - 1461 * d ~/ 4;
+    final m = (5 * e + 2) ~/ 153;
+    return DateTime(
+      100 * b + d - 4800 + m ~/ 10,
+      m + 3 - 12 * (m ~/ 10),
+      e - (153 * m + 2) ~/ 5 + 1,
+    );
   }
 
   static EthiopianDate _jdnToEthiopian(int jdn) {

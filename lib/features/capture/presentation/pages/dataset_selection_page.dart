@@ -4,6 +4,7 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
+import '../../../../shared/widgets/connectivity_indicator.dart';
 import '../../data/repositories/capture_repository_impl.dart';
 import '../../domain/entities/dataset_entity.dart';
 import '../../domain/usecases/get_org_unit_datasets_usecase.dart';
@@ -56,8 +57,8 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
     }
   }
 
-  void _openDataSet(DataSetEntity dataSet) {
-    Navigator.push(
+  Future<void> _openDataSet(DataSetEntity dataSet) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => SectionSelectionPage(
@@ -69,6 +70,9 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
         ),
       ),
     );
+    // Back from the form: values may have been saved (or pushed) —
+    // reload so the synced/unsync chips tell the truth.
+    if (mounted) await _load();
   }
 
   @override
@@ -78,6 +82,10 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
       appBar: AppBar(
         backgroundColor: AppColors.primary,
         elevation: 0,
+        actions: const [
+          ConnectivityIndicator(),
+          SizedBox(width: AppDimensions.space),
+        ],
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),

@@ -50,10 +50,13 @@ class _HomePageState extends State<HomePage> {
     // Real sync: push queued offline writes, then refresh metadata.
     // Fire-and-forget — the capture view below remounts immediately
     // and shows current local state; failures leave rows pending.
+    // A second remount after the push lands updates the sync chips.
     unawaited(DriftSyncManager.instance
         .pushPending()
         .then((_) => DriftSyncManager.instance.pullLatest())
-        .catchError((Object e) => debugPrint('manual sync failed: $e')));
+        .then((_) {
+      if (mounted) setState(() => _syncTick++);
+    }).catchError((Object e) => debugPrint('manual sync failed: $e')));
     setState(() {
       _syncTick++;
       // Sync is only visible in Capture mode — switch so the

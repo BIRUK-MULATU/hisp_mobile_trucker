@@ -4,6 +4,7 @@ import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/widgets/connectivity_indicator.dart';
 import '../../../data_entry/data/repositories/data_entry_repository_impl.dart';
 import '../../../data_entry/domain/usecases/get_data_elements_usecase.dart';
 import '../../../data_entry/domain/usecases/save_data_values_usecase.dart';
@@ -149,6 +150,7 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
+          const ConnectivityIndicator(),
           if (_isPrefetching)
             const Padding(
               padding: EdgeInsets.only(right: 16),
