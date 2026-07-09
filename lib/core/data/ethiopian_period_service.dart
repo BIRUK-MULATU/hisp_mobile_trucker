@@ -1,5 +1,5 @@
 import '../database/app_database.dart';
-import '../utils/ethiopian_calendar.dart';
+import 'ethiopian_calendar.dart';
 import 'period_access.dart';
 
 /// Bridges the existing EthiopianCalendar utility (EFY labels on screen,
@@ -56,36 +56,68 @@ class EthiopianPeriodService {
     return periods.first.id;
   }
 
+  /// Ungated period list for pickers without a dataset context
+  /// (e.g. metadata not synced yet) — everything selectable.
+  static List<SelectablePeriod> plainPeriodsFor({
+    required String periodType,
+    int count = 24,
+  }) {
+    final periods =
+        EthiopianCalendar.generatePeriods(periodType: periodType, count: count);
+    return [
+      for (final p in periods)
+        SelectablePeriod(
+          id: p.id,
+          labelAmharic: p.label,
+          labelEnglish: p.labelEnglish,
+          status: PeriodStatus.open,
+        ),
+    ];
+  }
+
+  /// Amharic display label for a stored DHIS2 period id.
+  static String formatPeriodId(String periodId) =>
+      EthiopianCalendar.formatPeriodId(periodId);
+
   /// Gregorian start/end of a period, derived from its DHIS2 id — the
-  /// server's calendar is Gregorian, so expiry math must be too, even
-  /// though the LABELS are Ethiopian.
+  /// server runs the ETHIOPIAN calendar, so ids like 201811 mean
+  /// Ethiopian year 2018, month 11 (Hamle). Expiry math compares
+  /// against the device clock, so each id converts to Gregorian
+  /// instants through the calendar.
   (DateTime, DateTime) _gregorianBounds(EthiopianPeriod p) {
     final id = p.id;
 
-    // Monthly: yyyyMM
+    // Last Gregorian day before the 1st of Ethiopian (year, month).
+    DateTime dayBefore(int year, int month) => EthiopianCalendar
+        .toGregorian(year, month, 1)
+        .subtract(const Duration(days: 1));
+
+    // Monthly: yyyyMM (Ethiopian year, months 01–13 incl. Pagume)
     final monthly = RegExp(r'^(\d{4})(\d{2})$').firstMatch(id);
     if (monthly != null) {
       final y = int.parse(monthly.group(1)!);
       final m = int.parse(monthly.group(2)!);
-      return (DateTime(y, m, 1), DateTime(y, m + 1, 0));
+      final end = m >= 13 ? dayBefore(y + 1, 1) : dayBefore(y, m + 1);
+      return (EthiopianCalendar.toGregorian(y, m, 1), end);
     }
-    // Quarterly: yyyyQn
+    // Quarterly: yyyyQn — Q1 Meskerem–Hidar … Q4 Sene–Pagume
     final quarterly = RegExp(r'^(\d{4})Q([1-4])$').firstMatch(id);
     if (quarterly != null) {
       final y = int.parse(quarterly.group(1)!);
       final q = int.parse(quarterly.group(2)!);
-      final startMonth = (q - 1) * 3 + 1;
-      return (DateTime(y, startMonth, 1), DateTime(y, startMonth + 3, 0));
+      final end = q == 4 ? dayBefore(y + 1, 1) : dayBefore(y, q * 3 + 1);
+      return (EthiopianCalendar.toGregorian(y, (q - 1) * 3 + 1, 1), end);
     }
-    // SixMonthly: yyyySn
+    // SixMonthly: yyyySn — S1 Meskerem–Yekatit, S2 Megabit–Pagume
     final six = RegExp(r'^(\d{4})S([12])$').firstMatch(id);
     if (six != null) {
       final y = int.parse(six.group(1)!);
       final s = int.parse(six.group(2)!);
-      final startMonth = s == 1 ? 1 : 7;
-      return (DateTime(y, startMonth, 1), DateTime(y, startMonth + 6, 0));
+      final end = s == 1 ? dayBefore(y, 7) : dayBefore(y + 1, 1);
+      return (EthiopianCalendar.toGregorian(y, s == 1 ? 1 : 7, 1), end);
     }
-    // Weekly: yyyyWn — ISO week
+    // Weekly: yyyyWn — the generator emits Gregorian ISO-week ids,
+    // so these stay Gregorian.
     final weekly = RegExp(r'^(\d{4})W(\d{1,2})$').firstMatch(id);
     if (weekly != null) {
       final y = int.parse(weekly.group(1)!);
@@ -95,15 +127,21 @@ class EthiopianPeriodService {
       final start = week1Monday.add(Duration(days: (w - 1) * 7));
       return (start, start.add(const Duration(days: 6)));
     }
-    // Financial year (2017Nov / 2017Jul / 2017Oct / 2017April) and
-    // plain Yearly (yyyy): approximate with the year span; financial
-    // start months refine later if a dataset needs day-exact expiry.
-    final yearly = RegExp(r'^(\d{4})').firstMatch(id);
+    // Yearly: yyyy — the full Ethiopian year.
+    final yearly = RegExp(r'^(\d{4})$').firstMatch(id);
     if (yearly != null) {
       final y = int.parse(yearly.group(1)!);
-      return (DateTime(y, 1, 1), DateTime(y, 12, 31));
+      return (EthiopianCalendar.toGregorian(y, 1, 1), dayBefore(y + 1, 1));
     }
-    // Unknown format: treat as open-ended past period.
+    // Financial year (2017Nov / 2017Jul / 2017Oct / 2017April) and
+    // unknown formats: a generous two-Ethiopian-year window from the
+    // year prefix — errs open; the server enforces exact expiry at
+    // import anyway.
+    final prefix = RegExp(r'^(\d{4})').firstMatch(id);
+    if (prefix != null) {
+      final y = int.parse(prefix.group(1)!);
+      return (EthiopianCalendar.toGregorian(y, 1, 1), dayBefore(y + 2, 1));
+    }
     return (DateTime(2000), DateTime(2000, 12, 31));
   }
 }

@@ -4,6 +4,7 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
+import '../../../../shared/widgets/connectivity_indicator.dart';
 import '../../data/repositories/capture_repository_impl.dart';
 import '../../domain/entities/dataset_section_entity.dart';
 import '../../domain/usecases/get_dataset_sections_usecase.dart';
@@ -103,6 +104,10 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
       appBar: AppBar(
         backgroundColor: AppColors.primary,
         elevation: 0,
+        actions: const [
+          ConnectivityIndicator(),
+          SizedBox(width: AppDimensions.space),
+        ],
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),

@@ -89,6 +89,42 @@ class DataValueStore {
     return (await q.getSingle()).read(c) ?? 0;
   }
 
+  /// Datasets with un-uploaded work at one org unit — any pending or
+  /// error data value (mapped to datasets through dataSetElements) or
+  /// completion registration. Feeds the capture list's synced/unsync
+  /// chips. A data element shared between datasets flags every dataset
+  /// that contains it: the value IS un-uploaded in all of them.
+  Future<Set<String>> unsyncedDataSetsAt(String orgUnitUid) async {
+    final dv = _db.dataValuesTable;
+    final unsyncedElements = await (_db.selectOnly(dv, distinct: true)
+          ..addColumns([dv.dataElementUid])
+          ..where(dv.orgUnitUid.equals(orgUnitUid) &
+              dv.syncState.equals(SyncState.synced.index).not()))
+        .get();
+    final elementUids = [
+      for (final r in unsyncedElements) r.read(dv.dataElementUid)!,
+    ];
+
+    final result = <String>{};
+    if (elementUids.isNotEmpty) {
+      final dse = _db.dataSetElementsTable;
+      final rows = await (_db.selectOnly(dse, distinct: true)
+            ..addColumns([dse.dataSetUid])
+            ..where(dse.dataElementUid.isIn(elementUids)))
+          .get();
+      result.addAll([for (final r in rows) r.read(dse.dataSetUid)!]);
+    }
+
+    final cdr = _db.completeDataSetRegistrationsTable;
+    final compRows = await (_db.selectOnly(cdr, distinct: true)
+          ..addColumns([cdr.dataSetUid])
+          ..where(cdr.orgUnitUid.equals(orgUnitUid) &
+              cdr.syncState.equals(SyncState.synced.index).not()))
+        .get();
+    result.addAll([for (final r in compRows) r.read(cdr.dataSetUid)!]);
+    return result;
+  }
+
   Future<DataValue?> findCell({
     required String dataElementUid,
     required String period,

@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/auth/session_service.dart';
+import '../../../../core/data/data_value_store.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../../../core/metadata/data_set.dart';
@@ -67,12 +68,18 @@ class CaptureRepositoryImpl implements CaptureRepository {
                 'log in online once to sync.');
       }
     }
+    // Chip truth comes from the local write queue: a dataset is
+    // "unsync" while any of its values/completions here await upload.
+    final unsynced = await DataValueStore(_db).unsyncedDataSetsAt(orgUnitId);
     return [
       for (final ds in rows)
         DataSetEntity(
           id: ds.uid,
           name: ds.displayName,
           periodType: ds.periodType,
+          syncStatus: unsynced.contains(ds.uid)
+              ? SyncStatus.unsynced
+              : SyncStatus.synced,
         ),
     ]..sort((a, b) => a.name.compareTo(b.name));
   }
