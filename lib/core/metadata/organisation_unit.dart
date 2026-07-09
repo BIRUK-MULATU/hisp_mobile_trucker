@@ -28,6 +28,16 @@ class OrgUnitsTable extends Table {
 class OrgUnitResource extends MetadataResource<OrgUnit> {
   OrgUnitResource(super.db);
 
+  /// When set (by MetadataSyncService, from /api/me), the sync pulls
+  /// ONLY the user's capture subtree(s) instead of the national tree —
+  /// `path:like:<uid>` matches the root itself and every descendant.
+  /// Empty = unfiltered (local-only use never syncs anyway).
+  List<String> captureRootUids = const [];
+
+  @override
+  List<String> get filters =>
+      [for (final uid in captureRootUids) 'path:like:$uid'];
+
   @override
   String get resource => 'organisationUnits';
 

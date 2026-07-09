@@ -34,6 +34,11 @@ class DataValuePushResult {
 /// [values]); servers too old to send indexes fall back to a substring
 /// match on the conflict text. Only a transport-level failure (no
 /// ImportSummary body) leaves values pending for a later retry.
+/// Values per POST. Weeks of offline work must not go up as one giant
+/// request — a mid-transfer drop on a field connection would waste the
+/// whole upload instead of one slice.
+const _maxBatchSize = 500;
+
 Future<DataValuePushResult> pushDataValueBatch({
   required ApiClient api,
   required DataValueStore store,
@@ -42,6 +47,32 @@ Future<DataValuePushResult> pushDataValueBatch({
   void Function(Response res)? onResponse,
 }) async {
   if (values.isEmpty) return const DataValuePushResult();
+
+  // Chunk oversized queues; each slice settles independently, so a
+  // failure partway leaves only the unsent slices pending.
+  if (values.length > _maxBatchSize) {
+    var accepted = 0, rejected = 0;
+    for (var start = 0; start < values.length; start += _maxBatchSize) {
+      final slice = values.sublist(
+          start,
+          start + _maxBatchSize > values.length
+              ? values.length
+              : start + _maxBatchSize);
+      final r = await pushDataValueBatch(
+          api: api,
+          store: store,
+          values: slice,
+          logTag: logTag,
+          onResponse: onResponse);
+      accepted += r.accepted;
+      rejected += r.rejected;
+      if (r.transportFailed) {
+        return DataValuePushResult(
+            accepted: accepted, rejected: rejected, transportFailed: true);
+      }
+    }
+    return DataValuePushResult(accepted: accepted, rejected: rejected);
+  }
 
   final payload = {
     'dataValues': [

@@ -135,9 +135,32 @@ class _DataEntryViewState extends State<_DataEntryView> {
 
   // ── FAB tapped — save first ───────────────────────────────
   Future<void> _onSaveTapped() async {
-    setState(() => _isSaving = true);
-
     final bloc = context.read<DataEntryBloc>();
+
+    // Value-type gate: invalid cells must never be queued. Only the
+    // user's edits are checked — values that came from the server
+    // stay the server's responsibility.
+    final invalid = bloc.state is DataEntryLoaded
+        ? invalidEditedValues(bloc.state as DataEntryLoaded)
+        : const <String>[];
+    if (invalid.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            invalid.length == 1
+                ? 'One value is invalid: ${invalid.first}. '
+                    'Fix the red cell before saving.'
+                : '${invalid.length} values are invalid — fix the red '
+                    'cells before saving. First problem: ${invalid.first}',
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
 
     try {
       // Save data values via use case directly

@@ -4,6 +4,11 @@ import '../../auth/app_session.dart';
 import '../../router/app_router.dart';
 import '../../storage/secure_storage.dart';
 
+/// No credential is stored for this interceptor's client anymore — the
+/// only authenticated client is per-session (AppSession.api, built from
+/// in-memory credentials at login); requests that need auth go through
+/// it. This interceptor keeps the default headers and the 401
+/// session-end behavior.
 class AuthInterceptor extends Interceptor {
   final SecureStorage _secureStorage = SecureStorage();
 
@@ -12,10 +17,6 @@ class AuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    final token = await _secureStorage.getToken();
-    if (token != null && token.isNotEmpty) {
-      options.headers['Authorization'] = 'Basic $token';
-    }
     options.headers['Content-Type'] = 'application/json';
     options.headers['Accept'] = 'application/json';
     handler.next(options);
@@ -27,10 +28,10 @@ class AuthInterceptor extends Interceptor {
     ErrorInterceptorHandler handler,
   ) async {
     if (err.response?.statusCode == 401) {
-      // Credentials rejected — drop the token AND end the in-memory
-      // session (the router guard would otherwise bounce the user
-      // straight back to home), then return to the login screen.
-      // The local database and offline verifier are kept.
+      // Credentials rejected — purge any legacy stored token and end
+      // the in-memory session (the router guard would otherwise bounce
+      // the user straight back to home), then return to the login
+      // screen. The local database and offline verifier are kept.
       await _secureStorage.deleteToken();
       await AppSession.instance.service.logout();
       AppSession.instance.sessionChanged();

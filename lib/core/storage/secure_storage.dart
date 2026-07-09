@@ -12,13 +12,11 @@ class SecureStorage {
         accessibility: KeychainAccessibility.first_unlock),
   );
 
-  // ── Token ──────────────────────────────────────────────────
-  Future<void> saveToken(String token) async =>
-      await _storage.write(key: 'auth_token', value: token);
-
-  Future<String?> getToken() async =>
-      await _storage.read(key: 'auth_token');
-
+  // ── Legacy token cleanup ───────────────────────────────────
+  // The app no longer STORES credentials in any recoverable form
+  // (offline login uses a salted hash — see CredentialStore). This
+  // delete stays so installs that saved a basic token under an older
+  // build get purged on their next 401/logout.
   Future<void> deleteToken() async =>
       await _storage.delete(key: 'auth_token');
 
@@ -71,10 +69,6 @@ class SecureStorage {
   }
 
   // ── Session ────────────────────────────────────────────────
-  Future<bool> isLoggedIn() async {
-    final token = await getToken();
-    return token != null && token.isNotEmpty;
-  }
 
   /// Ends the user session but keeps device settings (server URL).
   Future<void> clearSession() async {
