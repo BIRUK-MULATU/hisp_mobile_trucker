@@ -56,7 +56,7 @@ class DataEntryTable extends StatelessWidget {
       }
     }
 
-    return LayoutBuilder(
+    final table = LayoutBuilder(
       builder: (context, constraints) {
         // Phone-sized minimums; on wider screens the label column
         // grows and the cells stretch to fill the viewport so the
@@ -107,6 +107,44 @@ class DataEntryTable extends StatelessWidget {
           ),
         );
       },
+    );
+
+    // Server-rejected values must be impossible to miss — red cells
+    // alone can sit below the fold on long forms.
+    final formIds = {for (final e in dataElements) e.id};
+    final rejectedCount = dataValues.values
+        .where((v) => v.syncError != null && formIds.contains(v.dataElementId))
+        .length;
+    if (rejectedCount == 0) return table;
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          color: AppColors.error.withValues(alpha: 0.08),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.space,
+            vertical: AppDimensions.spaceSM,
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.error_outline_rounded,
+                  color: AppColors.error, size: AppDimensions.iconMD),
+              const SizedBox(width: AppDimensions.spaceSM),
+              Expanded(
+                child: Text(
+                  '$rejectedCount value${rejectedCount == 1 ? '' : 's'} '
+                  'rejected by the server — long-press the red cells for '
+                  'details, then correct and save to resend.',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.error),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: table),
+      ],
     );
   }
 
@@ -232,6 +270,7 @@ class _DataEntryRow extends StatelessWidget {
                     categoryOptionComboId: col.id,
                     initialValue: existing?.value ?? '',
                     valueType: element.valueType,
+                    errorText: existing?.syncError,
                     onChanged: (value) {
                       context.read<DataEntryBloc>().add(
                             DataEntryValueChanged(
