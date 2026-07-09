@@ -10,6 +10,7 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
+import '../../../../shared/widgets/connectivity_indicator.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/usecases/login_usecase.dart';
@@ -108,6 +109,13 @@ class _LoginBody extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        // Offline logins are a first-class flow — show the connection
+        // state before the user even types.
+        const Positioned(
+          top: 0,
+          right: AppDimensions.space,
+          child: SafeArea(child: ConnectivityIndicator()),
         ),
       ],
     );

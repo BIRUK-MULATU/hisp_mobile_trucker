@@ -124,8 +124,12 @@ class DataValueSync {
         attributeOptionComboUid: v['attributeOptionCombo'] as String,
       );
 
-      // No local edit in flight -> server state simply lands.
-      if (local == null || local.syncState != SyncState.pending) {
+      // No local edit in flight -> server state simply lands. ERROR
+      // rows do NOT count as settled: they hold rejected local work
+      // the user must still see and fix, so they go through the same
+      // resolution rules as pending (but are never blind re-pushed —
+      // editing the cell is what re-queues them).
+      if (local == null || local.syncState == SyncState.synced) {
         await _applyServer(v, stamp);
         continue;
       }
