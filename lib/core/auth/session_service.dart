@@ -73,8 +73,6 @@ class SessionService {
       final ok = await _serverAccepts(api);
       if (!ok) return LoginResult.invalidCredentials;
 
-      final firstTime = !await _databaseExistsFor(userKey);
-
       _db = AppDatabase.forUser(username);
       _userKey = userKey;
 
@@ -101,6 +99,11 @@ class SessionService {
       );
 
       final sync = MetadataSyncService(_db!, api);
+      // "First time" = a full sync has never COMPLETED — not "the db
+      // file exists". The file is created the moment a first login
+      // starts, so an interrupted first sync would otherwise leave the
+      // user stuck on the delta path with half-empty metadata forever.
+      final firstTime = await sync.lastSyncedAt() == null;
       if (firstTime) {
         log.i('first online login for $userKey — full sync');
         await sync.syncMetadata();
@@ -109,7 +112,10 @@ class SessionService {
         log.i('returning online login for $userKey — delta sync');
         // Fire-and-forget: the user shouldn't wait on a delta.
         // Caller may await if it wants a definite finish.
-        unawaited(sync.syncMetadataDelta());
+        unawaited(sync.syncMetadataDelta().catchError((Object e) {
+          log.e('background delta sync failed: $e');
+          return <String, ({int updated, int deleted})>{};
+        }));
         return LoginResult.onlineReturning;
       }
     }
