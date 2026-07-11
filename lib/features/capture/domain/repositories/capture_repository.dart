@@ -1,6 +1,7 @@
 import '../entities/dataset_entity.dart';
 import '../entities/dataset_section_entity.dart';
 import '../entities/org_unit_tree_node.dart';
+import '../entities/report_instance_entity.dart';
 
 abstract class CaptureRepository {
   /// One level of children of [parentId] — the tree is loaded
@@ -17,4 +18,9 @@ abstract class CaptureRepository {
   /// The named org units for [ids], sorted by name — flat leaf nodes
   /// for the filtered capture list (no children, no expanding).
   Future<List<OrgUnitTreeNode>> getOrgUnitsByIds(Set<String> ids);
+
+  /// Every report the user has worked on locally — completed
+  /// registrations plus incomplete (draft) forms — across ALL org
+  /// units, newest first.
+  Future<List<ReportInstanceEntity>> getUserReports();
 }

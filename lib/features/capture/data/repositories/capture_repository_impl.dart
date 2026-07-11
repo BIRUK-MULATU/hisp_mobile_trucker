@@ -8,9 +8,11 @@ import '../../../../core/errors/exceptions.dart';
 import '../../../../core/metadata/data_set.dart';
 import '../../../../core/metadata/organisation_unit.dart';
 import '../../../../core/metadata/section.dart';
+import '../../../../core/data/ethiopian_period_service.dart';
 import '../../domain/entities/dataset_entity.dart';
 import '../../domain/entities/dataset_section_entity.dart';
 import '../../domain/entities/org_unit_tree_node.dart';
+import '../../domain/entities/report_instance_entity.dart';
 import '../../domain/repositories/capture_repository.dart';
 
 /// Capture navigation entirely on the local database — the synced
@@ -107,6 +109,86 @@ class CaptureRepositoryImpl implements CaptureRepository {
   }
 
   @override
+  Future<List<ReportInstanceEntity>> getUserReports() async {
+    // (dataset, period, orgUnit) -> the report's local truth.
+    final byKey = <(String, String, String), _ReportFacts>{};
+    _ReportFacts factsFor((String, String, String) key) =>
+        byKey[key] ??= _ReportFacts();
+
+    final cdr = _db.completeDataSetRegistrationsTable;
+    final completions = await (_db.select(cdr)
+          ..where((t) => t.completed.equals(true)))
+        .get();
+    for (final r in completions) {
+      factsFor((r.dataSetUid, r.period, r.orgUnitUid))
+        ..completed = true
+        ..completionSynced = r.syncState == SyncState.synced
+        ..touch(r.lastModified);
+    }
+
+    // Every value not yet on the server — drafts, queued, rejected —
+    // marks its report as having local work.
+    final dv = _db.dataValuesTable;
+    final unsyncedValues = await (_db.select(dv)
+          ..where((t) => t.syncState.equals(SyncState.synced.index).not()))
+        .get();
+    if (unsyncedValues.isNotEmpty) {
+      // Values carry no dataset — map through dataSetElements. A
+      // shared element flags every dataset containing it, same rule
+      // as unsyncedDataSetsAt: the work IS unfinished in all of them.
+      final dse = _db.dataSetElementsTable;
+      final links = await (_db.select(dse)
+            ..where((t) => t.dataElementUid
+                .isIn({for (final d in unsyncedValues) d.dataElementUid})))
+          .get();
+      final dataSetsByElement = <String, Set<String>>{};
+      for (final l in links) {
+        (dataSetsByElement[l.dataElementUid] ??= {}).add(l.dataSetUid);
+      }
+      for (final d in unsyncedValues) {
+        for (final ds
+            in dataSetsByElement[d.dataElementUid] ?? const <String>{}) {
+          factsFor((ds, d.period, d.orgUnitUid))
+            ..hasUnsyncedValues = true
+            ..hasDrafts |= d.syncState == SyncState.draft
+            ..touch(d.lastModified);
+        }
+      }
+    }
+    if (byKey.isEmpty) return const [];
+
+    // Resolve display names once for all keys.
+    final dataSetRows = await (_db.select(_db.dataSetsTable)
+          ..where((t) => t.uid.isIn({for (final k in byKey.keys) k.$1})))
+        .get();
+    final dataSetByUid = {for (final r in dataSetRows) r.uid: r};
+    final orgUnitRows = await (_db.select(_db.orgUnitsTable)
+          ..where((t) => t.uid.isIn({for (final k in byKey.keys) k.$3})))
+        .get();
+    final orgUnitNames = {
+      for (final r in orgUnitRows) r.uid: r.displayName,
+    };
+
+    return [
+      for (final MapEntry(key: k, value: v) in byKey.entries)
+        // Dataset metadata gone (unassigned since): nothing to open.
+        if (dataSetByUid[k.$1] != null)
+          ReportInstanceEntity(
+            dataSetId: k.$1,
+            dataSetName: dataSetByUid[k.$1]!.displayName,
+            periodType: dataSetByUid[k.$1]!.periodType,
+            periodId: k.$2,
+            periodLabel: EthiopianPeriodService.formatPeriodId(k.$2),
+            orgUnitId: k.$3,
+            orgUnitName: orgUnitNames[k.$3] ?? k.$3,
+            status: v.status,
+            synced: v.synced,
+            lastModified: v.lastModified,
+          ),
+    ]..sort((a, b) => b.lastModified.compareTo(a.lastModified));
+  }
+
+  @override
   Future<List<DataSetSectionEntity>> getSections(String dataSetId) async {
     final rows = await SectionResource(_db).getByDataSet(dataSetId);
     return [
@@ -118,4 +200,25 @@ class CaptureRepositoryImpl implements CaptureRepository {
         ),
     ]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
   }
+}
+
+/// Accumulated local facts of one report while [getUserReports]
+/// scans completions and unsynced values.
+class _ReportFacts {
+  bool completed = false;
+  bool completionSynced = true;
+  bool hasUnsyncedValues = false;
+  bool hasDrafts = false;
+  DateTime lastModified = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void touch(DateTime t) {
+    if (t.isAfter(lastModified)) lastModified = t;
+  }
+
+  /// Drafts reopen a report: even a completed one is being reworked.
+  ReportStatus get status => completed && !hasDrafts
+      ? ReportStatus.completed
+      : ReportStatus.incomplete;
+
+  bool get synced => !hasUnsyncedValues && (!completed || completionSynced);
 }

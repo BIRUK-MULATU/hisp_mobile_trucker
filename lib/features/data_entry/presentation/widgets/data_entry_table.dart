@@ -270,6 +270,7 @@ class _DataEntryRow extends StatelessWidget {
                     categoryOptionComboId: col.id,
                     initialValue: existing?.value ?? '',
                     valueType: element.valueType,
+                    options: element.options,
                     errorText: existing?.syncError,
                     onChanged: (value) {
                       context.read<DataEntryBloc>().add(

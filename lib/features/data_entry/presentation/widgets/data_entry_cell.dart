@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/data/value_type_validator.dart';
 import '../../../../shared/theme/app_colors.dart';
+import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../domain/entities/data_element_entity.dart';
 
 class DataEntryCell extends StatefulWidget {
   final String dataElementId;
@@ -11,6 +13,10 @@ class DataEntryCell extends StatefulWidget {
   final String valueType;
   final ValueChanged<String> onChanged;
   final bool isReadOnly;
+
+  /// Non-empty = option-set element: the cell becomes a picker and
+  /// only the options' codes may be stored (server rule E7621).
+  final List<OptionEntity> options;
 
   /// Server rejection text — marks the cell red until it is re-edited.
   /// Long-pressing the cell shows the message.
@@ -24,6 +30,7 @@ class DataEntryCell extends StatefulWidget {
     this.valueType = 'NUMBER',
     required this.onChanged,
     this.isReadOnly = false,
+    this.options = const [],
     this.errorText,
   });
 
@@ -94,8 +101,13 @@ class _DataEntryCellState extends State<DataEntryCell> {
   /// Value-type violation for the current text (null = valid). Local
   /// invalidity outranks a stale server rejection: it describes what is
   /// in the cell right now.
-  String? get _localError =>
-      validateDataValue(widget.valueType, _controller.text);
+  String? get _localError => validateDataValue(
+        widget.valueType,
+        _controller.text,
+        optionCodes: widget.options.isEmpty
+            ? null
+            : {for (final o in widget.options) o.code},
+      );
 
   bool get _hasError => widget.errorText != null || _localError != null;
 
@@ -198,8 +210,91 @@ class _DataEntryCellState extends State<DataEntryCell> {
     );
   }
 
+  // Option-set element — only the set's option codes are valid
+  // (E7621), so the cell is a picker. A bottom sheet, NOT a dropdown:
+  // same overlay-outlives-rebuild crash as the boolean cell above.
+  Widget _buildOptionCell() {
+    final code = _controller.text.trim();
+    OptionEntity? selected;
+    for (final o in widget.options) {
+      if (o.code == code) {
+        selected = o;
+        break;
+      }
+    }
+    // A stored value not in the set (old data): show the raw code —
+    // the red border + tooltip already explain the problem.
+    final label = selected?.name ?? (code.isEmpty ? '—' : code);
+    return InkWell(
+      onTap: widget.isReadOnly ? null : _pickOption,
+      child: Container(
+        height: 40,
+        decoration: _cellDecoration,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spaceXS),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: code.isEmpty
+                ? AppColors.textSecondary
+                : AppColors.textPrimary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickOption() async {
+    final current = _controller.text.trim();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppDimensions.radiusXXL),
+        ),
+      ),
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding:
+              const EdgeInsets.symmetric(vertical: AppDimensions.spaceSM),
+          children: [
+            for (final o in widget.options)
+              ListTile(
+                title: Text(o.name, style: AppTextStyles.bodyMedium),
+                trailing: o.code == current
+                    ? const Icon(Icons.check_rounded,
+                        color: AppColors.primary)
+                    : null,
+                onTap: () => Navigator.pop(ctx, o.code),
+              ),
+            if (current.isNotEmpty)
+              ListTile(
+                leading:
+                    const Icon(Icons.clear_rounded, color: AppColors.error),
+                title: Text(
+                  'Clear value',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(color: AppColors.error),
+                ),
+                onTap: () => Navigator.pop(ctx, ''),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) _setValue(picked);
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.options.isNotEmpty) {
+      return _withErrorHint(_buildOptionCell());
+    }
     switch (widget.valueType.toUpperCase()) {
       case 'BOOLEAN':
         return _withErrorHint(_buildBooleanCell());

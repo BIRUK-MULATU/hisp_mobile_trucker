@@ -11,6 +11,7 @@ import '../../../../core/errors/exceptions.dart';
 import '../../../../core/metadata/category_combo.dart';
 import '../../../../core/metadata/data_element.dart';
 import '../../../../core/metadata/data_set.dart';
+import '../../../../core/metadata/option.dart';
 import '../../../../core/metadata/section.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/network_info.dart';
@@ -63,6 +64,9 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
 
     // COC lists repeat heavily across elements — resolve each combo once.
     final cocsByCombo = <String, List<CategoryOptionCombo>>{};
+    // Same for option sets: many elements share one set.
+    final optionResource = OptionResource(_db);
+    final optionsBySet = <String, List<entity.OptionEntity>>{};
 
     final result = <entity.DataElementEntity>[];
     for (final uid in uids) {
@@ -71,6 +75,13 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
       final comboUid = effectiveCombo[uid] ?? row.categoryComboUid;
       final cocs = cocsByCombo[comboUid] ??=
           await comboResource.orderedOptionCombos(comboUid);
+      final optionSetUid = row.optionSetUid;
+      final options = optionSetUid == null
+          ? const <entity.OptionEntity>[]
+          : optionsBySet[optionSetUid] ??= [
+              for (final o in await optionResource.getByOptionSet(optionSetUid))
+                entity.OptionEntity(code: o.code, name: o.displayName),
+            ];
       result.add(entity.DataElementEntity(
         id: row.uid,
         name: row.formName.isNotEmpty ? row.formName : row.displayName,
@@ -80,6 +91,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
           for (final coc in cocs)
             entity.CategoryOptionCombo(id: coc.uid, name: coc.name),
         ],
+        options: options,
       ));
     }
     if (result.isEmpty) {

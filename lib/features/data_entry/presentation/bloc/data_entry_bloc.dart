@@ -18,7 +18,13 @@ List<String> invalidEditedValues(DataEntryLoaded state) {
     if (!v.isModified) continue;
     final element = typeOf[v.dataElementId];
     if (element == null) continue; // not part of the loaded form
-    final why = validateDataValue(element.valueType, v.value);
+    final why = validateDataValue(
+      element.valueType,
+      v.value,
+      optionCodes: element.options.isEmpty
+          ? null
+          : {for (final o in element.options) o.code},
+    );
     if (why != null) problems.add('${element.displayName}: $why');
   }
   return problems;
