@@ -148,6 +148,7 @@ class _HomePageState extends State<HomePage> {
       appBar: HomeAppBar(
         searchActive: _searchActive,
         filtersShown: _showFilters,
+        showFilterButton: _mode == HomeMode.capture,
         isSyncing: _isSyncing,
         searchHint: 'Search organisation units...',
         onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
@@ -167,19 +168,6 @@ class _HomePageState extends State<HomePage> {
       drawer: const _HomeDrawer(),
       body: Column(
         children: [
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            child: _showFilters
-                ? FilterPanel(
-                    dateFilter: _dateFilter,
-                    orgUnitFilter: _orgUnitFilter,
-                    syncFilter: _syncFilter,
-                    onDateChanged: (f) => setState(() => _dateFilter = f),
-                    onOrgUnitChanged: (f) => setState(() => _orgUnitFilter = f),
-                    onSyncChanged: (f) => setState(() => _syncFilter = f),
-                  )
-                : const SizedBox.shrink(),
-          ),
           // The toggle stays a hand-sized pill even on wide screens.
           ResponsiveContent(
             maxWidth: AppBreakpoints.formMaxWidth,
@@ -189,6 +177,24 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const Divider(height: 1, color: AppColors.divider),
+          // Filters belong to the Capture workflow, so the panel lives
+          // inside the capture area rather than above the mode toggle.
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            child: _showFilters && _mode == HomeMode.capture
+                ? ResponsiveContent(
+                    child: FilterPanel(
+                      dateFilter: _dateFilter,
+                      orgUnitFilter: _orgUnitFilter,
+                      syncFilter: _syncFilter,
+                      onDateChanged: (f) => setState(() => _dateFilter = f),
+                      onOrgUnitChanged: (f) =>
+                          setState(() => _orgUnitFilter = f),
+                      onSyncChanged: (f) => setState(() => _syncFilter = f),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
           Expanded(
             child: ResponsiveContent(
               child: _mode == HomeMode.visualization

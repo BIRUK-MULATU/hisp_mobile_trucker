@@ -7,6 +7,8 @@ import 'package:hisp_mobile_trucker/features/data_entry/domain/usecases/save_dat
 import 'package:hisp_mobile_trucker/features/data_entry/presentation/widgets/data_entry_table.dart';
 import 'package:hisp_mobile_trucker/features/capture/domain/entities/dataset_entity.dart';
 import 'package:hisp_mobile_trucker/features/capture/presentation/widgets/dataset_card.dart';
+import 'package:hisp_mobile_trucker/core/network/connectivity_service.dart';
+import 'package:hisp_mobile_trucker/features/home/presentation/widgets/home_app_bar.dart';
 
 class _FakeDataEntryRepository implements DataEntryRepository {
   List<DataValueEntity>? savedValues;
@@ -181,6 +183,31 @@ void main() {
       expect(find.text('Value'), findsOneWidget);
       expect(find.text('Malaria cases'), findsOneWidget);
       expect(find.text('Stock-outs'), findsOneWidget);
+    });
+  });
+
+  group('HomeAppBar', () {
+    testWidgets('shows the filter button only when showFilterButton is set',
+        (tester) async {
+      for (final visible in [true, false]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              appBar: HomeAppBar(showFilterButton: visible),
+            ),
+          ),
+        );
+        expect(
+          find.byIcon(Icons.format_list_bulleted_rounded),
+          visible ? findsOneWidget : findsNothing,
+          reason: 'showFilterButton: $visible',
+        );
+      }
+      // The embedded ConnectivityIndicator lazily created the
+      // ConnectivityService singleton; flush its in-flight probe and
+      // cancel the periodic timer so none are pending at teardown.
+      await tester.pump(const Duration(seconds: 6));
+      ConnectivityService.instance.dispose();
     });
   });
 }

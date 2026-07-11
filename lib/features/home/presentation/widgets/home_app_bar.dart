@@ -15,6 +15,10 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool searchActive;
   final String searchHint;
 
+  /// Filters only apply to the Capture workflow, so the button is
+  /// hidden while the Visualization mode is active.
+  final bool showFilterButton;
+
   const HomeAppBar({
     super.key,
     this.onMenuTap,
@@ -26,6 +30,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.filtersShown = false,
     this.searchActive = false,
     this.searchHint = 'Search...',
+    this.showFilterButton = true,
   });
 
   @override
@@ -134,8 +139,8 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             tooltip: 'Sync all',
           ),
 
-        // ── List View Button (hidden while searching) ─
-        if (!searchActive)
+        // ── Filter Button (Capture mode only, hidden while searching) ─
+        if (!searchActive && showFilterButton)
           IconButton(
             icon: const Icon(
               Icons.format_list_bulleted_rounded,
