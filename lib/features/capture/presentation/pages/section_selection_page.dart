@@ -239,6 +239,10 @@ class _SectionCard extends StatelessWidget {
             const SizedBox(width: AppDimensions.spaceMD),
             Expanded(
               child: Column(
+                // Shrink to the text so the Row centers it against the
+                // number badge — otherwise the column fills the fixed
+                // tile height and the name sticks to the top.
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(

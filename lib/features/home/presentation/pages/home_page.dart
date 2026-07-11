@@ -18,6 +18,7 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/filter_panel.dart';
 import '../../../capture/presentation/views/capture_org_unit_view.dart';
+import '../../../visualization/presentation/views/visualization_view.dart';
 import '../widgets/home_app_bar.dart';
 
 /// Home is a shell with two modes behind a toggle:
@@ -130,6 +131,54 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// 'From -To' and 'Other' need a real date (range) from a picker;
+  /// the other options resolve from their label alone.
+  Future<void> _onDateFilterSelected(AppliedFilter? filter) async {
+    if (filter == null) {
+      setState(() => _dateFilter = null);
+      return;
+    }
+    var applied = filter;
+    final now = DateTime.now();
+    if (filter.label == 'From -To') {
+      final picked = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(2000),
+        lastDate: now.add(const Duration(days: 366)),
+      );
+      if (picked == null || !mounted) return;
+      applied = AppliedFilter(
+        '${_formatDay(picked.start)} - ${_formatDay(picked.end)}',
+        // End exclusive: push it past the last picked day so that
+        // whole day is included.
+        range: DateTimeRange(
+          start: picked.start,
+          end: picked.end.add(const Duration(days: 1)),
+        ),
+      );
+    } else if (filter.label == 'Other') {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: now,
+        firstDate: DateTime(2000),
+        lastDate: now.add(const Duration(days: 366)),
+      );
+      if (picked == null || !mounted) return;
+      applied = AppliedFilter(
+        _formatDay(picked),
+        range: DateTimeRange(
+          start: picked,
+          end: picked.add(const Duration(days: 1)),
+        ),
+      );
+    }
+    setState(() => _dateFilter = applied);
+  }
+
+  static String _formatDay(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/${d.year}';
+
   void _showSyncMessage(String message, {required Color color}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -150,18 +199,17 @@ class _HomePageState extends State<HomePage> {
         filtersShown: _showFilters,
         showFilterButton: _mode == HomeMode.capture,
         isSyncing: _isSyncing,
-        searchHint: 'Search organisation units...',
+        // Search targets whichever mode is active: org units in
+        // Capture, dashboards in Visualization.
+        searchHint: _mode == HomeMode.capture
+            ? 'Search organisation units...'
+            : 'Search dashboards...',
         onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
         onSyncTap: _onSyncTapped,
         onListViewTap: () => setState(() => _showFilters = !_showFilters),
         onSearchTap: () => setState(() {
           _searchActive = !_searchActive;
-          if (!_searchActive) {
-            _searchQuery = '';
-          } else {
-            // Searching targets the org unit tree — make it visible.
-            _mode = HomeMode.capture;
-          }
+          if (!_searchActive) _searchQuery = '';
         }),
         onSearchChanged: (query) => setState(() => _searchQuery = query),
       ),
@@ -173,7 +221,13 @@ class _HomePageState extends State<HomePage> {
             maxWidth: AppBreakpoints.formMaxWidth,
             child: _ModeToggleBar(
               mode: _mode,
-              onChanged: (mode) => setState(() => _mode = mode),
+              // A query typed for one mode means nothing in the
+              // other — close the search on switch.
+              onChanged: (mode) => setState(() {
+                _mode = mode;
+                _searchActive = false;
+                _searchQuery = '';
+              }),
             ),
           ),
           const Divider(height: 1, color: AppColors.divider),
@@ -187,7 +241,7 @@ class _HomePageState extends State<HomePage> {
                       dateFilter: _dateFilter,
                       orgUnitFilter: _orgUnitFilter,
                       syncFilter: _syncFilter,
-                      onDateChanged: (f) => setState(() => _dateFilter = f),
+                      onDateChanged: _onDateFilterSelected,
                       onOrgUnitChanged: (f) =>
                           setState(() => _orgUnitFilter = f),
                       onSyncChanged: (f) => setState(() => _syncFilter = f),
@@ -198,10 +252,18 @@ class _HomePageState extends State<HomePage> {
           Expanded(
             child: ResponsiveContent(
               child: _mode == HomeMode.visualization
-                  ? const _VisualizationPlaceholder()
+                  ? VisualizationView(
+                      searchQuery: _searchActive ? _searchQuery : null,
+                    )
                   : CaptureOrgUnitView(
                       key: ValueKey('capture-$_syncTick'),
                       searchQuery: _searchActive ? _searchQuery : null,
+                      orgUnitQuery: _orgUnitFilter?.label,
+                      syncFilters:
+                          _syncFilter?.label.split(', ').toSet() ?? const {},
+                      dateRange: _dateFilter == null
+                          ? null
+                          : resolveDateFilter(_dateFilter!, DateTime.now()),
                     ),
             ),
           ),
@@ -306,55 +368,6 @@ class _ModeButton extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Visualization placeholder ──────────────────────────────────
-class _VisualizationPlaceholder extends StatelessWidget {
-  const _VisualizationPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.spaceXXXL),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 96,
-              height: 96,
-              decoration: const BoxDecoration(
-                color: AppColors.primarySurface,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.insights_rounded,
-                size: 48,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: AppDimensions.spaceXL),
-            const Text(
-              'Visualizations coming soon',
-              style: AppTextStyles.headingSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppDimensions.spaceSM),
-            Text(
-              'Dashboards and charts for your organisation unit '
-              'will appear here.\nSwitch to Capture to start '
-              'entering data.',
-              style: AppTextStyles.bodySmall.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.6,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
         ),
       ),
     );

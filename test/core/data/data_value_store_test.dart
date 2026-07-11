@@ -75,4 +75,47 @@ void main() {
         );
     expect(await store.unsyncedDataSetsAt(ou1), {ds2});
   });
+
+  group('orgUnitsWithWork', () {
+    test('filters by sync state', () async {
+      await saveValue(); // pending at ou1
+      expect(await store.orgUnitsWithWork(states: {SyncState.pending}), {ou1});
+      expect(await store.orgUnitsWithWork(states: {SyncState.synced}), isEmpty);
+
+      await store.markSynced((await store.pendingValues()).single);
+      expect(await store.orgUnitsWithWork(states: {SyncState.synced}), {ou1});
+      expect(
+          await store.orgUnitsWithWork(states: {SyncState.pending}), isEmpty);
+      expect(await store.orgUnitsWithWork(), {ou1},
+          reason: 'no states = any state');
+    });
+
+    test('filters by last-modified window, end exclusive', () async {
+      await saveValue(); // lastModified = now at ou1
+      final now = DateTime.now();
+      final tomorrow = now.add(const Duration(days: 1));
+      final yesterday = now.subtract(const Duration(days: 1));
+
+      expect(await store.orgUnitsWithWork(from: yesterday, to: tomorrow),
+          {ou1});
+      expect(await store.orgUnitsWithWork(from: tomorrow), isEmpty);
+      expect(await store.orgUnitsWithWork(to: yesterday), isEmpty);
+    });
+
+    test('sees completion-only org units too', () async {
+      await db.into(db.completeDataSetRegistrationsTable).insert(
+            CompleteDataSetRegistrationsTableCompanion.insert(
+              dataSetUid: ds2,
+              period: '201811',
+              orgUnitUid: ou2,
+              attributeOptionComboUid: coc,
+              completed: true,
+              date: DateTime.now(),
+              syncState: SyncState.error,
+              lastModified: DateTime.now(),
+            ),
+          );
+      expect(await store.orgUnitsWithWork(states: {SyncState.error}), {ou2});
+    });
+  });
 }

@@ -7,7 +7,54 @@ import '../theme/app_text_styles.dart';
 /// "No filters applied" once the user picks something.
 class AppliedFilter {
   final String label;
-  const AppliedFilter(this.label);
+
+  /// Only set for the custom date options ('From -To' / 'Other'),
+  /// where the range cannot be derived from the label.
+  final DateTimeRange? range;
+
+  const AppliedFilter(this.label, {this.range});
+}
+
+/// Resolves a DATE filter to a concrete window: start inclusive,
+/// end exclusive. Returns null for 'Any time' (no restriction).
+/// Weeks are Monday-based.
+DateTimeRange? resolveDateFilter(AppliedFilter filter, DateTime now) {
+  if (filter.range != null) return filter.range;
+  final today = DateTime(now.year, now.month, now.day);
+  DateTimeRange days(DateTime start, int count) =>
+      DateTimeRange(start: start, end: start.add(Duration(days: count)));
+  final monday = today.subtract(Duration(days: today.weekday - 1));
+  switch (filter.label) {
+    case 'Today':
+      return days(today, 1);
+    case 'Yesterday':
+      return days(today.subtract(const Duration(days: 1)), 1);
+    case 'Tomorrow':
+      return days(today.add(const Duration(days: 1)), 1);
+    case 'This Week':
+      return days(monday, 7);
+    case 'Last Week':
+      return days(monday.subtract(const Duration(days: 7)), 7);
+    case 'Next week':
+      return days(monday.add(const Duration(days: 7)), 7);
+    case 'This month':
+      return DateTimeRange(
+        start: DateTime(now.year, now.month),
+        end: DateTime(now.year, now.month + 1),
+      );
+    case 'Last month':
+      return DateTimeRange(
+        start: DateTime(now.year, now.month - 1),
+        end: DateTime(now.year, now.month),
+      );
+    case 'Next month':
+      return DateTimeRange(
+        start: DateTime(now.year, now.month + 1),
+        end: DateTime(now.year, now.month + 2),
+      );
+    default: // 'Any time' or an unrecognized label — no restriction.
+      return null;
+  }
 }
 
 /// The 12 quick date-range options shown in the DATE filter grid,

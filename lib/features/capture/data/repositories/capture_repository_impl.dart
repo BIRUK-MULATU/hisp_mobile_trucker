@@ -63,6 +63,11 @@ class CaptureRepositoryImpl implements CaptureRepository {
       // Distinguish "nothing assigned" from "never synced".
       final anyMeta = await (_db.select(_db.dataSetsTable)..limit(1)).get();
       if (anyMeta.isEmpty) {
+        if (_session.initialSyncRunning) {
+          throw const CacheException(
+              message: 'Your data is still downloading — '
+                  'try again in a moment.');
+        }
         throw const CacheException(
             message: 'No metadata on this device yet — '
                 'log in online once to sync.');
@@ -80,6 +85,23 @@ class CaptureRepositoryImpl implements CaptureRepository {
           syncStatus: unsynced.contains(ds.uid)
               ? SyncStatus.unsynced
               : SyncStatus.synced,
+        ),
+    ]..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  @override
+  Future<List<OrgUnitTreeNode>> getOrgUnitsByIds(Set<String> ids) async {
+    if (ids.isEmpty) return const [];
+    final t = _db.orgUnitsTable;
+    final rows = await (_db.select(t)..where((t) => t.uid.isIn(ids))).get();
+    return [
+      for (final ou in rows)
+        OrgUnitTreeNode(
+          id: ou.uid,
+          name: ou.displayName,
+          parentId: ou.parentUid,
+          level: '/'.allMatches(ou.path).length,
+          path: ou.path,
         ),
     ]..sort((a, b) => a.name.compareTo(b.name));
   }

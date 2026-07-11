@@ -125,6 +125,50 @@ class DataValueStore {
     return result;
   }
 
+  /// Org units that have captured work (data values or completion
+  /// registrations) matching the capture filters: any of [states]
+  /// (empty = any state) and, when given, last modified inside
+  /// [from] (inclusive) .. [to] (exclusive). Feeds the capture
+  /// org-unit filter — the result is inherently within the user's
+  /// assigned scope because local work only exists where they
+  /// captured through that tree.
+  Future<Set<String>> orgUnitsWithWork({
+    Set<SyncState> states = const {},
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final stateIndexes = [for (final s in states) s.index];
+    final result = <String>{};
+
+    final dv = _db.dataValuesTable;
+    final dvQuery = _db.selectOnly(dv, distinct: true)
+      ..addColumns([dv.orgUnitUid]);
+    if (stateIndexes.isNotEmpty) {
+      dvQuery.where(dv.syncState.isIn(stateIndexes));
+    }
+    if (from != null) dvQuery.where(dv.lastModified.isBiggerOrEqualValue(from));
+    if (to != null) dvQuery.where(dv.lastModified.isSmallerThanValue(to));
+    result.addAll([
+      for (final r in await dvQuery.get()) r.read(dv.orgUnitUid)!,
+    ]);
+
+    final cdr = _db.completeDataSetRegistrationsTable;
+    final cdrQuery = _db.selectOnly(cdr, distinct: true)
+      ..addColumns([cdr.orgUnitUid]);
+    if (stateIndexes.isNotEmpty) {
+      cdrQuery.where(cdr.syncState.isIn(stateIndexes));
+    }
+    if (from != null) {
+      cdrQuery.where(cdr.lastModified.isBiggerOrEqualValue(from));
+    }
+    if (to != null) cdrQuery.where(cdr.lastModified.isSmallerThanValue(to));
+    result.addAll([
+      for (final r in await cdrQuery.get()) r.read(cdr.orgUnitUid)!,
+    ]);
+
+    return result;
+  }
+
   Future<DataValue?> findCell({
     required String dataElementUid,
     required String period,

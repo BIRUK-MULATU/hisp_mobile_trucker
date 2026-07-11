@@ -13,4 +13,8 @@ abstract class CaptureRepository {
   /// Sections of a dataset, ordered by sortOrder. Empty when the
   /// dataset has no sections (form is captured as a whole).
   Future<List<DataSetSectionEntity>> getSections(String dataSetId);
+
+  /// The named org units for [ids], sorted by name — flat leaf nodes
+  /// for the filtered capture list (no children, no expanding).
+  Future<List<OrgUnitTreeNode>> getOrgUnitsByIds(Set<String> ids);
 }
