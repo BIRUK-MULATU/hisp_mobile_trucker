@@ -111,9 +111,12 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
       for (final label in widget.syncFilters)
         if (label == 'Synced')
           SyncState.synced
-        else if (label == 'UnSynced')
-          SyncState.pending
-        else if (label == 'Sync Error')
+        else if (label == 'UnSynced') ...[
+          // Queued for upload OR still a device-only draft — both are
+          // "not on the server yet" from the user's point of view.
+          SyncState.pending,
+          SyncState.draft,
+        ] else if (label == 'Sync Error')
           SyncState.error,
       // 'SMS Synced' has no local counterpart (the app does not sync
       // over SMS) — it contributes no state and alone matches nothing.
@@ -293,11 +296,17 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
           const Divider(height: 1),
         ],
         Expanded(child: _buildTree()),
-        const Divider(height: 1),
-        _BottomBar(
-          enabled: _selected != null,
-          onContinue: _continue,
-        ),
+        // The on-screen keyboard shrinks the body until the fixed
+        // bars no longer fit (RenderFlex overflow). The Continue bar
+        // is unusable while typing anyway — hide it until the
+        // keyboard goes away.
+        if (MediaQuery.of(context).viewInsets.bottom == 0) ...[
+          const Divider(height: 1),
+          _BottomBar(
+            enabled: _selected != null,
+            onContinue: _continue,
+          ),
+        ],
       ],
     );
   }

@@ -76,6 +76,61 @@ void main() {
     expect(await store.unsyncedDataSetsAt(ou1), {ds2});
   });
 
+  group('drafts', () {
+    Future<void> saveDraft() => store.setValue(
+          dataElementUid: de1,
+          period: '201811',
+          orgUnitUid: ou1,
+          categoryOptionComboUid: coc,
+          attributeOptionComboUid: coc,
+          value: '5',
+          draft: true,
+        );
+
+    test('a draft is invisible to every push query', () async {
+      await saveDraft();
+      expect(await store.pendingValues(), isEmpty,
+          reason: 'drafts must never be picked up by a push');
+      expect(await store.pendingCount(), 0);
+      expect(await store.draftCount(), 1);
+    });
+
+    test('a draft still counts as unsynced work', () async {
+      await saveDraft();
+      expect(await store.unsyncedDataSetsAt(ou1), {ds1},
+          reason: 'draft work is not on the server');
+      expect(await hasUnsyncedLocalData(db), isTrue,
+          reason: 'clock must not re-anchor over draft stamps');
+    });
+
+    test('promoteDrafts flips the form to pending, scoped to its '
+        'elements', () async {
+      await saveDraft();
+
+      // Different element (other dataset) — must not be promoted.
+      await store.setValue(
+        dataElementUid: 'dataElem002',
+        period: '201811',
+        orgUnitUid: ou1,
+        categoryOptionComboUid: coc,
+        attributeOptionComboUid: coc,
+        value: '7',
+        draft: true,
+      );
+
+      final promoted = await store.promoteDrafts(
+        period: '201811',
+        orgUnitUid: ou1,
+        attributeOptionComboUid: coc,
+        dataElementUids: [de1],
+      );
+      expect(promoted, 1);
+      expect((await store.pendingValues()).single.dataElementUid, de1);
+      expect(await store.draftCount(), 1,
+          reason: 'the other dataset\'s draft stays a draft');
+    });
+  });
+
   group('orgUnitsWithWork', () {
     test('filters by sync state', () async {
       await saveValue(); // pending at ou1

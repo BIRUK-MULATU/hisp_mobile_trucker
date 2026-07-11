@@ -19,7 +19,10 @@ import '../metadata/validation_rule.dart';
 part 'app_database.g.dart';
 
 /// Sync lifecycle of locally stored DATA (values, completions).
-enum SyncState { synced, pending, error }
+/// `draft` is device-only work: it is never pushed by any sync path
+/// until the user completes the data set, which promotes it to
+/// `pending`. Stored by index — only append new states.
+enum SyncState { synced, pending, error, draft }
 
 // ── Tables that stay global (not per-metadata-type) ─────────────────────
 

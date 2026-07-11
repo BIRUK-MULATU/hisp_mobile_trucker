@@ -234,7 +234,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
 
             // ── Message ────────────────────────────
             Text(
-              'Do you also want to complete the data set ?',
+              'Complete the data set to send it to the server, or '
+              'keep it as a draft on this device to finish later.',
               style: AppTextStyles.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
                 height: 1.5,
@@ -248,7 +249,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
             // ── Buttons ────────────────────────────
             Row(
               children: [
-                // Not now
+                // Incomplete — stays a device-only draft
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(ctx, false),
@@ -266,7 +267,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                           vertical: AppDimensions.spaceMD),
                     ),
                     child: Text(
-                      'Not now',
+                      'Incomplete',
                       style: AppTextStyles.buttonMedium
                           .copyWith(color: AppColors.primary),
                     ),
@@ -343,11 +344,12 @@ class _DataEntryViewState extends State<_DataEntryView> {
         }
       }
     } else {
-      // User chose Not now — go back with saved result
+      // User chose Incomplete — the values stay a device-only draft.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Data saved successfully!'),
+            content: Text('Saved as a draft on this device — complete '
+                'the data set to send it to the server.'),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
           ),

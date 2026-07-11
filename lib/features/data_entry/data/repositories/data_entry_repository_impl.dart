@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/auth/session_service.dart';
 import '../../../../core/data/completeness.dart';
+import '../../../../core/data/data_value_push.dart';
 import '../../../../core/data/data_value_store.dart';
 import '../../../../core/data/data_value_sync.dart';
 import '../../../../core/database/app_database.dart';
@@ -11,6 +12,7 @@ import '../../../../core/metadata/category_combo.dart';
 import '../../../../core/metadata/data_element.dart';
 import '../../../../core/metadata/data_set.dart';
 import '../../../../core/metadata/section.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/network/network_info.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../../../core/utils/app_logger.dart';
@@ -21,10 +23,12 @@ import '../../domain/repositories/data_entry_repository.dart';
 ///
 /// Reads come from the local store (form metadata from the synced
 /// metadata tables, values from data_values). Writes land locally as
-/// `pending` and are pushed by the sync layer. When online, opening a
-/// form first runs DataValueSync.syncForm (pull + conflict-resolve +
-/// push) so the cells show fresh server state — failure of that step
-/// is never fatal, the local data simply stands.
+/// `draft` — device-only, invisible to every sync path — until the
+/// user completes the data set, which promotes them to `pending` and
+/// pushes. When online, opening a form first runs
+/// DataValueSync.syncForm (pull + conflict-resolve + push) so the
+/// cells show fresh server state — failure of that step is never
+/// fatal, the local data simply stands.
 class DataEntryRepositoryImpl implements DataEntryRepository {
   final SessionService _session;
   final NetworkInfo _networkInfo;
@@ -141,6 +145,9 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     final store = DataValueStore(_db);
     final storedBy = await SecureStorage().getUsername();
 
+    // Drafts by design: saving keeps the values on this device only.
+    // They go to the server when the user completes the data set
+    // (completeDataSet promotes + pushes).
     for (final v in dataValues) {
       await store.setValue(
         dataElementUid: v.dataElementId,
@@ -150,27 +157,8 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
         attributeOptionComboUid: aoc,
         value: v.value.trim().isEmpty ? null : v.value.trim(),
         storedBy: storedBy,
+        draft: true,
       );
-    }
-
-    // Saved locally = saved. Try to get it to the server right away,
-    // but never let that attempt fail the save.
-    final api = AppSession.instance.api;
-    if (api != null && await _networkInfo.isConnected) {
-      final elementUids =
-          await DataSetResource(_db).dataElementUids(dataSetId);
-      unawaited(DataValueSync(_db, api)
-          .syncForm(
-            dataSetUid: dataSetId,
-            period: period,
-            orgUnitUid: orgUnitId,
-            dataElementUids: elementUids,
-            attributeOptionComboUid: aoc,
-          )
-          .catchError((Object e) {
-        log.w('[dataEntry] post-save push failed, values stay pending: $e');
-        return const DataValueSyncResult(pulled: false);
-      }));
     }
   }
 
@@ -181,6 +169,16 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String period,
   }) async {
     final aoc = await _defaultAttributeOptionCombo();
+
+    // Completing is the sign-off: the form's drafts become sendable.
+    final elementUids = await DataSetResource(_db).dataElementUids(dataSetId);
+    await DataValueStore(_db).promoteDrafts(
+      period: period,
+      orgUnitUid: orgUnitId,
+      attributeOptionComboUid: aoc,
+      dataElementUids: elementUids,
+    );
+
     await CompletenessStore(_db).setComplete(
       dataSetUid: dataSetId,
       period: period,
@@ -190,14 +188,30 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
       storedBy: await SecureStorage().getUsername(),
     );
 
+    // Best-effort send; offline everything stays pending and the
+    // auto-sync doors (transition/login/heartbeat) pick it up later.
     final api = AppSession.instance.api;
     if (api != null && await _networkInfo.isConnected) {
-      unawaited(
-          CompletenessSync(_db, api).pushPending().catchError((Object e) {
-        log.w('[dataEntry] completion push failed, stays pending: $e');
-        return 0;
+      unawaited(_pushAfterComplete(api).catchError((Object e) {
+        log.w('[dataEntry] post-complete push failed, stays pending: $e');
       }));
     }
+  }
+
+  /// Values first, completion second — the server should not report a
+  /// period complete before the numbers behind it have arrived.
+  Future<void> _pushAfterComplete(ApiClient api) async {
+    final store = DataValueStore(_db);
+    final pending = await store.pendingValues();
+    if (pending.isNotEmpty) {
+      await pushDataValueBatch(
+        api: api,
+        store: store,
+        values: pending,
+        logTag: 'dataEntry',
+      );
+    }
+    await CompletenessSync(_db, api).pushPending();
   }
 
   // ── internals ──────────────────────────────────────────────────────

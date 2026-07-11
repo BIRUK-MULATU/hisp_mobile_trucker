@@ -26,8 +26,10 @@ class DataValueStore {
 
   // ── WRITE (local entry) ──────────────────────────────────────────────
 
-  /// Save a locally-entered value. Single-row upsert (atomic), marked
-  /// pending. Re-editing the same cell overwrites via the composite key.
+  /// Save a locally-entered value. Single-row upsert (atomic).
+  /// Re-editing the same cell overwrites via the composite key.
+  /// [draft] keeps the value device-only (no sync path touches it)
+  /// until [promoteDrafts] flips it to pending on form completion.
   Future<void> setValue({
     required String dataElementUid,
     required String period,
@@ -37,6 +39,7 @@ class DataValueStore {
     required String? value,
     String? comment,
     String? storedBy,
+    bool draft = false,
   }) async {
     if (await _clock.isClockTampered()) {
       log.w('[dataValues] write while clock tamper flag is set '
@@ -52,10 +55,31 @@ class DataValueStore {
             value: Value(value),
             comment: Value(comment),
             storedBy: Value(storedBy),
-            syncState: SyncState.pending,
+            syncState: draft ? SyncState.draft : SyncState.pending,
             lastModified: await _clock.effectiveNow(),
           ),
         );
+  }
+
+  /// Completing a form is the moment drafts become sendable: flip the
+  /// form's draft rows (scoped to the dataset's elements) to pending
+  /// so the normal push paths pick them up. Returns the row count.
+  Future<int> promoteDrafts({
+    required String period,
+    required String orgUnitUid,
+    required String attributeOptionComboUid,
+    required List<String> dataElementUids,
+  }) {
+    return (_db.update(_db.dataValuesTable)
+          ..where((t) =>
+              t.period.equals(period) &
+              t.orgUnitUid.equals(orgUnitUid) &
+              t.attributeOptionComboUid.equals(attributeOptionComboUid) &
+              t.dataElementUid.isIn(dataElementUids) &
+              t.syncState.equals(SyncState.draft.index)))
+        .write(const DataValuesTableCompanion(
+      syncState: Value(SyncState.pending),
+    ));
   }
 
   // ── READ ─────────────────────────────────────────────────────────────
@@ -86,6 +110,17 @@ class DataValueStore {
     final q = _db.selectOnly(_db.dataValuesTable)
       ..addColumns([c])
       ..where(_db.dataValuesTable.syncState.equals(SyncState.pending.index));
+    return (await q.getSingle()).read(c) ?? 0;
+  }
+
+  /// Values still held as device-only drafts — the sync UI mentions
+  /// them so "everything is synced" doesn't read as "nothing left on
+  /// this phone".
+  Future<int> draftCount() async {
+    final c = _db.dataValuesTable.dataElementUid.count();
+    final q = _db.selectOnly(_db.dataValuesTable)
+      ..addColumns([c])
+      ..where(_db.dataValuesTable.syncState.equals(SyncState.draft.index));
     return (await q.getSingle()).read(c) ?? 0;
   }
 
@@ -224,9 +259,13 @@ class DataValueStore {
 /// must NOT be re-anchored / tamper-cleared — reconcile first, then
 /// recalibrate. Error-state rows do NOT block (already surfaced).
 Future<bool> hasUnsyncedLocalData(AppDatabase db) async {
+  // Drafts count too: their stamps feed the same newest-wins
+  // comparison once promoted, so the clock must not re-anchor
+  // underneath them.
   final v = await (db.selectOnly(db.dataValuesTable)
         ..addColumns([db.dataValuesTable.dataElementUid.count()])
-        ..where(db.dataValuesTable.syncState.equals(SyncState.pending.index)))
+        ..where(db.dataValuesTable.syncState
+            .isIn([SyncState.pending.index, SyncState.draft.index])))
       .getSingle();
   if ((v.read(db.dataValuesTable.dataElementUid.count()) ?? 0) > 0) {
     return true;

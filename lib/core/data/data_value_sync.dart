@@ -129,7 +129,9 @@ class DataValueSync {
       // rows do NOT count as settled: they hold rejected local work
       // the user must still see and fix, so they go through the same
       // resolution rules as pending (but are never blind re-pushed —
-      // editing the cell is what re-queues them).
+      // editing the cell is what re-queues them). DRAFT rows likewise
+      // resolve here but phase 2 skips them: drafts only leave the
+      // device when the user completes the data set.
       if (local == null || local.syncState == SyncState.synced) {
         await _applyServer(v, stamp);
         continue;

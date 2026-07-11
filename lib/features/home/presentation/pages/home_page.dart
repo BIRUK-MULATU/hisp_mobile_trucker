@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/data/completeness.dart';
 import '../../../../core/data/data_value_store.dart';
@@ -81,8 +82,19 @@ class _HomePageState extends State<HomePage> {
       return;
     }
     if (pendingTotal == 0) {
-      _showSyncMessage('Everything is already synced.',
-          color: AppColors.success);
+      // Drafts are deliberately NOT uploaded here — they only leave
+      // the device when their form is completed — but say so, or
+      // "everything synced" reads as "nothing left on this phone".
+      final drafts = await store.draftCount();
+      if (!mounted) return;
+      _showSyncMessage(
+        drafts > 0
+            ? 'Everything is synced. $drafts draft '
+                '${drafts == 1 ? 'value stays' : 'values stay'} on this '
+                'device until the data set is completed.'
+            : 'Everything is already synced.',
+        color: AppColors.success,
+      );
       return;
     }
 
@@ -274,11 +286,22 @@ class _HomePageState extends State<HomePage> {
 }
 
 // ── Mode toggle bar ────────────────────────────────────────────
+// A segmented pill with a single sliding thumb: the blue highlight
+// glides (with a slight overshoot) to the tapped side while the
+// labels cross-fade, instead of each side repainting its own
+// background.
 class _ModeToggleBar extends StatelessWidget {
   final HomeMode mode;
   final ValueChanged<HomeMode> onChanged;
 
   const _ModeToggleBar({required this.mode, required this.onChanged});
+
+  static const _duration = Duration(milliseconds: 320);
+
+  void _select(HomeMode next) {
+    HapticFeedback.selectionClick();
+    onChanged(next);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -296,19 +319,49 @@ class _ModeToggleBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
           border: Border.all(color: AppColors.divider),
         ),
-        child: Row(
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            _ModeButton(
-              label: 'Visualization',
-              icon: Icons.insights_rounded,
-              isActive: mode == HomeMode.visualization,
-              onTap: () => onChanged(HomeMode.visualization),
+            AnimatedAlign(
+              duration: _duration,
+              curve: Curves.easeOutBack,
+              alignment: mode == HomeMode.visualization
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
+              child: FractionallySizedBox(
+                widthFactor: 0.5,
+                heightFactor: 1,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius:
+                        BorderRadius.circular(AppDimensions.radiusFull),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            _ModeButton(
-              label: 'Capture',
-              icon: Icons.edit_note_rounded,
-              isActive: mode == HomeMode.capture,
-              onTap: () => onChanged(HomeMode.capture),
+            Row(
+              children: [
+                _ModeButton(
+                  label: 'Visualization',
+                  icon: Icons.insights_rounded,
+                  isActive: mode == HomeMode.visualization,
+                  onTap: () => _select(HomeMode.visualization),
+                ),
+                _ModeButton(
+                  label: 'Capture',
+                  icon: Icons.edit_note_rounded,
+                  isActive: mode == HomeMode.capture,
+                  onTap: () => _select(HomeMode.capture),
+                ),
+              ],
             ),
           ],
         ),
@@ -334,40 +387,44 @@ class _ModeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: GestureDetector(
+        // The content no longer paints its own background, so make
+        // the whole half of the pill tappable, not just the label.
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: AppConstants.animNormal),
+        // One 0→1 progress drives icon and label colors so they fade
+        // in step with the thumb sliding underneath.
+        child: TweenAnimationBuilder<double>(
+          duration: _ModeToggleBar._duration,
           curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: isActive ? AppColors.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
-            boxShadow: [
-              if (isActive)
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.3),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
+          tween: Tween(begin: 0, end: isActive ? 1 : 0),
+          builder: (context, t, _) {
+            final color =
+                Color.lerp(AppColors.textSecondary, Colors.white, t)!;
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedScale(
+                  scale: isActive ? 1.0 : 0.85,
+                  duration: _ModeToggleBar._duration,
+                  curve: Curves.easeOutBack,
+                  child: Icon(
+                    icon,
+                    size: AppDimensions.iconMD,
+                    color: color,
+                  ),
                 ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: AppDimensions.iconMD,
-                color: isActive ? Colors.white : AppColors.textSecondary,
-              ),
-              const SizedBox(width: AppDimensions.spaceXS),
-              Text(
-                label,
-                style: AppTextStyles.labelMedium.copyWith(
-                  color: isActive ? Colors.white : AppColors.textSecondary,
-                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                const SizedBox(width: AppDimensions.spaceXS),
+                Text(
+                  label,
+                  style: AppTextStyles.labelMedium.copyWith(
+                    color: color,
+                    fontWeight:
+                        FontWeight.lerp(FontWeight.w500, FontWeight.w700, t),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+          },
         ),
       ),
     );
