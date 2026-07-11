@@ -177,6 +177,11 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
 
   @override
   Widget build(BuildContext context) {
+    // The on-screen keyboard shrinks the body until the fixed bars
+    // no longer fit (RenderFlex overflow). The Continue bar is
+    // unusable while typing anyway — hide it until the keyboard
+    // goes away.
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     return Column(
       children: [
         _StepHeader(selectedName: _selected?.name),
@@ -188,11 +193,13 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
           const Divider(height: 1),
         ],
         Expanded(child: _buildTree()),
-        const Divider(height: 1),
-        _BottomBar(
-          enabled: _selected != null,
-          onContinue: _continue,
-        ),
+        if (!keyboardOpen) ...[
+          const Divider(height: 1),
+          _BottomBar(
+            enabled: _selected != null,
+            onContinue: _continue,
+          ),
+        ],
       ],
     );
   }

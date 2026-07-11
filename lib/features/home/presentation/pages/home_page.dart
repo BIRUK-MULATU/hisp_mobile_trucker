@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/data/completeness.dart';
 import '../../../../core/data/data_value_store.dart';
@@ -18,6 +19,7 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/filter_panel.dart';
 import '../../../capture/presentation/views/capture_org_unit_view.dart';
+import '../../../visualization/presentation/views/visualization_view.dart';
 import '../widgets/home_app_bar.dart';
 
 /// Home is a shell with two modes behind a toggle:
@@ -149,18 +151,17 @@ class _HomePageState extends State<HomePage> {
         searchActive: _searchActive,
         filtersShown: _showFilters,
         isSyncing: _isSyncing,
-        searchHint: 'Search organisation units...',
+        // Search targets whichever mode is active: org units in
+        // Capture, dashboards in Visualization.
+        searchHint: _mode == HomeMode.capture
+            ? 'Search organisation units...'
+            : 'Search dashboards...',
         onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
         onSyncTap: _onSyncTapped,
         onListViewTap: () => setState(() => _showFilters = !_showFilters),
         onSearchTap: () => setState(() {
           _searchActive = !_searchActive;
-          if (!_searchActive) {
-            _searchQuery = '';
-          } else {
-            // Searching targets the org unit tree — make it visible.
-            _mode = HomeMode.capture;
-          }
+          if (!_searchActive) _searchQuery = '';
         }),
         onSearchChanged: (query) => setState(() => _searchQuery = query),
       ),
@@ -185,14 +186,22 @@ class _HomePageState extends State<HomePage> {
             maxWidth: AppBreakpoints.formMaxWidth,
             child: _ModeToggleBar(
               mode: _mode,
-              onChanged: (mode) => setState(() => _mode = mode),
+              // A query typed for one mode means nothing in the
+              // other — close the search on switch.
+              onChanged: (mode) => setState(() {
+                _mode = mode;
+                _searchActive = false;
+                _searchQuery = '';
+              }),
             ),
           ),
           const Divider(height: 1, color: AppColors.divider),
           Expanded(
             child: ResponsiveContent(
               child: _mode == HomeMode.visualization
-                  ? const _VisualizationPlaceholder()
+                  ? VisualizationView(
+                      searchQuery: _searchActive ? _searchQuery : null,
+                    )
                   : CaptureOrgUnitView(
                       key: ValueKey('capture-$_syncTick'),
                       searchQuery: _searchActive ? _searchQuery : null,
@@ -206,11 +215,22 @@ class _HomePageState extends State<HomePage> {
 }
 
 // ── Mode toggle bar ────────────────────────────────────────────
+// A segmented pill with a single sliding thumb: the blue highlight
+// glides (with a slight overshoot) to the tapped side while the
+// labels cross-fade, instead of each side repainting its own
+// background.
 class _ModeToggleBar extends StatelessWidget {
   final HomeMode mode;
   final ValueChanged<HomeMode> onChanged;
 
   const _ModeToggleBar({required this.mode, required this.onChanged});
+
+  static const _duration = Duration(milliseconds: 320);
+
+  void _select(HomeMode next) {
+    HapticFeedback.selectionClick();
+    onChanged(next);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -228,19 +248,49 @@ class _ModeToggleBar extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
           border: Border.all(color: AppColors.divider),
         ),
-        child: Row(
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            _ModeButton(
-              label: 'Visualization',
-              icon: Icons.insights_rounded,
-              isActive: mode == HomeMode.visualization,
-              onTap: () => onChanged(HomeMode.visualization),
+            AnimatedAlign(
+              duration: _duration,
+              curve: Curves.easeOutBack,
+              alignment: mode == HomeMode.visualization
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
+              child: FractionallySizedBox(
+                widthFactor: 0.5,
+                heightFactor: 1,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius:
+                        BorderRadius.circular(AppDimensions.radiusFull),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            _ModeButton(
-              label: 'Capture',
-              icon: Icons.edit_note_rounded,
-              isActive: mode == HomeMode.capture,
-              onTap: () => onChanged(HomeMode.capture),
+            Row(
+              children: [
+                _ModeButton(
+                  label: 'Visualization',
+                  icon: Icons.insights_rounded,
+                  isActive: mode == HomeMode.visualization,
+                  onTap: () => _select(HomeMode.visualization),
+                ),
+                _ModeButton(
+                  label: 'Capture',
+                  icon: Icons.edit_note_rounded,
+                  isActive: mode == HomeMode.capture,
+                  onTap: () => _select(HomeMode.capture),
+                ),
+              ],
             ),
           ],
         ),
@@ -266,89 +316,44 @@ class _ModeButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: GestureDetector(
+        // The content no longer paints its own background, so make
+        // the whole half of the pill tappable, not just the label.
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: AppConstants.animNormal),
+        // One 0→1 progress drives icon and label colors so they fade
+        // in step with the thumb sliding underneath.
+        child: TweenAnimationBuilder<double>(
+          duration: _ModeToggleBar._duration,
           curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: isActive ? AppColors.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
-            boxShadow: [
-              if (isActive)
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.3),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
+          tween: Tween(begin: 0, end: isActive ? 1 : 0),
+          builder: (context, t, _) {
+            final color =
+                Color.lerp(AppColors.textSecondary, Colors.white, t)!;
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedScale(
+                  scale: isActive ? 1.0 : 0.85,
+                  duration: _ModeToggleBar._duration,
+                  curve: Curves.easeOutBack,
+                  child: Icon(
+                    icon,
+                    size: AppDimensions.iconMD,
+                    color: color,
+                  ),
                 ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: AppDimensions.iconMD,
-                color: isActive ? Colors.white : AppColors.textSecondary,
-              ),
-              const SizedBox(width: AppDimensions.spaceXS),
-              Text(
-                label,
-                style: AppTextStyles.labelMedium.copyWith(
-                  color: isActive ? Colors.white : AppColors.textSecondary,
-                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                const SizedBox(width: AppDimensions.spaceXS),
+                Text(
+                  label,
+                  style: AppTextStyles.labelMedium.copyWith(
+                    color: color,
+                    fontWeight:
+                        FontWeight.lerp(FontWeight.w500, FontWeight.w700, t),
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Visualization placeholder ──────────────────────────────────
-class _VisualizationPlaceholder extends StatelessWidget {
-  const _VisualizationPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.spaceXXXL),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 96,
-              height: 96,
-              decoration: const BoxDecoration(
-                color: AppColors.primarySurface,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.insights_rounded,
-                size: 48,
-                color: AppColors.primary,
-              ),
-            ),
-            const SizedBox(height: AppDimensions.spaceXL),
-            const Text(
-              'Visualizations coming soon',
-              style: AppTextStyles.headingSmall,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppDimensions.spaceSM),
-            Text(
-              'Dashboards and charts for your organisation unit '
-              'will appear here.\nSwitch to Capture to start '
-              'entering data.',
-              style: AppTextStyles.bodySmall.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.6,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
