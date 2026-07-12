@@ -43,6 +43,22 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String period,
   }) =>
       throw UnimplementedError();
+
+  @override
+  Future<bool> isCompleted({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> uncompleteDataSet({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  }) =>
+      throw UnimplementedError();
 }
 
 void main() {

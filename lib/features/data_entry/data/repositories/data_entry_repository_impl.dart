@@ -210,6 +210,52 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     }
   }
 
+  @override
+  Future<bool> isCompleted({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  }) async {
+    final aoc = await _defaultAttributeOptionCombo();
+    final reg = await CompletenessStore(_db).statusOf(
+      dataSetUid: dataSetId,
+      period: period,
+      orgUnitUid: orgUnitId,
+      attributeOptionComboUid: aoc,
+    );
+    return reg?.completed ?? false;
+  }
+
+  @override
+  Future<void> uncompleteDataSet({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  }) async {
+    final aoc = await _defaultAttributeOptionCombo();
+
+    // completed=false is its own pending fact: the push turns it into
+    // a DELETE against completeDataSetRegistrations. Drafts stay
+    // drafts — reopening is exactly the state where the user keeps
+    // editing before signing off again.
+    await CompletenessStore(_db).setComplete(
+      dataSetUid: dataSetId,
+      period: period,
+      orgUnitUid: orgUnitId,
+      attributeOptionComboUid: aoc,
+      completed: false,
+      storedBy: await SecureStorage().getUsername(),
+    );
+
+    final api = AppSession.instance.api;
+    if (api != null && await _networkInfo.isConnected) {
+      unawaited(CompletenessSync(_db, api).pushPending().catchError((Object e) {
+        log.w('[dataEntry] un-complete push failed, stays pending: $e');
+        return 0;
+      }));
+    }
+  }
+
   /// Values first, completion second — the server should not report a
   /// period complete before the numbers behind it have arrived.
   Future<void> _pushAfterComplete(ApiClient api) async {

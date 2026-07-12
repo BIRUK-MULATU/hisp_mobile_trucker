@@ -279,3 +279,28 @@ Future<bool> hasUnsyncedLocalData(AppDatabase db) async {
           0) >
       0;
 }
+
+/// Rows that exist ONLY on this device: draft/pending/error data values
+/// plus pending/error completion registrations. Unlike
+/// [hasUnsyncedLocalData] (a clock-anchor gate, which ignores error
+/// rows on purpose), this counts EVERYTHING a database wipe would
+/// destroy — error rows are still the user's field data. Wipe-style
+/// flows must confirm against this count before deleting.
+Future<int> countUnsyncedWork(AppDatabase db) async {
+  final notSynced = [
+    SyncState.pending.index,
+    SyncState.draft.index,
+    SyncState.error.index,
+  ];
+  final dvCount = db.dataValuesTable.dataElementUid.count();
+  final v = await (db.selectOnly(db.dataValuesTable)
+        ..addColumns([dvCount])
+        ..where(db.dataValuesTable.syncState.isIn(notSynced)))
+      .getSingle();
+  final cdrCount = db.completeDataSetRegistrationsTable.dataSetUid.count();
+  final c = await (db.selectOnly(db.completeDataSetRegistrationsTable)
+        ..addColumns([cdrCount])
+        ..where(db.completeDataSetRegistrationsTable.syncState.isIn(notSynced)))
+      .getSingle();
+  return (v.read(dvCount) ?? 0) + (c.read(cdrCount) ?? 0);
+}

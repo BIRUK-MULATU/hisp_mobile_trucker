@@ -97,10 +97,12 @@ class CompletenessSync {
                 'ds': r.dataSetUid,
                 'pe': r.period,
                 'ou': r.orgUnitUid,
-                // TODO(backend): datasets with non-default attribute
-                // combos need cc (categoryCombo) + cp (option uids)
-                // here or the wrong registration gets un-completed.
-                // The app currently only writes the default combo.
+                // Non-default attribute combos must be addressed
+                // explicitly or the server un-completes the wrong
+                // registration; the default combo is resolved
+                // server-side, so it sends no cc/cp (also covers a
+                // combo missing from the local metadata cache).
+                ...await _attributeParams(r.attributeOptionComboUid),
               });
         }
         await _markSynced(r);
@@ -129,6 +131,26 @@ class CompletenessSync {
     }
     log.i('[completeness] pushed $ok/${pending.length}');
     return ok;
+  }
+
+  /// cc (the attribute combo's categoryCombo) + cp (its categoryOption
+  /// uids, ';'-joined per the DHIS2 web API) for a non-default
+  /// attributeOptionCombo. Empty for the default combo or when the
+  /// combo is not in the local cache — the server then falls back to
+  /// its own default resolution, which matches how the registration
+  /// was created.
+  Future<Map<String, String>> _attributeParams(String aocUid) async {
+    final coc = await (_db.select(_db.categoryOptionCombosTable)
+          ..where((t) => t.uid.equals(aocUid)))
+        .getSingleOrNull();
+    if (coc == null || coc.name == 'default') return const {};
+    final links = await (_db.select(_db.categoryOptionComboOptionsTable)
+          ..where((t) => t.categoryOptionComboUid.equals(aocUid)))
+        .get();
+    return {
+      'cc': coc.categoryComboUid,
+      'cp': [for (final l in links) l.categoryOptionUid].join(';'),
+    };
   }
 
   Future<void> _markSynced(CompleteDataSetRegistration r) =>

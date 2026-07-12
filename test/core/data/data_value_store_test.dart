@@ -173,4 +173,52 @@ void main() {
       expect(await store.orgUnitsWithWork(states: {SyncState.error}), {ou2});
     });
   });
+
+  group('countUnsyncedWork (wipe guard)', () {
+    test('counts drafts, pending and error rows — everything a wipe '
+        'would destroy', () async {
+      expect(await countUnsyncedWork(db), 0);
+
+      await saveValue(); // pending
+      await store.setValue(
+        dataElementUid: 'dataElem002',
+        period: '201811',
+        orgUnitUid: ou1,
+        categoryOptionComboUid: coc,
+        attributeOptionComboUid: coc,
+        value: '7',
+        draft: true,
+      );
+      expect(await countUnsyncedWork(db), 2);
+
+      // Error rows are excluded from the clock-anchor gate but are
+      // still the user's un-uploaded field data.
+      final pending = await store.pendingValues();
+      await store.markError(pending.single, 'rejected');
+      expect(await countUnsyncedWork(db), 2);
+      expect(await hasUnsyncedLocalData(db), isTrue,
+          reason: 'the draft still blocks the anchor');
+
+      await db.into(db.completeDataSetRegistrationsTable).insert(
+            CompleteDataSetRegistrationsTableCompanion.insert(
+              dataSetUid: ds1,
+              period: '201811',
+              orgUnitUid: ou1,
+              attributeOptionComboUid: coc,
+              completed: true,
+              date: DateTime.now(),
+              syncState: SyncState.pending,
+              lastModified: DateTime.now(),
+            ),
+          );
+      expect(await countUnsyncedWork(db), 3);
+    });
+
+    test('fully synced data counts nothing', () async {
+      await saveValue();
+      await store.markSynced((await store.pendingValues()).single);
+      expect(await countUnsyncedWork(db), 0);
+    });
+  });
+
 }

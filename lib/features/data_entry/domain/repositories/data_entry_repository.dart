@@ -29,4 +29,20 @@ abstract class DataEntryRepository {
     required String orgUnitId,
     required String period,
   });
+
+  /// Whether this form instance is currently marked complete —
+  /// checked on form open so the save flow can offer reopening.
+  Future<bool> isCompleted({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  });
+
+  /// Reopen a completed dataset: mark it incomplete locally and push
+  /// the un-completion to the server when reachable.
+  Future<void> uncompleteDataSet({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  });
 }

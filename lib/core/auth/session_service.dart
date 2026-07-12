@@ -196,15 +196,32 @@ class SessionService {
     log.i('logged out (data retained)');
   }
 
+  /// Un-uploaded work (draft/pending/error values and completions) in
+  /// the active session's database — everything a [wipe] would destroy.
+  /// A UI must show this count and get an explicit confirmation before
+  /// wiping.
+  Future<int> unsyncedWorkCount() => countUnsyncedWork(db);
+
   /// Completely removes this user from the device: closes and deletes
   /// the database, clears the verifier. Re-login is a fresh online
   /// first-sync.
   ///
-  /// [pendingDataCount] is passed by the caller (computed from the data
-  /// value tables); a UI must confirm loss when it's > 0 BEFORE calling
-  /// this. This method itself does not prompt — it just destroys.
-  Future<void> wipe() async {
+  /// GUARD: when the open database still holds un-uploaded work, this
+  /// throws [StateError] unless [confirmedDataLoss] is true — callers
+  /// must show [unsyncedWorkCount] to the user and pass their explicit
+  /// confirmation through. The method itself never prompts.
+  Future<void> wipe({bool confirmedDataLoss = false}) async {
     final key = _userKey;
+    final db = _db;
+    if (db != null && !confirmedDataLoss) {
+      final atRisk = await countUnsyncedWork(db);
+      if (atRisk > 0) {
+        throw StateError(
+            'wipe would destroy $atRisk un-uploaded entries — confirm the '
+            'data loss with the user, then call '
+            'wipe(confirmedDataLoss: true).');
+      }
+    }
     await _db?.close();
     _db = null;
     _initialSyncService = null;

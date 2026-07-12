@@ -110,6 +110,33 @@ class _DataEntryViewState extends State<_DataEntryView> {
   bool _isSaving = false;
   bool _isCompleting = false;
 
+  /// Local completion status, loaded on form open — decides which
+  /// bottom sheet the save flow shows (complete vs reopen).
+  bool _isCompleted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _loadCompletionStatus());
+  }
+
+  Future<void> _loadCompletionStatus() async {
+    if (!mounted) return;
+    try {
+      final completed =
+          await context.read<DataEntryBloc>().repository.isCompleted(
+                dataSetId: widget.dataSetId,
+                orgUnitId: widget.orgUnitId,
+                period: widget.period,
+              );
+      if (mounted) setState(() => _isCompleted = completed);
+    } catch (_) {
+      // Metadata not on the device yet — the form itself will show
+      // the real error; treat the status as not completed.
+    }
+  }
+
   // ── Sync tapped — reload values from the server ───────────
   void _onSyncTapped() {
     final bloc = context.read<DataEntryBloc>();
@@ -183,8 +210,12 @@ class _DataEntryViewState extends State<_DataEntryView> {
       if (!mounted) return;
       setState(() => _isSaving = false);
 
-      // Show complete dialog
-      await _showCompleteDialog();
+      // Status-aware: a completed form offers reopening instead.
+      if (_isCompleted) {
+        await _showReopenDialog();
+      } else {
+        await _showCompleteDialog();
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -317,6 +348,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
               period: widget.period,
             );
         if (mounted) {
+          setState(() => _isCompleted = true);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Data set completed successfully!'),
@@ -364,6 +396,179 @@ class _DataEntryViewState extends State<_DataEntryView> {
     }
   }
 
+  // ── Show reopen bottom sheet (form already completed) ──────
+  Future<void> _showReopenDialog() async {
+    if (!mounted) return;
+
+    // null = dismissed (stay), true = keep completed, false = un-complete.
+    final keepCompleted = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppDimensions.radiusXXL),
+        ),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppDimensions.pagePaddingH,
+          AppDimensions.spaceXXL,
+          AppDimensions.pagePaddingH,
+          AppDimensions.spaceXXL,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Title ──────────────────────────────
+            Text(
+              'This data set is completed',
+              style: AppTextStyles.headingMedium.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+
+            const SizedBox(height: AppDimensions.spaceMD),
+
+            // ── Message ────────────────────────────
+            Text(
+              'Keep it completed to send your saved changes with the '
+              'report as it is, or un-complete it to reopen the report '
+              'and continue editing on this device.',
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+
+            const SizedBox(height: AppDimensions.spaceXL),
+            const Divider(color: AppColors.divider),
+            const SizedBox(height: AppDimensions.spaceXL),
+
+            // ── Buttons ────────────────────────────
+            Row(
+              children: [
+                // Un-complete — reopens the report
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                      side: const BorderSide(
+                        color: AppColors.error,
+                        width: 1.5,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppDimensions.radiusFull),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spaceMD),
+                    ),
+                    child: Text(
+                      'Un-complete',
+                      style: AppTextStyles.buttonMedium
+                          .copyWith(color: AppColors.error),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: AppDimensions.spaceMD),
+
+                // Keep completed
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppDimensions.radiusFull),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spaceMD),
+                    ),
+                    child: Text(
+                      'Keep completed',
+                      style: AppTextStyles.buttonMedium
+                          .copyWith(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted || keepCompleted == null) return;
+
+    setState(() => _isCompleting = true);
+    try {
+      final repository = context.read<DataEntryBloc>().repository;
+      if (keepCompleted) {
+        // Re-affirm: promotes the saved drafts and pushes them with
+        // the (still standing) completion.
+        await repository.completeDataSet(
+          dataSetId: widget.dataSetId,
+          orgUnitId: widget.orgUnitId,
+          period: widget.period,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Changes sent — the data set stays completed.'),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          Navigator.pop(context, {
+            'saved': true,
+            'completed': true,
+            'period': widget.period,
+            'orgUnitName': widget.orgUnitName,
+          });
+        }
+      } else {
+        await repository.uncompleteDataSet(
+          dataSetId: widget.dataSetId,
+          orgUnitId: widget.orgUnitId,
+          period: widget.period,
+        );
+        // Stay on the form — reopening means the user keeps working.
+        if (mounted) {
+          setState(() {
+            _isCompleting = false;
+            _isCompleted = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Report reopened — your edits stay drafts on '
+                  'this device until you complete it again.'),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isCompleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Failed to ${keepCompleted ? 'complete' : 'reopen'}: $e'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -398,6 +603,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
           _SubHeader(
             period: widget.period,
             orgUnitName: widget.orgUnitName,
+            completed: _isCompleted,
           ),
           const Divider(height: 1, color: AppColors.divider),
 
@@ -467,7 +673,12 @@ class _DataEntryViewState extends State<_DataEntryView> {
 class _SubHeader extends StatelessWidget {
   final String period;
   final String orgUnitName;
-  const _SubHeader({required this.period, required this.orgUnitName});
+  final bool completed;
+  const _SubHeader({
+    required this.period,
+    required this.orgUnitName,
+    this.completed = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -496,6 +707,37 @@ class _SubHeader extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (completed) ...[
+            const SizedBox(width: AppDimensions.spaceSM),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceSM,
+                vertical: AppDimensions.spaceXXS,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: AppColors.success,
+                    size: AppDimensions.iconSM,
+                  ),
+                  const SizedBox(width: AppDimensions.spaceXXS),
+                  Text(
+                    'Completed',
+                    style: AppTextStyles.labelMedium.copyWith(
+                      color: AppColors.success,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
