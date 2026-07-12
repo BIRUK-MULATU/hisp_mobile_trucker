@@ -4,9 +4,18 @@
 ///
 /// Returns a short user-readable problem, or null when the value is
 /// acceptable. The empty string is always valid: it clears the cell.
-String? validateDataValue(String valueType, String value) {
+///
+/// [optionCodes]: when the element has an option set, the server only
+/// accepts one of its option codes (E7621) — that check replaces the
+/// valueType rules entirely, mirroring the server.
+String? validateDataValue(String valueType, String value,
+    {Set<String>? optionCodes}) {
   final v = value.trim();
   if (v.isEmpty) return null;
+
+  if (optionCodes != null && optionCodes.isNotEmpty) {
+    return optionCodes.contains(v) ? null : 'Not one of the allowed options';
+  }
 
   switch (valueType.toUpperCase()) {
     case 'NUMBER':

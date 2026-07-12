@@ -75,4 +75,150 @@ void main() {
         );
     expect(await store.unsyncedDataSetsAt(ou1), {ds2});
   });
+
+  group('drafts', () {
+    Future<void> saveDraft() => store.setValue(
+          dataElementUid: de1,
+          period: '201811',
+          orgUnitUid: ou1,
+          categoryOptionComboUid: coc,
+          attributeOptionComboUid: coc,
+          value: '5',
+          draft: true,
+        );
+
+    test('a draft is invisible to every push query', () async {
+      await saveDraft();
+      expect(await store.pendingValues(), isEmpty,
+          reason: 'drafts must never be picked up by a push');
+      expect(await store.pendingCount(), 0);
+      expect(await store.draftCount(), 1);
+    });
+
+    test('a draft still counts as unsynced work', () async {
+      await saveDraft();
+      expect(await store.unsyncedDataSetsAt(ou1), {ds1},
+          reason: 'draft work is not on the server');
+      expect(await hasUnsyncedLocalData(db), isTrue,
+          reason: 'clock must not re-anchor over draft stamps');
+    });
+
+    test('promoteDrafts flips the form to pending, scoped to its '
+        'elements', () async {
+      await saveDraft();
+
+      // Different element (other dataset) — must not be promoted.
+      await store.setValue(
+        dataElementUid: 'dataElem002',
+        period: '201811',
+        orgUnitUid: ou1,
+        categoryOptionComboUid: coc,
+        attributeOptionComboUid: coc,
+        value: '7',
+        draft: true,
+      );
+
+      final promoted = await store.promoteDrafts(
+        period: '201811',
+        orgUnitUid: ou1,
+        attributeOptionComboUid: coc,
+        dataElementUids: [de1],
+      );
+      expect(promoted, 1);
+      expect((await store.pendingValues()).single.dataElementUid, de1);
+      expect(await store.draftCount(), 1,
+          reason: 'the other dataset\'s draft stays a draft');
+    });
+  });
+
+  group('orgUnitsWithWork', () {
+    test('filters by sync state', () async {
+      await saveValue(); // pending at ou1
+      expect(await store.orgUnitsWithWork(states: {SyncState.pending}), {ou1});
+      expect(await store.orgUnitsWithWork(states: {SyncState.synced}), isEmpty);
+
+      await store.markSynced((await store.pendingValues()).single);
+      expect(await store.orgUnitsWithWork(states: {SyncState.synced}), {ou1});
+      expect(
+          await store.orgUnitsWithWork(states: {SyncState.pending}), isEmpty);
+      expect(await store.orgUnitsWithWork(), {ou1},
+          reason: 'no states = any state');
+    });
+
+    test('filters by last-modified window, end exclusive', () async {
+      await saveValue(); // lastModified = now at ou1
+      final now = DateTime.now();
+      final tomorrow = now.add(const Duration(days: 1));
+      final yesterday = now.subtract(const Duration(days: 1));
+
+      expect(await store.orgUnitsWithWork(from: yesterday, to: tomorrow),
+          {ou1});
+      expect(await store.orgUnitsWithWork(from: tomorrow), isEmpty);
+      expect(await store.orgUnitsWithWork(to: yesterday), isEmpty);
+    });
+
+    test('sees completion-only org units too', () async {
+      await db.into(db.completeDataSetRegistrationsTable).insert(
+            CompleteDataSetRegistrationsTableCompanion.insert(
+              dataSetUid: ds2,
+              period: '201811',
+              orgUnitUid: ou2,
+              attributeOptionComboUid: coc,
+              completed: true,
+              date: DateTime.now(),
+              syncState: SyncState.error,
+              lastModified: DateTime.now(),
+            ),
+          );
+      expect(await store.orgUnitsWithWork(states: {SyncState.error}), {ou2});
+    });
+  });
+
+  group('countUnsyncedWork (wipe guard)', () {
+    test('counts drafts, pending and error rows — everything a wipe '
+        'would destroy', () async {
+      expect(await countUnsyncedWork(db), 0);
+
+      await saveValue(); // pending
+      await store.setValue(
+        dataElementUid: 'dataElem002',
+        period: '201811',
+        orgUnitUid: ou1,
+        categoryOptionComboUid: coc,
+        attributeOptionComboUid: coc,
+        value: '7',
+        draft: true,
+      );
+      expect(await countUnsyncedWork(db), 2);
+
+      // Error rows are excluded from the clock-anchor gate but are
+      // still the user's un-uploaded field data.
+      final pending = await store.pendingValues();
+      await store.markError(pending.single, 'rejected');
+      expect(await countUnsyncedWork(db), 2);
+      expect(await hasUnsyncedLocalData(db), isTrue,
+          reason: 'the draft still blocks the anchor');
+
+      await db.into(db.completeDataSetRegistrationsTable).insert(
+            CompleteDataSetRegistrationsTableCompanion.insert(
+              dataSetUid: ds1,
+              period: '201811',
+              orgUnitUid: ou1,
+              attributeOptionComboUid: coc,
+              completed: true,
+              date: DateTime.now(),
+              syncState: SyncState.pending,
+              lastModified: DateTime.now(),
+            ),
+          );
+      expect(await countUnsyncedWork(db), 3);
+    });
+
+    test('fully synced data counts nothing', () async {
+      await saveValue();
+      await store.markSynced((await store.pendingValues()).single);
+      expect(await countUnsyncedWork(db), 0);
+    });
+  });
+
 }

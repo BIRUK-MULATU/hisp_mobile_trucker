@@ -2,6 +2,7 @@ import 'dart:async';
 import '../utils/http_date.dart';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../database/app_database.dart';
 import '../data/data_value_store.dart';
@@ -11,9 +12,17 @@ import '../network/api_client.dart';
 import '../utils/app_logger.dart';
 import 'credential_store.dart';
 
+/// Progress of the first full metadata download. It runs in the
+/// background after a first online login so the user is not held on
+/// the login page; the capture UI observes this to show progress and
+/// refresh when the data lands.
+enum InitialSyncState { idle, running, failed, done }
+
 /// Outcome of a login attempt.
 enum LoginResult {
-  /// Online, first time on this device: authenticated + full sync done.
+  /// Online, first time on this device: authenticated; the full
+  /// metadata download continues in the background (see
+  /// [SessionService.initialSync]).
   onlineFirstSync,
 
   /// Online, returning user: authenticated, delta sync kicked off.
@@ -42,6 +51,15 @@ class SessionService {
   AppDatabase? _db;
   String? _userKey;
   DateTime? _serverDate;
+
+  /// Observable progress of the first full metadata download; stays
+  /// [InitialSyncState.idle] on returning/offline logins.
+  final ValueNotifier<InitialSyncState> initialSync =
+      ValueNotifier(InitialSyncState.idle);
+  MetadataSyncService? _initialSyncService;
+
+  bool get initialSyncRunning =>
+      initialSync.value == InitialSyncState.running;
 
   /// True when the last session-start check flagged a backwards clock
   /// jump. UI contract: show an error and refuse past-period entry
@@ -105,8 +123,13 @@ class SessionService {
       // user stuck on the delta path with half-empty metadata forever.
       final firstTime = await sync.lastSyncedAt() == null;
       if (firstTime) {
-        log.i('first online login for $userKey — full sync');
-        await sync.syncMetadata();
+        // Don't hold the user on the login page for the whole
+        // download — enter the app and pull in the background. An
+        // interrupted download keeps lastSyncedAt null, so the next
+        // online login retries the full sync (see comment above).
+        log.i('first online login for $userKey — full sync in background');
+        _initialSyncService = sync;
+        _runInitialSync();
         return LoginResult.onlineFirstSync;
       } else {
         log.i('returning online login for $userKey — delta sync');
@@ -145,26 +168,64 @@ class SessionService {
     return LoginResult.offline;
   }
 
+  void _runInitialSync() {
+    final sync = _initialSyncService;
+    if (sync == null || initialSyncRunning) return;
+    initialSync.value = InitialSyncState.running;
+    unawaited(sync.syncMetadata().then((_) {
+      _initialSyncService = null;
+      initialSync.value = InitialSyncState.done;
+    }).catchError((Object e) {
+      log.e('initial metadata sync failed: $e');
+      initialSync.value = InitialSyncState.failed;
+    }));
+  }
+
+  /// Retry after [InitialSyncState.failed] (connection dropped
+  /// mid-download). No-op unless a failed initial sync is waiting.
+  void retryInitialSync() => _runInitialSync();
+
   /// Ends the session but KEEPS the database and verifier — the same
   /// user can log in again later, offline. NOT a data-clearing action.
   Future<void> logout() async {
     await _db?.close();
     _db = null;
     _userKey = null;
+    _initialSyncService = null;
+    initialSync.value = InitialSyncState.idle;
     log.i('logged out (data retained)');
   }
+
+  /// Un-uploaded work (draft/pending/error values and completions) in
+  /// the active session's database — everything a [wipe] would destroy.
+  /// A UI must show this count and get an explicit confirmation before
+  /// wiping.
+  Future<int> unsyncedWorkCount() => countUnsyncedWork(db);
 
   /// Completely removes this user from the device: closes and deletes
   /// the database, clears the verifier. Re-login is a fresh online
   /// first-sync.
   ///
-  /// [pendingDataCount] is passed by the caller (computed from the data
-  /// value tables); a UI must confirm loss when it's > 0 BEFORE calling
-  /// this. This method itself does not prompt — it just destroys.
-  Future<void> wipe() async {
+  /// GUARD: when the open database still holds un-uploaded work, this
+  /// throws [StateError] unless [confirmedDataLoss] is true — callers
+  /// must show [unsyncedWorkCount] to the user and pass their explicit
+  /// confirmation through. The method itself never prompts.
+  Future<void> wipe({bool confirmedDataLoss = false}) async {
     final key = _userKey;
+    final db = _db;
+    if (db != null && !confirmedDataLoss) {
+      final atRisk = await countUnsyncedWork(db);
+      if (atRisk > 0) {
+        throw StateError(
+            'wipe would destroy $atRisk un-uploaded entries — confirm the '
+            'data loss with the user, then call '
+            'wipe(confirmedDataLoss: true).');
+      }
+    }
     await _db?.close();
     _db = null;
+    _initialSyncService = null;
+    initialSync.value = InitialSyncState.idle;
     if (key != null) {
       await _credentials.clear(key);
       await deleteUserDatabase(key);

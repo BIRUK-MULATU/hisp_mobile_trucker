@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../../core/auth/app_session.dart';
-import '../../../../core/data/completeness.dart';
-import '../../../../core/data/data_value_store.dart';
-import '../../../../core/network/connectivity_service.dart';
-import '../../../../core/sync/drift_sync_manager.dart';
+import '../../../../core/sync/manual_sync.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
@@ -18,6 +14,8 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/filter_panel.dart';
+import '../../../../shared/widgets/segmented_toggle.dart';
+import '../../../../shared/widgets/sync_snackbar.dart';
 import '../../../capture/presentation/views/capture_org_unit_view.dart';
 import '../../../visualization/presentation/views/visualization_view.dart';
 import '../widgets/home_app_bar.dart';
@@ -53,94 +51,70 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _onSyncTapped() async {
     if (_isSyncing) return;
-    final session = AppSession.instance;
-    if (!session.isLoggedIn) return;
+    if (!AppSession.instance.isLoggedIn) return;
 
     // Sync results are only visible in Capture mode.
     setState(() => _mode = HomeMode.capture);
 
-    final db = session.service.db;
-    final store = DataValueStore(db);
-    final pendingValues = await store.pendingCount();
-    final pendingCompletions = (await CompletenessStore(db).pending()).length;
-    final pendingTotal = pendingValues + pendingCompletions;
-
-    // Fresh reachability probe — the cached flag can be up to 30s stale.
-    await ConnectivityService.instance.checkNow();
-    final online = ConnectivityService.instance.online ?? false;
+    final result = await runManualSync(
+      onPushStart: () => setState(() => _isSyncing = true),
+    );
     if (!mounted) return;
+    setState(() {
+      _isSyncing = false;
+      // Remount the capture view so chips/tree reflect the push.
+      if (result.pushedAnything) _syncTick++;
+    });
+    showSyncResultSnackBar(context, result);
+  }
 
-    if (!online) {
-      _showSyncMessage(
-        pendingTotal > 0
-            ? 'No internet connection — $pendingTotal unsynced '
-                '${pendingTotal == 1 ? 'entry' : 'entries'} will upload '
-                'automatically when you are back online.'
-            : 'No internet connection.',
-        color: AppColors.error,
+  /// 'From -To' and 'Other' need a real date (range) from a picker;
+  /// the other options resolve from their label alone.
+  Future<void> _onDateFilterSelected(AppliedFilter? filter) async {
+    if (filter == null) {
+      setState(() => _dateFilter = null);
+      return;
+    }
+    var applied = filter;
+    final now = DateTime.now();
+    if (filter.label == 'From -To') {
+      final picked = await showDateRangePicker(
+        context: context,
+        firstDate: DateTime(2000),
+        lastDate: now.add(const Duration(days: 366)),
       );
-      return;
+      if (picked == null || !mounted) return;
+      applied = AppliedFilter(
+        '${_formatDay(picked.start)} - ${_formatDay(picked.end)}',
+        // End exclusive: push it past the last picked day so that
+        // whole day is included.
+        range: DateTimeRange(
+          start: picked.start,
+          end: picked.end.add(const Duration(days: 1)),
+        ),
+      );
+    } else if (filter.label == 'Other') {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: now,
+        firstDate: DateTime(2000),
+        lastDate: now.add(const Duration(days: 366)),
+      );
+      if (picked == null || !mounted) return;
+      applied = AppliedFilter(
+        _formatDay(picked),
+        range: DateTimeRange(
+          start: picked,
+          end: picked.add(const Duration(days: 1)),
+        ),
+      );
     }
-    if (pendingTotal == 0) {
-      _showSyncMessage('Everything is already synced.',
-          color: AppColors.success);
-      return;
-    }
-
-    setState(() => _isSyncing = true);
-    try {
-      await DriftSyncManager.instance.pushPending();
-      // Refresh metadata too, but a metadata hiccup must not mask a
-      // successful upload.
-      try {
-        await DriftSyncManager.instance.pullLatest();
-      } catch (e) {
-        debugPrint('metadata refresh after sync failed: $e');
-      }
-      final remaining = await store.pendingCount() +
-          (await CompletenessStore(db).pending()).length;
-      if (!mounted) return;
-      if (remaining == 0) {
-        _showSyncMessage(
-          'Sync complete — $pendingTotal '
-          '${pendingTotal == 1 ? 'entry' : 'entries'} uploaded.',
-          color: AppColors.success,
-        );
-      } else {
-        _showSyncMessage(
-          '$remaining of $pendingTotal entries could not be uploaded '
-          'and will retry later.',
-          color: AppColors.warning,
-        );
-      }
-    } catch (e) {
-      debugPrint('manual sync failed: $e');
-      if (mounted) {
-        _showSyncMessage(
-          'Sync failed — your entries are safe on this device and '
-          'will retry automatically.',
-          color: AppColors.error,
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSyncing = false;
-          _syncTick++;
-        });
-      }
-    }
+    setState(() => _dateFilter = applied);
   }
 
-  void _showSyncMessage(String message, {required Color color}) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-      ));
-  }
+  static String _formatDay(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   @override
   Widget build(BuildContext context) {
@@ -150,6 +124,7 @@ class _HomePageState extends State<HomePage> {
       appBar: HomeAppBar(
         searchActive: _searchActive,
         filtersShown: _showFilters,
+        showFilterButton: _mode == HomeMode.capture,
         isSyncing: _isSyncing,
         // Search targets whichever mode is active: org units in
         // Capture, dashboards in Visualization.
@@ -168,34 +143,49 @@ class _HomePageState extends State<HomePage> {
       drawer: const _HomeDrawer(),
       body: Column(
         children: [
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            child: _showFilters
-                ? FilterPanel(
-                    dateFilter: _dateFilter,
-                    orgUnitFilter: _orgUnitFilter,
-                    syncFilter: _syncFilter,
-                    onDateChanged: (f) => setState(() => _dateFilter = f),
-                    onOrgUnitChanged: (f) => setState(() => _orgUnitFilter = f),
-                    onSyncChanged: (f) => setState(() => _syncFilter = f),
-                  )
-                : const SizedBox.shrink(),
-          ),
           // The toggle stays a hand-sized pill even on wide screens.
           ResponsiveContent(
             maxWidth: AppBreakpoints.formMaxWidth,
-            child: _ModeToggleBar(
-              mode: _mode,
+            child: SegmentedToggle(
+              items: const [
+                SegmentedToggleItem(
+                  label: 'Visualization',
+                  icon: Icons.insights_rounded,
+                ),
+                SegmentedToggleItem(
+                  label: 'Capture',
+                  icon: Icons.edit_note_rounded,
+                ),
+              ],
+              index: _mode.index,
               // A query typed for one mode means nothing in the
               // other — close the search on switch.
-              onChanged: (mode) => setState(() {
-                _mode = mode;
+              onChanged: (i) => setState(() {
+                _mode = HomeMode.values[i];
                 _searchActive = false;
                 _searchQuery = '';
               }),
             ),
           ),
           const Divider(height: 1, color: AppColors.divider),
+          // Filters belong to the Capture workflow, so the panel lives
+          // inside the capture area rather than above the mode toggle.
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            child: _showFilters && _mode == HomeMode.capture
+                ? ResponsiveContent(
+                    child: FilterPanel(
+                      dateFilter: _dateFilter,
+                      orgUnitFilter: _orgUnitFilter,
+                      syncFilter: _syncFilter,
+                      onDateChanged: _onDateFilterSelected,
+                      onOrgUnitChanged: (f) =>
+                          setState(() => _orgUnitFilter = f),
+                      onSyncChanged: (f) => setState(() => _syncFilter = f),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
           Expanded(
             child: ResponsiveContent(
               child: _mode == HomeMode.visualization
@@ -205,156 +195,16 @@ class _HomePageState extends State<HomePage> {
                   : CaptureOrgUnitView(
                       key: ValueKey('capture-$_syncTick'),
                       searchQuery: _searchActive ? _searchQuery : null,
+                      orgUnitQuery: _orgUnitFilter?.label,
+                      syncFilters:
+                          _syncFilter?.label.split(', ').toSet() ?? const {},
+                      dateRange: _dateFilter == null
+                          ? null
+                          : resolveDateFilter(_dateFilter!, DateTime.now()),
                     ),
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ── Mode toggle bar ────────────────────────────────────────────
-// A segmented pill with a single sliding thumb: the blue highlight
-// glides (with a slight overshoot) to the tapped side while the
-// labels cross-fade, instead of each side repainting its own
-// background.
-class _ModeToggleBar extends StatelessWidget {
-  final HomeMode mode;
-  final ValueChanged<HomeMode> onChanged;
-
-  const _ModeToggleBar({required this.mode, required this.onChanged});
-
-  static const _duration = Duration(milliseconds: 320);
-
-  void _select(HomeMode next) {
-    HapticFeedback.selectionClick();
-    onChanged(next);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.space,
-        vertical: AppDimensions.spaceSM,
-      ),
-      child: Container(
-        height: 44,
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundGrey,
-          borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
-          border: Border.all(color: AppColors.divider),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            AnimatedAlign(
-              duration: _duration,
-              curve: Curves.easeOutBack,
-              alignment: mode == HomeMode.visualization
-                  ? Alignment.centerLeft
-                  : Alignment.centerRight,
-              child: FractionallySizedBox(
-                widthFactor: 0.5,
-                heightFactor: 1,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    borderRadius:
-                        BorderRadius.circular(AppDimensions.radiusFull),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.3),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Row(
-              children: [
-                _ModeButton(
-                  label: 'Visualization',
-                  icon: Icons.insights_rounded,
-                  isActive: mode == HomeMode.visualization,
-                  onTap: () => _select(HomeMode.visualization),
-                ),
-                _ModeButton(
-                  label: 'Capture',
-                  icon: Icons.edit_note_rounded,
-                  isActive: mode == HomeMode.capture,
-                  onTap: () => _select(HomeMode.capture),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ModeButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _ModeButton({
-    required this.label,
-    required this.icon,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        // The content no longer paints its own background, so make
-        // the whole half of the pill tappable, not just the label.
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        // One 0→1 progress drives icon and label colors so they fade
-        // in step with the thumb sliding underneath.
-        child: TweenAnimationBuilder<double>(
-          duration: _ModeToggleBar._duration,
-          curve: Curves.easeOut,
-          tween: Tween(begin: 0, end: isActive ? 1 : 0),
-          builder: (context, t, _) {
-            final color =
-                Color.lerp(AppColors.textSecondary, Colors.white, t)!;
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                AnimatedScale(
-                  scale: isActive ? 1.0 : 0.85,
-                  duration: _ModeToggleBar._duration,
-                  curve: Curves.easeOutBack,
-                  child: Icon(
-                    icon,
-                    size: AppDimensions.iconMD,
-                    color: color,
-                  ),
-                ),
-                const SizedBox(width: AppDimensions.spaceXS),
-                Text(
-                  label,
-                  style: AppTextStyles.labelMedium.copyWith(
-                    color: color,
-                    fontWeight:
-                        FontWeight.lerp(FontWeight.w500, FontWeight.w700, t),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
       ),
     );
   }

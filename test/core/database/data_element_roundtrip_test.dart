@@ -1,9 +1,9 @@
-/// Integration test -needs a DHIS2 instance running.
-///
-/// Run: flutter test test/core/database/data_element_roundtrip_test.dart
-///
+// Integration test -needs a DHIS2 instance running.
+//
+// Run: flutter test test/core/database/data_element_roundtrip_test.dart
 
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hisp_mobile_trucker/core/database/app_database.dart';
@@ -48,12 +48,12 @@ void main() {
     final all = await validationRulesResource.getAll();
     expect(all.length, count, reason: 'every fetched rule must be saved');
 
-    print('');
-    print('=== first ${all.length.clamp(0, 3)} rules from SQLite ===');
+    debugPrint('');
+    debugPrint('=== first ${all.length.clamp(0, 3)} rules from SQLite ===');
     for (final r in all.take(3)) {
-      print('${r.name}');
-      print('   ${r.leftExpression}  ${r.operator}  ${r.rightExpression}');
-      print('   importance: ${r.importance ?? '-'}  '
+      debugPrint(r.name);
+      debugPrint('   ${r.leftExpression}  ${r.operator}  ${r.rightExpression}');
+      debugPrint('   importance: ${r.importance ?? '-'}  '
           'periodType: ${r.periodType ?? '-'}');
     }
 

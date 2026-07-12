@@ -56,6 +56,9 @@ class DriftSyncManager implements SyncManager {
     final session = AppSession.instance;
     final api = session.api;
     if (!session.isLoggedIn || api == null) return;
+    // The first full download owns the metadata tables — a delta on
+    // top of it would race the same rows.
+    if (session.service.initialSyncRunning) return;
 
     _syncing.add(true);
     try {

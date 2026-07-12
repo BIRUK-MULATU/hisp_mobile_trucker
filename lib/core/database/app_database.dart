@@ -19,7 +19,10 @@ import '../metadata/validation_rule.dart';
 part 'app_database.g.dart';
 
 /// Sync lifecycle of locally stored DATA (values, completions).
-enum SyncState { synced, pending, error }
+/// `draft` is device-only work: it is never pushed by any sync path
+/// until the user completes the data set, which promotes it to
+/// `pending`. Stored by index — only append new states.
+enum SyncState { synced, pending, error, draft }
 
 // ── Tables that stay global (not per-metadata-type) ─────────────────────
 
@@ -176,7 +179,27 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('PRAGMA foreign_keys = ON');
           await customStatement('PRAGMA journal_mode = WAL');
         },
-        onUpgrade: (m, from, to) async {},
+        // v1 is the frozen baseline: every schemaVersion bump from here
+        // MUST add its step below before shipping. Steps run in order so
+        // any installed version reaches [to] (1→3 runs the 2 then the 3
+        // step). Throwing on a missing step is deliberate — opening a
+        // field device's database unmigrated would corrupt real data;
+        // failing loudly in development is the protection.
+        onUpgrade: (m, from, to) async {
+          // One entry per schema bump, e.g.
+          //   2: (m) => m.addColumn(dataSetsTable, dataSetsTable.newCol),
+          const steps = <int, Future<void> Function(Migrator)>{};
+          for (var target = from + 1; target <= to; target++) {
+            final step = steps[target];
+            if (step == null) {
+              throw UnsupportedError(
+                  'No migration step for schema v$target '
+                  '(upgrading $from → $to). Add it to '
+                  'AppDatabase.migration before bumping schemaVersion.');
+            }
+            await step(m);
+          }
+        },
       );
 
   /// Retention: delete data outside the allowed periods — ONLY synced

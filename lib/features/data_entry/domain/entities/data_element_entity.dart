@@ -7,6 +7,11 @@ class DataElementEntity {
   final String? categoryComboId;
   final List<CategoryOptionCombo> categoryOptionCombos;
 
+  /// Non-empty when the element has an option set: the server only
+  /// accepts one of these option CODES as the value (E7621), so the
+  /// cell renders a picker instead of free input.
+  final List<OptionEntity> options;
+
   const DataElementEntity({
     required this.id,
     required this.name,
@@ -14,9 +19,19 @@ class DataElementEntity {
     this.valueType = 'NUMBER',
     this.categoryComboId,
     this.categoryOptionCombos = const [],
+    this.options = const [],
   });
 
   String get displayName => shortName ?? name;
+}
+
+/// One choice of a data element's option set. [code] is what gets
+/// stored and sent; [name] is what the user sees.
+class OptionEntity {
+  final String code;
+  final String name;
+
+  const OptionEntity({required this.code, required this.name});
 }
 
 /// Represents a column header in the data entry form

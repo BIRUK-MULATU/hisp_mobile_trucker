@@ -1,5 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../../core/auth/app_session.dart';
+import '../../../../core/auth/session_service.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/data/data_value_store.dart';
+import '../../../../core/database/app_database.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
@@ -18,7 +23,28 @@ class CaptureOrgUnitView extends StatefulWidget {
   /// and the view's own inline search bar is hidden.
   final String? searchQuery;
 
-  const CaptureOrgUnitView({super.key, this.searchQuery});
+  /// Filter-panel ORG. UNIT text — an extra name filter on top of
+  /// the search query.
+  final String? orgUnitQuery;
+
+  /// Filter-panel SYNC selections (labels from the panel:
+  /// 'Synced' / 'UnSynced' / 'Sync Error' / 'SMS Synced'). Non-empty
+  /// switches the tree to a flat list of org units whose local work
+  /// is in one of those states.
+  final Set<String> syncFilters;
+
+  /// Filter-panel DATE window (start inclusive, end exclusive) over
+  /// when work was last captured. Non-null also switches to the
+  /// flat filtered list.
+  final DateTimeRange? dateRange;
+
+  const CaptureOrgUnitView({
+    super.key,
+    this.searchQuery,
+    this.orgUnitQuery,
+    this.syncFilters = const {},
+    this.dateRange,
+  });
 
   @override
   State<CaptureOrgUnitView> createState() => _CaptureOrgUnitViewState();
@@ -27,6 +53,7 @@ class CaptureOrgUnitView extends StatefulWidget {
 class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
   final _searchController = TextEditingController();
   final _secureStorage = SecureStorage();
+  late final CaptureRepositoryImpl _repository;
   late final GetOrgUnitChildrenUseCase _getChildren;
 
   List<OrgUnitTreeNode> _roots = [];
@@ -36,17 +63,81 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
   String? _error;
   String _searchQuery = '';
 
+  /// Org units matching the sync/date filters, flat and sorted by
+  /// name. Null while no such filter is active (tree mode).
+  List<OrgUnitTreeNode>? _filteredFlat;
+
   @override
   void initState() {
     super.initState();
-    _getChildren = GetOrgUnitChildrenUseCase(
-      CaptureRepositoryImpl(),
-    );
+    _repository = CaptureRepositoryImpl();
+    _getChildren = GetOrgUnitChildrenUseCase(_repository);
     _loadRoots();
+    _applyDataFilters();
+    AppSession.instance.service.initialSync.addListener(_onInitialSync);
+  }
+
+  /// First-login metadata download progressing in the background:
+  /// rebuild for the banner, and reload the tree when the data lands.
+  void _onInitialSync() {
+    if (!mounted) return;
+    if (AppSession.instance.service.initialSync.value ==
+        InitialSyncState.done) {
+      _loadRoots();
+      _applyDataFilters();
+    } else {
+      setState(() {});
+    }
+  }
+
+  @override
+  void didUpdateWidget(CaptureOrgUnitView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!setEquals(oldWidget.syncFilters, widget.syncFilters) ||
+        oldWidget.dateRange != widget.dateRange) {
+      _applyDataFilters();
+    }
+  }
+
+  bool get _dataFilterActive =>
+      widget.syncFilters.isNotEmpty || widget.dateRange != null;
+
+  Future<void> _applyDataFilters() async {
+    if (!_dataFilterActive) {
+      if (_filteredFlat != null) setState(() => _filteredFlat = null);
+      return;
+    }
+    final states = <SyncState>{
+      for (final label in widget.syncFilters)
+        if (label == 'Synced')
+          SyncState.synced
+        else if (label == 'UnSynced') ...[
+          // Queued for upload OR still a device-only draft — both are
+          // "not on the server yet" from the user's point of view.
+          SyncState.pending,
+          SyncState.draft,
+        ] else if (label == 'Sync Error')
+          SyncState.error,
+      // 'SMS Synced' has no local counterpart (the app does not sync
+      // over SMS) — it contributes no state and alone matches nothing.
+    };
+    var flat = const <OrgUnitTreeNode>[];
+    final smsOnly = widget.syncFilters.isNotEmpty && states.isEmpty;
+    if (!smsOnly) {
+      final ids = await DataValueStore(AppSession.instance.service.db)
+          .orgUnitsWithWork(
+        states: states,
+        from: widget.dateRange?.start,
+        to: widget.dateRange?.end,
+      );
+      flat = await _repository.getOrgUnitsByIds(ids);
+    }
+    if (mounted) setState(() => _filteredFlat = flat);
   }
 
   @override
   void dispose() {
+    AppSession.instance.service.initialSync.removeListener(_onInitialSync);
     _searchController.dispose();
     super.dispose();
   }
@@ -153,12 +244,25 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
   String get _effectiveQuery =>
       widget.searchQuery?.toLowerCase() ?? _searchQuery;
 
+  String get _orgUnitFilterQuery => widget.orgUnitQuery?.toLowerCase() ?? '';
+
+  bool _matchesName(OrgUnitTreeNode node) {
+    final name = node.name.toLowerCase();
+    final search = _effectiveQuery;
+    final filter = _orgUnitFilterQuery;
+    return (search.isEmpty || name.contains(search)) &&
+        (filter.isEmpty || name.contains(filter));
+  }
+
   List<_DisplayNode> get _filteredNodes {
-    final query = _effectiveQuery;
-    if (query.isEmpty) return _displayNodes;
-    return _displayNodes
-        .where((n) => n.node.name.toLowerCase().contains(query))
-        .toList();
+    // Sync/date filters replace the tree with a flat matching list;
+    // both name filters still apply on top.
+    final flat = _filteredFlat;
+    final nodes = flat != null
+        ? [for (final n in flat) _DisplayNode(node: n, depth: 0)]
+        : _displayNodes;
+    if (_effectiveQuery.isEmpty && _orgUnitFilterQuery.isEmpty) return nodes;
+    return nodes.where((n) => _matchesName(n.node)).toList();
   }
 
   void _continue() {
@@ -177,14 +281,13 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
 
   @override
   Widget build(BuildContext context) {
-    // The on-screen keyboard shrinks the body until the fixed bars
-    // no longer fit (RenderFlex overflow). The Continue bar is
-    // unusable while typing anyway — hide it until the keyboard
-    // goes away.
-    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
     return Column(
       children: [
         _StepHeader(selectedName: _selected?.name),
+        _InitialSyncBanner(
+          state: AppSession.instance.service.initialSync.value,
+          onRetry: AppSession.instance.service.retryInitialSync,
+        ),
         if (widget.searchQuery == null) ...[
           _SearchBar(
             controller: _searchController,
@@ -193,7 +296,11 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
           const Divider(height: 1),
         ],
         Expanded(child: _buildTree()),
-        if (!keyboardOpen) ...[
+        // The on-screen keyboard shrinks the body until the fixed
+        // bars no longer fit (RenderFlex overflow). The Continue bar
+        // is unusable while typing anyway — hide it until the
+        // keyboard goes away.
+        if (MediaQuery.of(context).viewInsets.bottom == 0) ...[
           const Divider(height: 1),
           _BottomBar(
             enabled: _selected != null,
@@ -247,14 +354,22 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
     }
     final nodes = _filteredNodes;
     if (nodes.isEmpty) {
+      final query = _effectiveQuery.isNotEmpty
+          ? _effectiveQuery
+          : _orgUnitFilterQuery;
       return Center(
-        child: Text(
-          _effectiveQuery.isEmpty
-              ? 'No organisation units assigned to your account.'
-              : 'No results for "$_effectiveQuery"',
-          style:
-              AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
-          textAlign: TextAlign.center,
+        child: Padding(
+          padding: const EdgeInsets.all(AppDimensions.spaceXL),
+          child: Text(
+            _dataFilterActive
+                ? 'No organisation units with matching captured data.'
+                : query.isEmpty
+                    ? 'No organisation units assigned to your account.'
+                    : 'No results for "$query"',
+            style: AppTextStyles.bodyMedium
+                .copyWith(color: AppColors.textSecondary),
+            textAlign: TextAlign.center,
+          ),
         ),
       );
     }
@@ -270,6 +385,66 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
           onSelect: () => _select(item.node),
         );
       },
+    );
+  }
+}
+
+// ── Initial sync banner ────────────────────────────────────────
+/// Shown while the first-login metadata download runs in the
+/// background (or after it failed). Invisible otherwise.
+class _InitialSyncBanner extends StatelessWidget {
+  final InitialSyncState state;
+  final VoidCallback onRetry;
+
+  const _InitialSyncBanner({required this.state, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    if (state != InitialSyncState.running &&
+        state != InitialSyncState.failed) {
+      return const SizedBox.shrink();
+    }
+    final failed = state == InitialSyncState.failed;
+    return Container(
+      width: double.infinity,
+      color: failed ? AppColors.error : AppColors.primary,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.space,
+        vertical: AppDimensions.spaceSM,
+      ),
+      child: Row(
+        children: [
+          if (failed)
+            const Icon(Icons.cloud_off_rounded,
+                color: Colors.white, size: AppDimensions.iconMD)
+          else
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+                semanticsLabel: 'Downloading data',
+              ),
+            ),
+          const SizedBox(width: AppDimensions.spaceMD),
+          Expanded(
+            child: Text(
+              failed
+                  ? 'Data download was interrupted.'
+                  : 'Downloading your data for offline use — '
+                      'this happens only once.',
+              style: AppTextStyles.bodySmall.copyWith(color: Colors.white),
+            ),
+          ),
+          if (failed)
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              child: const Text('Retry'),
+            ),
+        ],
+      ),
     );
   }
 }
