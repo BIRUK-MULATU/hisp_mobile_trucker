@@ -159,7 +159,7 @@ void main() {
 
   group('DataEntryTable', () {
     testWidgets(
-        'shows every category combo group with its own headers',
+        'first element starts expanded; tapping headers toggles their combos',
         (tester) async {
       const disaggregated = DataElementEntity(
         id: 'de1',
@@ -170,8 +170,6 @@ void main() {
           CategoryOptionCombo(id: 'c2', name: '5 and above'),
         ],
       );
-      // Different combo than the first element — before the grouping
-      // fix its columns were never shown as headers.
       const plain = DataElementEntity(
         id: 'de2',
         name: 'Stock-outs',
@@ -194,11 +192,27 @@ void main() {
         ),
       );
 
-      expect(find.text('Under 5'), findsOneWidget);
-      expect(find.text('5 and above'), findsOneWidget);
-      expect(find.text('Value'), findsOneWidget);
+      // Both element headers are always listed.
       expect(find.text('Malaria cases'), findsOneWidget);
       expect(find.text('Stock-outs'), findsOneWidget);
+
+      // The first element starts expanded: its combos are visible.
+      expect(find.text('Under 5'), findsOneWidget);
+      expect(find.text('5 and above'), findsOneWidget);
+
+      // The rest start collapsed: their combos are hidden.
+      expect(find.text('Value'), findsNothing);
+
+      // Tapping a collapsed header reveals its combo rows.
+      await tester.tap(find.text('Stock-outs'));
+      await tester.pump();
+      expect(find.text('Value'), findsOneWidget);
+
+      // Tapping an expanded header collapses it again.
+      await tester.tap(find.text('Malaria cases'));
+      await tester.pump();
+      expect(find.text('Under 5'), findsNothing);
+      expect(find.text('5 and above'), findsNothing);
     });
   });
 

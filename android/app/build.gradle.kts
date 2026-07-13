@@ -57,14 +57,29 @@ android {
         release {
             if (hasReleaseKeystore) {
                 signingConfig = signingConfigs.getByName("release")
-            } else {
-                // No android/key.properties yet: fall back to debug keys so
-                // `flutter run --release` works. DO NOT distribute this build.
+            } else if ((project.findProperty("allowDebugSigning") as String?)
+                    .toBoolean() ||
+                System.getenv("ALLOW_DEBUG_SIGNING") == "true"
+            ) {
+                // Explicit opt-in only (-PallowDebugSigning=true or
+                // ALLOW_DEBUG_SIGNING=true): lets `flutter run --release`
+                // work on a dev machine. DO NOT distribute this build —
+                // a debug-signed APK can never be updated in place.
                 logger.warn(
-                    "WARNING: android/key.properties not found - release build " +
-                    "is signed with DEBUG keys and must not be distributed."
+                    "WARNING: release build signed with DEBUG keys " +
+                    "(allowDebugSigning) - do not distribute."
                 )
                 signingConfig = signingConfigs.getByName("debug")
+            } else {
+                // A silently debug-signed "release" APK is a trap: once
+                // installed it can never be updated with the real key.
+                throw GradleException(
+                    "Release build requires android/key.properties with the " +
+                    "release keystore (see docs.flutter.dev/deployment/android" +
+                    "#sign-the-app). To knowingly build a NON-distributable " +
+                    "test APK with debug keys, pass -PallowDebugSigning=true " +
+                    "or set ALLOW_DEBUG_SIGNING=true."
+                )
             }
         }
     }
