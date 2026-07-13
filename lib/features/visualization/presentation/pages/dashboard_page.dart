@@ -130,6 +130,11 @@ class _ChartCardState extends State<_ChartCard> {
                   );
                 }
                 if (snapshot.hasError) {
+                  // A misconfigured chart can never load — say why
+                  // and skip the Retry button (it would 409 forever).
+                  final error = snapshot.error;
+                  final misconfigured =
+                      error is MisconfiguredVisualizationException;
                   return SizedBox(
                     height: 120,
                     child: Center(
@@ -137,14 +142,18 @@ class _ChartCardState extends State<_ChartCard> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            'Could not load this chart.',
+                            misconfigured
+                                ? error.message
+                                : 'Could not load this chart.',
                             style: AppTextStyles.bodySmall
                                 .copyWith(color: AppColors.textSecondary),
+                            textAlign: TextAlign.center,
                           ),
-                          TextButton(
-                            onPressed: _retry,
-                            child: const Text('Retry'),
-                          ),
+                          if (!misconfigured)
+                            TextButton(
+                              onPressed: _retry,
+                              child: const Text('Retry'),
+                            ),
                         ],
                       ),
                     ),

@@ -38,12 +38,19 @@ class CaptureOrgUnitView extends StatefulWidget {
   /// flat filtered list.
   final DateTimeRange? dateRange;
 
+  /// Whether the on-screen keyboard is showing. Passed in by the
+  /// parent because it must be read ABOVE the Scaffold — inside the
+  /// body, Scaffold removes viewInsets.bottom once it has resized,
+  /// so MediaQuery here always reports 0.
+  final bool keyboardOpen;
+
   const CaptureOrgUnitView({
     super.key,
     this.searchQuery,
     this.orgUnitQuery,
     this.syncFilters = const {},
     this.dateRange,
+    this.keyboardOpen = false,
   });
 
   @override
@@ -52,6 +59,11 @@ class CaptureOrgUnitView extends StatefulWidget {
 
 class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
   final _searchController = TextEditingController();
+
+  // Owned here (not by _SearchBar) so build() can tell whether an
+  // open keyboard belongs to the inline search bar or to some other
+  // field (e.g. the filter panel's org unit search above this view).
+  final _searchFocusNode = FocusNode();
   final _secureStorage = SecureStorage();
   late final CaptureRepositoryImpl _repository;
   late final GetOrgUnitChildrenUseCase _getChildren;
@@ -75,6 +87,9 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
     _loadRoots();
     _applyDataFilters();
     AppSession.instance.service.initialSync.addListener(_onInitialSync);
+    // Rebuild on focus changes so the keyboard-driven layout below
+    // reacts when the search bar gains or loses focus.
+    _searchFocusNode.addListener(() => setState(() {}));
   }
 
   /// First-login metadata download progressing in the background:
@@ -124,8 +139,8 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
     var flat = const <OrgUnitTreeNode>[];
     final smsOnly = widget.syncFilters.isNotEmpty && states.isEmpty;
     if (!smsOnly) {
-      final ids = await DataValueStore(AppSession.instance.service.db)
-          .orgUnitsWithWork(
+      final ids =
+          await DataValueStore(AppSession.instance.service.db).orgUnitsWithWork(
         states: states,
         from: widget.dateRange?.start,
         to: widget.dateRange?.end,
@@ -139,6 +154,7 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
   void dispose() {
     AppSession.instance.service.initialSync.removeListener(_onInitialSync);
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -281,32 +297,59 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
 
   @override
   Widget build(BuildContext context) {
+    // The on-screen keyboard shrinks the body until the fixed bars
+    // no longer fit (RenderFlex overflow), so while it is open only
+    // the tree is kept — plus the inline search bar when the keyboard
+    // was opened for it. When another field owns the keyboard (the
+    // filter panel's org unit search), even the search bar goes:
+    // whatever chrome remains fixed must fit the shrunken body.
+    final keyboardOpen = widget.keyboardOpen;
+    final hideSearchBar = keyboardOpen && !_searchFocusNode.hasFocus;
+    // Hidden chrome is Offstage, never removed: dropping children
+    // shifts the others' positions in the Column and Flutter then
+    // recreates them — the search bar would lose focus (closing the
+    // keyboard again) the moment it moved.
     return Column(
       children: [
-        _StepHeader(selectedName: _selected?.name),
-        _InitialSyncBanner(
-          state: AppSession.instance.service.initialSync.value,
-          onRetry: AppSession.instance.service.retryInitialSync,
+        Offstage(
+          offstage: keyboardOpen,
+          child: Column(
+            children: [
+              _StepHeader(selectedName: _selected?.name),
+              _InitialSyncBanner(
+                state: AppSession.instance.service.initialSync.value,
+                onRetry: AppSession.instance.service.retryInitialSync,
+              ),
+            ],
+          ),
         ),
-        if (widget.searchQuery == null) ...[
-          _SearchBar(
-            controller: _searchController,
-            onChanged: (q) => setState(() => _searchQuery = q.toLowerCase()),
+        Offstage(
+          offstage: widget.searchQuery != null || hideSearchBar,
+          child: Column(
+            children: [
+              _SearchBar(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                onChanged: (q) =>
+                    setState(() => _searchQuery = q.toLowerCase()),
+              ),
+              const Divider(height: 1),
+            ],
           ),
-          const Divider(height: 1),
-        ],
+        ),
         Expanded(child: _buildTree()),
-        // The on-screen keyboard shrinks the body until the fixed
-        // bars no longer fit (RenderFlex overflow). The Continue bar
-        // is unusable while typing anyway — hide it until the
-        // keyboard goes away.
-        if (MediaQuery.of(context).viewInsets.bottom == 0) ...[
-          const Divider(height: 1),
-          _BottomBar(
-            enabled: _selected != null,
-            onContinue: _continue,
+        Offstage(
+          offstage: keyboardOpen,
+          child: Column(
+            children: [
+              const Divider(height: 1),
+              _BottomBar(
+                enabled: _selected != null,
+                onContinue: _continue,
+              ),
+            ],
           ),
-        ],
+        ),
       ],
     );
   }
@@ -354,9 +397,8 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
     }
     final nodes = _filteredNodes;
     if (nodes.isEmpty) {
-      final query = _effectiveQuery.isNotEmpty
-          ? _effectiveQuery
-          : _orgUnitFilterQuery;
+      final query =
+          _effectiveQuery.isNotEmpty ? _effectiveQuery : _orgUnitFilterQuery;
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(AppDimensions.spaceXL),
@@ -400,8 +442,7 @@ class _InitialSyncBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (state != InitialSyncState.running &&
-        state != InitialSyncState.failed) {
+    if (state != InitialSyncState.running && state != InitialSyncState.failed) {
       return const SizedBox.shrink();
     }
     final failed = state == InitialSyncState.failed;
@@ -479,32 +520,41 @@ class _StepHeader extends StatelessWidget {
 // ── Search bar ─────────────────────────────────────────────────
 class _SearchBar extends StatefulWidget {
   final TextEditingController controller;
+
+  /// Owned by the parent view, which watches it to decide whether an
+  /// open keyboard belongs to this bar.
+  final FocusNode focusNode;
   final ValueChanged<String> onChanged;
 
-  const _SearchBar({required this.controller, required this.onChanged});
+  const _SearchBar({
+    required this.controller,
+    required this.focusNode,
+    required this.onChanged,
+  });
 
   @override
   State<_SearchBar> createState() => _SearchBarState();
 }
 
 class _SearchBarState extends State<_SearchBar> {
-  final FocusNode _focusNode = FocusNode();
   bool _focused = false;
 
   @override
   void initState() {
     super.initState();
-    _focusNode
-        .addListener(() => setState(() => _focused = _focusNode.hasFocus));
+    widget.focusNode.addListener(_onFocusChanged);
     widget.controller.addListener(_onTextChanged);
   }
+
+  void _onFocusChanged() =>
+      setState(() => _focused = widget.focusNode.hasFocus);
 
   void _onTextChanged() => setState(() {});
 
   @override
   void dispose() {
+    widget.focusNode.removeListener(_onFocusChanged);
     widget.controller.removeListener(_onTextChanged);
-    _focusNode.dispose();
     super.dispose();
   }
 
@@ -540,7 +590,7 @@ class _SearchBarState extends State<_SearchBar> {
             Expanded(
               child: TextField(
                 controller: widget.controller,
-                focusNode: _focusNode,
+                focusNode: widget.focusNode,
                 onChanged: widget.onChanged,
                 textInputAction: TextInputAction.search,
                 cursorColor: AppColors.primary,

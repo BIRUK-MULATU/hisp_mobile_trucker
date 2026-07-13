@@ -129,9 +129,9 @@ class DataValueSync {
       // rows do NOT count as settled: they hold rejected local work
       // the user must still see and fix, so they go through the same
       // resolution rules as pending (but are never blind re-pushed —
-      // editing the cell is what re-queues them). DRAFT rows likewise
-      // resolve here but phase 2 skips them: drafts only leave the
-      // device when the user completes the data set.
+      // editing the cell is what re-queues them). DRAFT rows settle
+      // only when EQUAL to the server; on any conflict the draft
+      // survives (see below), and phase 2 never pushes drafts.
       if (local == null || local.syncState == SyncState.synced) {
         await _applyServer(v, stamp);
         continue;
@@ -141,6 +141,16 @@ class DataValueSync {
       if (local.value == serverValue) {
         await _store.markSynced(local);
         equalSkipped++;
+        continue;
+      }
+
+      // CONFLICT with a DRAFT: the draft always survives. It is
+      // unsubmitted work typed on this device — silently replacing it
+      // with the server value would destroy input the user never had
+      // a chance to send. It leaves the device only when the user
+      // completes the data set (promoteDrafts -> pending -> push).
+      if (local.syncState == SyncState.draft) {
+        localWon++;
         continue;
       }
 

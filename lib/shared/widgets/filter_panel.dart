@@ -364,6 +364,8 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
                 Expanded(
                   child: TextField(
                     controller: _controller,
+                    // The keyboard's search action applies the typed
+                    // filter — there is no separate add button.
                     onSubmitted: _submit,
                     textInputAction: TextInputAction.search,
                     style: AppTextStyles.bodyMedium
@@ -377,25 +379,6 @@ class _OrgUnitSearchBarState extends State<_OrgUnitSearchBar> {
                       border: InputBorder.none,
                       isDense: true,
                     ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => _submit(_controller.text),
-                  tooltip: 'Add organisation unit filter',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: AppDimensions.buttonHeightSM,
-                    minHeight: AppDimensions.buttonHeightSM,
-                  ),
-                  icon: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.add_rounded,
-                        color: Colors.white, size: AppDimensions.iconSM),
                   ),
                 ),
               ],

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/network/connectivity_service.dart';
 import '../../../../shared/theme/app_colors.dart';
@@ -51,6 +52,20 @@ class _VisualizationViewState extends State<VisualizationView> {
     try {
       final dashboards = await _repository.getDashboards();
       if (mounted) setState(() => _dashboards = dashboards);
+    } on DioException catch (e) {
+      // Some gateways (staging) answer 404/403 for endpoints the
+      // account may not use — say so instead of dumping the Dio error.
+      final code = e.response?.statusCode;
+      if (mounted) {
+        setState(() => _error = (code == 404 || code == 403)
+            ? 'Dashboards are not available on this server for your '
+                'account (the endpoint is blocked or a permission is '
+                'missing). Data capture is not affected. Please contact '
+                'your administrator.'
+            : 'The server could not be reached'
+                '${code == null ? '' : ' (error $code)'}. Try again in a '
+                'moment.');
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _error = e.toString().replaceAll('Exception: ', ''));

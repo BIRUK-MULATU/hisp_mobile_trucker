@@ -16,6 +16,8 @@ import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/filter_panel.dart';
 import '../../../../shared/widgets/segmented_toggle.dart';
 import '../../../../shared/widgets/sync_snackbar.dart';
+import '../../../capture/domain/entities/org_unit_tree_node.dart';
+import '../../../capture/presentation/pages/org_unit_filter_page.dart';
 import '../../../capture/presentation/views/capture_org_unit_view.dart';
 import '../../../visualization/presentation/views/visualization_view.dart';
 import '../widgets/home_app_bar.dart';
@@ -112,12 +114,28 @@ class _HomePageState extends State<HomePage> {
     setState(() => _dateFilter = applied);
   }
 
-  static String _formatDay(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/'
+  static String _formatDay(DateTime d) => '${d.day.toString().padLeft(2, '0')}/'
       '${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  /// Tree icon in the filter panel: pick an org unit from the full
+  /// hierarchy on its own page instead of typing its name.
+  Future<void> _pickOrgUnitFilter() async {
+    final node = await Navigator.push<OrgUnitTreeNode>(
+      context,
+      MaterialPageRoute(builder: (_) => const OrgUnitFilterPage()),
+    );
+    if (node != null && mounted) {
+      setState(() => _orgUnitFilter = AppliedFilter(node.name));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    // Read the keyboard inset HERE, above the Scaffold. Inside the
+    // body the Scaffold removes viewInsets.bottom (it already resized
+    // the body for the keyboard), so any check down there reads 0 and
+    // never fires.
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: Colors.white,
@@ -141,70 +159,110 @@ class _HomePageState extends State<HomePage> {
         onSearchChanged: (query) => setState(() => _searchQuery = query),
       ),
       drawer: const _HomeDrawer(),
-      body: Column(
-        children: [
-          // The toggle stays a hand-sized pill even on wide screens.
-          ResponsiveContent(
-            maxWidth: AppBreakpoints.formMaxWidth,
-            child: SegmentedToggle(
-              items: const [
-                SegmentedToggleItem(
-                  label: 'Visualization',
-                  icon: Icons.insights_rounded,
-                ),
-                SegmentedToggleItem(
-                  label: 'Capture',
-                  icon: Icons.edit_note_rounded,
-                ),
-              ],
-              index: _mode.index,
-              // A query typed for one mode means nothing in the
-              // other — close the search on switch.
-              onChanged: (i) => setState(() {
-                _mode = HomeMode.values[i];
-                _searchActive = false;
-                _searchQuery = '';
-              }),
-            ),
-          ),
-          const Divider(height: 1, color: AppColors.divider),
-          // Filters belong to the Capture workflow, so the panel lives
-          // inside the capture area rather than above the mode toggle.
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            child: _showFilters && _mode == HomeMode.capture
-                ? ResponsiveContent(
-                    child: FilterPanel(
-                      dateFilter: _dateFilter,
-                      orgUnitFilter: _orgUnitFilter,
-                      syncFilter: _syncFilter,
-                      onDateChanged: _onDateFilterSelected,
-                      onOrgUnitChanged: (f) =>
-                          setState(() => _orgUnitFilter = f),
-                      onSyncChanged: (f) => setState(() => _syncFilter = f),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // The keyboard shrinks the body (resizeToAvoidBottomInset);
+          // every fixed-height child left standing must fit what
+          // remains. While it is open the mode toggle goes (unusable
+          // mid-typing) and the filter panel's cap drops so the
+          // capture area below always keeps room for its own search
+          // field plus a few tree rows.
+          final panelCap = keyboardOpen
+              ? (constraints.maxHeight - 160)
+                  .clamp(72.0, constraints.maxHeight * 0.6)
+              : constraints.maxHeight * 0.6;
+          return Column(
+            children: [
+              // Offstage (never removed): dropping children from the
+              // Column shifts the panel's position and Flutter then
+              // recreates its whole subtree, stealing focus from the
+              // panel's search field right as the keyboard opens.
+              Offstage(
+                offstage: keyboardOpen,
+                child: Column(
+                  children: [
+                    // The toggle stays a hand-sized pill even on wide
+                    // screens.
+                    ResponsiveContent(
+                      maxWidth: AppBreakpoints.formMaxWidth,
+                      child: SegmentedToggle(
+                        items: const [
+                          SegmentedToggleItem(
+                            label: 'Visualization',
+                            icon: Icons.insights_rounded,
+                          ),
+                          SegmentedToggleItem(
+                            label: 'Capture',
+                            icon: Icons.edit_note_rounded,
+                          ),
+                        ],
+                        index: _mode.index,
+                        // A query typed for one mode means nothing in the
+                        // other — close the search on switch.
+                        onChanged: (i) => setState(() {
+                          _mode = HomeMode.values[i];
+                          _searchActive = false;
+                          _searchQuery = '';
+                        }),
+                      ),
                     ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-          Expanded(
-            child: ResponsiveContent(
-              child: _mode == HomeMode.visualization
-                  ? VisualizationView(
-                      searchQuery: _searchActive ? _searchQuery : null,
-                    )
-                  : CaptureOrgUnitView(
-                      key: ValueKey('capture-$_syncTick'),
-                      searchQuery: _searchActive ? _searchQuery : null,
-                      orgUnitQuery: _orgUnitFilter?.label,
-                      syncFilters:
-                          _syncFilter?.label.split(', ').toSet() ?? const {},
-                      dateRange: _dateFilter == null
-                          ? null
-                          : resolveDateFilter(_dateFilter!, DateTime.now()),
-                    ),
-            ),
-          ),
-        ],
+                    const Divider(height: 1, color: AppColors.divider),
+                  ],
+                ),
+              ),
+              // Filters belong to the Capture workflow, so the panel lives
+              // inside the capture area rather than above the mode toggle.
+              // The cap sits OUTSIDE the AnimatedSize so a keyboard-driven
+              // cap change binds immediately — inside, the 200ms size
+              // animation would overflow the shrunken body mid-flight.
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: panelCap),
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  child: _showFilters && _mode == HomeMode.capture
+                      ? SingleChildScrollView(
+                          // The expanded panel can outgrow the cap; it
+                          // scrolls inside it and focusing the panel's
+                          // search field auto-scrolls it into view.
+                          child: ResponsiveContent(
+                            child: FilterPanel(
+                              dateFilter: _dateFilter,
+                              orgUnitFilter: _orgUnitFilter,
+                              syncFilter: _syncFilter,
+                              onDateChanged: _onDateFilterSelected,
+                              onOrgUnitChanged: (f) =>
+                                  setState(() => _orgUnitFilter = f),
+                              onSyncChanged: (f) =>
+                                  setState(() => _syncFilter = f),
+                              onOpenOrgUnitTree: _pickOrgUnitFilter,
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+              Expanded(
+                child: ResponsiveContent(
+                  child: _mode == HomeMode.visualization
+                      ? VisualizationView(
+                          searchQuery: _searchActive ? _searchQuery : null,
+                        )
+                      : CaptureOrgUnitView(
+                          key: ValueKey('capture-$_syncTick'),
+                          keyboardOpen: keyboardOpen,
+                          searchQuery: _searchActive ? _searchQuery : null,
+                          orgUnitQuery: _orgUnitFilter?.label,
+                          syncFilters: _syncFilter?.label.split(', ').toSet() ??
+                              const {},
+                          dateRange: _dateFilter == null
+                              ? null
+                              : resolveDateFilter(_dateFilter!, DateTime.now()),
+                        ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

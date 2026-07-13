@@ -5,6 +5,13 @@ import '../../../../core/utils/app_logger.dart';
 import '../../domain/entities/analytics_data.dart';
 import '../../domain/entities/dashboard_entity.dart';
 
+/// A visualization whose server-side definition cannot produce a
+/// valid analytics query (e.g. no periods anywhere — analytics then
+/// answers 409 no matter how often it is retried).
+class MisconfiguredVisualizationException extends AppException {
+  const MisconfiguredVisualizationException({required super.message});
+}
+
 /// Dashboards and charts straight from the DHIS2 analytics stack:
 /// /api/dashboards for the list, /api/visualizations/{id} for each
 /// chart's definition, /api/analytics for the numbers — the same
@@ -82,6 +89,18 @@ class VisualizationRepositoryImpl {
     final rows = _dimensionParams(viz['rows'] as List?, relativePeriods);
     final filters =
         _dimensionParams(viz['filters'] as List?, relativePeriods);
+
+    // Analytics requires a period somewhere; a visualization saved
+    // without one (it happens — staging's chart "1111111") would 409
+    // forever, so refuse it up front with a message the card can show.
+    final hasPeriod =
+        [...columns, ...rows, ...filters].any((p) => p.startsWith('pe:'));
+    if (!hasPeriod) {
+      throw const MisconfiguredVisualizationException(
+          message: 'This chart has no periods configured on the server, '
+              'so it cannot be drawn. Fix the visualization in the DHIS2 '
+              'web portal.');
+    }
 
     final res = await _api.get('/api/analytics.json', queryParameters: {
       'dimension': [...columns, ...rows],
