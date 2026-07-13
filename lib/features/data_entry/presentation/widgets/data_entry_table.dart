@@ -32,8 +32,9 @@ class DataEntryTable extends StatelessWidget {
 
     // A dataset can mix category combos (age/sex disaggregated
     // elements next to plain ones), so elements are grouped by
-    // combo and every group gets its own header row — the same way
-    // the DHIS2 web data entry app renders it.
+    // combo and every group gets its own header row. Axes are
+    // swapped relative to the DHIS2 web app: data elements run
+    // across the top and category option combos down the side.
     final groups = <String, List<DataElementEntity>>{};
     for (final element in dataElements) {
       final key = element.categoryComboId ?? 'default';
@@ -42,17 +43,17 @@ class DataEntryTable extends StatelessWidget {
 
     final items = <_TableItem>[];
     for (final group in groups.values) {
-      items.add(_TableItem.header(_columnsFor(group.first)));
-      for (final element in group) {
-        items.add(_TableItem.row(element));
+      items.add(_TableItem.header(group));
+      for (final combo in _rowCombosFor(group.first)) {
+        items.add(_TableItem.row(combo, group));
       }
     }
 
-    // The widest group decides the table width.
+    // The group with the most data elements decides the table width.
     var maxColumns = 1;
-    for (final element in dataElements) {
-      if (element.categoryOptionCombos.length > maxColumns) {
-        maxColumns = element.categoryOptionCombos.length;
+    for (final group in groups.values) {
+      if (group.length > maxColumns) {
+        maxColumns = group.length;
       }
     }
 
@@ -81,21 +82,20 @@ class DataEntryTable extends StatelessWidget {
               itemCount: items.length,
               itemBuilder: (context, index) {
                 final item = items[index];
-                if (item.columns != null) {
+                if (item.isHeader) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // ── Column Headers (one per combo group) ──
-                      _buildColumnHeaders(item.columns!, labelWidth, cellWidth),
+                      _buildColumnHeaders(item.elements, labelWidth, cellWidth),
                       const Divider(height: 1, color: AppColors.divider),
                     ],
                   );
                 }
-                // ── Data Row ────────────────────────────
-                final element = item.element!;
+                // ── Data Row (one category option combo) ─────
                 return _DataEntryRow(
-                  element: element,
-                  columns: _columnsFor(element),
+                  combo: item.combo!,
+                  elements: item.elements,
                   dataValues: dataValues,
                   orgUnitId: orgUnitId,
                   period: period,
@@ -148,7 +148,7 @@ class DataEntryTable extends StatelessWidget {
     );
   }
 
-  static List<CategoryOptionCombo> _columnsFor(DataElementEntity element) {
+  static List<CategoryOptionCombo> _rowCombosFor(DataElementEntity element) {
     if (element.categoryOptionCombos.isNotEmpty) {
       return element.categoryOptionCombos;
     }
@@ -157,28 +157,29 @@ class DataEntryTable extends StatelessWidget {
   }
 
   Widget _buildColumnHeaders(
-      List<CategoryOptionCombo> columns, double labelWidth, double cellWidth) {
+      List<DataElementEntity> elements, double labelWidth, double cellWidth) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         // ── Empty left cell (row label space) ────────
         SizedBox(width: labelWidth),
 
-        // ── Column headers ────────────────────────────
-        ...columns.map(
-          (col) => Container(
+        // ── Column headers (data element names) ───────
+        ...elements.map(
+          (element) => Container(
             width: cellWidth,
             padding: const EdgeInsets.symmetric(
               horizontal: AppDimensions.spaceXS,
               vertical: AppDimensions.spaceSM,
             ),
             child: Text(
-              col.displayName,
+              element.displayName,
               style: AppTextStyles.caption.copyWith(
                 color: AppColors.textSecondary,
                 fontSize: 11,
               ),
               textAlign: TextAlign.center,
-              maxLines: 2,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -190,18 +191,19 @@ class DataEntryTable extends StatelessWidget {
 
 // ── Lazy-list item: either a group header or a data row ────────
 class _TableItem {
-  final List<CategoryOptionCombo>? columns;
-  final DataElementEntity? element;
+  final CategoryOptionCombo? combo;
+  final List<DataElementEntity> elements;
 
-  const _TableItem.header(List<CategoryOptionCombo> this.columns)
-      : element = null;
-  const _TableItem.row(DataElementEntity this.element) : columns = null;
+  const _TableItem.header(this.elements) : combo = null;
+  const _TableItem.row(CategoryOptionCombo this.combo, this.elements);
+
+  bool get isHeader => combo == null;
 }
 
-// ── Single Data Row ────────────────────────────────────────────
+// ── Single Data Row (one category option combo) ────────────────
 class _DataEntryRow extends StatelessWidget {
-  final DataElementEntity element;
-  final List<CategoryOptionCombo> columns;
+  final CategoryOptionCombo combo;
+  final List<DataElementEntity> elements;
   final Map<String, DataValueEntity> dataValues;
   final String orgUnitId;
   final String period;
@@ -209,8 +211,8 @@ class _DataEntryRow extends StatelessWidget {
   final double cellWidth;
 
   const _DataEntryRow({
-    required this.element,
-    required this.columns,
+    required this.combo,
+    required this.elements,
     required this.dataValues,
     required this.orgUnitId,
     required this.period,
@@ -242,7 +244,7 @@ class _DataEntryRow extends StatelessWidget {
                 ),
               ),
               child: Text(
-                element.displayName,
+                combo.displayName,
                 style: AppTextStyles.bodySmall.copyWith(
                   color: AppColors.primary,
                   fontSize: 12,
@@ -253,11 +255,16 @@ class _DataEntryRow extends StatelessWidget {
             ),
 
             // ── Input Cells ──────────────────────────
-            // `columns` is always this element's own combos, so a
-            // value is never saved against a combo from a different
-            // category combo (server rejects those with 409/E7634).
-            ...columns.map((col) {
-              final key = '${element.id}_${col.id}';
+            // A cell is only rendered when the row combo belongs to
+            // the column element's own category combo, so a value is
+            // never saved against a combo from a different category
+            // combo (server rejects those with 409/E7634).
+            ...elements.map((element) {
+              final ownCombos = DataEntryTable._rowCombosFor(element);
+              if (!ownCombos.any((c) => c.id == combo.id)) {
+                return SizedBox(width: cellWidth);
+              }
+              final key = '${element.id}_${combo.id}';
               final existing = dataValues[key];
 
               return SizedBox(
@@ -267,7 +274,7 @@ class _DataEntryRow extends StatelessWidget {
                   child: DataEntryCell(
                     key: ValueKey(key),
                     dataElementId: element.id,
-                    categoryOptionComboId: col.id,
+                    categoryOptionComboId: combo.id,
                     initialValue: existing?.value ?? '',
                     valueType: element.valueType,
                     options: element.options,
@@ -276,7 +283,7 @@ class _DataEntryRow extends StatelessWidget {
                       context.read<DataEntryBloc>().add(
                             DataEntryValueChanged(
                               dataElementId: element.id,
-                              categoryOptionComboId: col.id,
+                              categoryOptionComboId: combo.id,
                               value: value,
                             ),
                           );
