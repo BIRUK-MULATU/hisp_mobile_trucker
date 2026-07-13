@@ -1,129 +1,252 @@
 # HISP Mobile Tracker
 
-[![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://flutter.dev)
-[![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)](https://dart.dev)
-[![Clean Architecture](https://img.shields.io/badge/Architecture-Clean%20Architecture-6DB33F?style=for-the-badge)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
-[![DHIS2](https://img.shields.io/badge/DHIS2-4285F4?style=for-the-badge&logo=DHIS2&logoColor=white)](https://dhis2.org)
+[![CI](https://github.com/BIRUK-MULATU/hisp_mobile_trucker/actions/workflows/ci.yml/badge.svg)](https://github.com/BIRUK-MULATU/hisp_mobile_trucker/actions/workflows/ci.yml)
+[![Flutter](https://img.shields.io/badge/Flutter-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
+[![DHIS2](https://img.shields.io/badge/DHIS2-2.40-4285F4)](https://dhis2.org)
 
-**HISP Mobile Tracker** is a cross-platform mobile data entry application built with Flutter, purpose-built for **DHIS2** (District Health Information System 2). It enables health workers and field data collectors to capture, validate, and synchronize program data with DHIS2 instances — reliably, even in low-connectivity environments.
+**HISP Mobile Tracker** is an offline-first Flutter app for collecting aggregate
+health data into [DHIS2](https://dhis2.org) (the national Health Management
+Information System). It is built for health workers in the field: data can be
+entered at any time — with or without a connection — and is synchronized with
+the DHIS2 server whenever connectivity returns.
 
-Developed and maintained by **HISP Ethiopia**.
+Developed by **HISP Ethiopia** in collaboration with the Ministry of Health.
+
+---
 
 ## Features
 
-- **Secure Authentication** — Token-based login with credentials encrypted via secure local storage.
-- **DHIS2 Integration** — Seamless synchronization with DHIS2 DataSets, Data Elements, Programs, and Events (API v40).
-- **Offline-First** — Built for field conditions; local data persistence ensures uninterrupted data entry when connectivity is unavailable.
-- **Dynamic Forms** — Auto-generated data entry forms driven by DHIS2 metadata configuration.
-- **Client-Side Validation** — Real-time data validation for accuracy before submission.
-- **Material Design 3** — Modern, intuitive interface with a consistent design language.
-- **Ethiopian Calendar Support** — Native Ethiopian-to-Gregorian calendar conversion with DHIS2-compatible period generation.
-- **Multi-Platform** — Runs on Android, iOS, Web, Linux, macOS, and Windows.
+- **Online & offline login** — first login verifies against the server; after
+  that, the same credentials work offline (verified locally with a SHA-256
+  hash, never stored in plain text).
+- **Offline-first data entry** — every value is saved to a local SQLite
+  database on the device first. Nothing is lost when the network drops.
+- **Draft → Complete workflow** — entries are kept as device-only *drafts*
+  until the user marks the form **Complete**; only then are they queued and
+  pushed to the server. Completed forms can be reopened.
+- **Automatic sync** — pending data is pushed when connectivity returns, on
+  login, and on a periodic heartbeat; a manual sync button shows exact results
+  (uploaded / failed / up to date).
+- **Conflict resolution** — pull-then-push per form; newest value wins, with
+  guards for tampered device clocks, and local drafts are never overwritten
+  by server data.
+- **Server rejection handling** — values the server refuses (e.g. wrong type,
+  not in an option set) are marked red in the form with the server's reason;
+  editing them re-queues the fix.
+- **Capture workflow** — organisation unit tree (lazily loaded, ~38k units on
+  the national instance) → dataset → section → period → entry form with
+  collapsible data element sections.
+- **Ethiopian calendar** — period pickers and DHIS2 period IDs follow the
+  Ethiopian fiscal year (including the `...Nov` period types on the national
+  server).
+- **Value validation** — client-side checks per DHIS2 value type and option
+  set before anything is sent.
+- **Filters** — capture list filterable by date window, organisation unit
+  (typed or picked from a full-page tree), and sync state.
+- **Dashboards** — the Visualization tab renders DHIS2 dashboards natively
+  with `fl_chart` (online only for now).
+- **Report Period view** — every report the user has worked on, across all
+  organisation units, complete or draft.
 
-## Tech Stack
+## Tech stack
 
-| Concern | Library |
+| Concern | Package (version from `pubspec.yaml`) |
 |---|---|
-| **Framework** | Flutter (Dart SDK >=3.0.0) |
-| **State Management** | flutter_bloc 8.x (BLoC pattern) |
-| **Routing** | go_router 14.x (declarative, URL-based) |
-| **Networking** | dio 5.x with auth & logging interceptors |
-| **Dependency Injection** | get_it + injectable (code-generated) |
-| **Local Storage** | flutter_secure_storage (credentials), shared_preferences (settings) |
-| **Serialization** | freezed + json_serializable (code-generated) |
-| **Utilities** | intl (i18n), equatable, logger |
+| Framework | Flutter (Dart SDK `>=3.0.0 <4.0.0`; CI pins Flutter **3.41.4**) |
+| State management | `flutter_bloc` ^8.1.6 |
+| Navigation | `go_router` ^14.2.7 (with a login guard) |
+| HTTP | `dio` ^5.7.0 |
+| Local database | `drift` ^2.20.0 + `sqlite3_flutter_libs` ^0.5.24 (SQLite) |
+| Secure storage | `flutter_secure_storage` ^9.2.2 (session, credentials) |
+| Offline credential check | `crypto` ^3.0.5 (SHA-256) |
+| Connectivity | `connectivity_plus` ^7.2.0 |
+| Charts | `fl_chart` ^1.2.0 |
+| Dates / logging | `intl` ^0.19.0, `logger` ^2.4.0 |
+| Dev tools | `build_runner` ^2.4.12, `drift_dev` ^2.20.0, `flutter_lints` ^4.0.0, `drift_db_viewer` (in-app DB browser) |
 
 ## Architecture
 
-The project follows **Clean Architecture** with a **feature-first** module structure, ensuring separation of concerns, testability, and maintainability across the codebase.
+The codebase is **feature-first**: each feature folder owns its own
+`data / domain / presentation` layers, while shared infrastructure lives in
+`core/` and shared UI in `shared/`.
 
 ```
 lib/
-├── core/                          # Cross-cutting infrastructure
-│   ├── constants/                 # API endpoints & app constants
-│   ├── errors/                    # Exceptions (data) & Failures (domain)
-│   ├── network/                   # Dio client, auth & logging interceptors
-│   ├── router/                    # GoRouter configuration
-│   ├── storage/                   # Secure storage wrapper
-│   └── utils/                     # Ethiopian calendar utilities
-├── features/                      # Feature modules (domain-driven)
-│   ├── auth/                      # Authentication
-│   │   ├── data/                  #   Datasources, models, repository impl
-│   │   ├── domain/                #   Entities, repository interfaces, use cases
-│   │   └── presentation/          #   BLoC, pages, widgets
-│   ├── data_entry/                # Data entry forms
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   ├── dataset_detail/            # Dataset detail & record list
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   └── home/                      # Dashboard
-│       ├── data/
-│       ├── domain/
-│       └── presentation/
-├── shared/                        # Shared UI & utilities
-│   ├── theme/                     # AppColors, AppTextStyles, AppTheme
-│   └── widgets/                   # AppButton, AppTextField, AppLoader
-└── main.dart                      # App entry point
+├── core/                  # Cross-cutting infrastructure
+│   ├── auth/              #   AppSession singleton, SessionService (login tree)
+│   ├── constants/         #   API constants (default server URL lives here)
+│   ├── data/              #   Data value store/sync/push, completeness,
+│   │                      #   Ethiopian calendar + period service, validators
+│   ├── database/          #   Drift schema (app_database.dart) + per-platform
+│   │                      #   connection (native SQLite / WASM on web)
+│   ├── errors/            #   Exceptions & Failures
+│   ├── metadata/          #   Resource-based DHIS2 metadata sync
+│   ├── network/           #   Dio ApiClient, connectivity service
+│   ├── router/            #   GoRouter setup + auth guard
+│   ├── storage/           #   Secure storage wrapper
+│   ├── sync/              #   DriftSyncManager, SyncCoordinator (auto-sync)
+│   └── utils/             #   Logger, HTTP date parsing
+├── debug/                 # Dev-only screens (sync debug, DB viewer)
+├── features/
+│   ├── auth/              # Login page + repository (online/offline)
+│   ├── capture/           # Org unit tree → dataset → section → period
+│   ├── data_entry/        # The entry form (bloc, collapsible table, cells)
+│   ├── home/              # Home shell: Visualization/Capture toggle, filters
+│   ├── settings/          # Settings incl. server URL dialog
+│   └── visualization/     # DHIS2 dashboards rendered with fl_chart
+├── shared/
+│   ├── theme/             # Colors, text styles, dimensions, breakpoints
+│   └── widgets/           # FilterPanel, dialogs, loaders, toggles...
+└── main.dart
 ```
 
-### Layered Design
+### How offline-first works here (the short version)
 
-Each feature is split into three distinct layers:
+1. **Login** creates/opens a **per-user SQLite database** and, on first online
+   login, downloads the user's DHIS2 metadata (datasets, data elements,
+   organisation units — capped to the user's own org unit subtree).
+2. **Data entry** writes to the local database only. Values start as
+   **drafts**; completing the form promotes them to **pending**.
+3. **Sync** pushes pending values as one bulk `dataValueSets` import and
+   handles the server's per-value verdicts (DHIS2 2.40 answers conflicts with
+   HTTP 409 + an import summary; rejected values are flagged in the form).
+4. **Pulling** a form first fetches server values and resolves conflicts cell
+   by cell (equal → settled; different → newest wins; drafts always survive).
 
-| Layer | Responsibility | Dependencies |
-|---|---|---|
-| **Domain** (innermost) | Business logic — entities, use cases, repository interfaces | Pure Dart, no Flutter dependency |
-| **Data** | Repository implementations, data sources (remote API), models | Domain layer, Dio |
-| **Presentation** | UI — BLoC state management, pages, reusable widgets | Domain layer, Flutter/BLoC |
+A deeper write-up is in [`OFFLINE_INTEGRATION.md`](OFFLINE_INTEGRATION.md).
 
-Data flows **inward** (Presentation → Domain → Data) via dependency inversion: the presentation layer depends on domain abstractions, while the data layer implements those abstractions.
+## Prerequisites
 
-## Getting Started
+- **Flutter SDK** — any 3.x version works for development; CI (and therefore
+  "official" builds) uses **3.41.4**, so prefer that to avoid surprises.
+  Check with:
 
-### Prerequisites
+  ```bash
+  flutter --version
+  flutter doctor        # shows anything missing (Android SDK, licenses...)
+  ```
 
-- Flutter SDK: `>=3.0.0`
-- Dart SDK: `>=3.0.0`
-- Android Studio, VS Code, or IntelliJ IDEA with Flutter extension
+- **Android Studio** (for the Android SDK + an emulator) or **VS Code** with
+  the Flutter extension.
+- A **DHIS2 server** to talk to — a local instance or the staging server
+  (see *Configuration* below).
 
-### Installation
+## Getting started
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/hisp_mobile_tracker.git
-cd hisp_mobile_tracker
+# 1. Clone the repository
+git clone https://github.com/BIRUK-MULATU/hisp_mobile_trucker.git
+cd hisp_mobile_trucker
 
-# Install dependencies
+# 2. Install dependencies (downloads every package in pubspec.yaml)
 flutter pub get
 
-# Run code generation (freezed, json_serializable, injectable)
-flutter pub run build_runner build --delete-conflicting-outputs
-
-# Launch the app
+# 3. Run the app on a connected device or emulator
 flutter run
 ```
 
+### Code generation (only when you change the database schema)
+
+The Drift database (`lib/core/database/app_database.dart`) uses generated code
+(`app_database.g.dart`). The generated file **is committed**, so you only need
+to regenerate after editing tables:
+
+```bash
+dart run build_runner build --delete-conflicting-outputs
+```
+
+> Why: Drift turns the table definitions into type-safe Dart classes at build
+> time. If you change a table and skip this step, the code no longer matches
+> the schema and compilation fails.
+
 ### Configuration
 
-Before running the app, configure your DHIS2 instance base URL and credentials through the application's login screen or via environment configuration.
+There is no `.env` file. The default DHIS2 server URL is compiled in at
+`lib/core/constants/api_constants.dart`, and users can change it at runtime
+from the **server icon on the login screen** (or in Settings). The URL is
+normalized automatically (`https://` + `/api`).
+
+### Running on the web (staging CORS quirk)
+
+The staging server only allows browser requests from `localhost:3000/3001`.
+Use the provided script, which pins the port:
+
+```bash
+./run_web.sh
+```
+
+> Why: a plain `flutter run -d chrome` picks a random port, and the browser
+> then blocks every API call (CORS). The script always uses port 3001.
 
 ## Testing
 
 ```bash
-flutter test
+flutter analyze   # static checks — must be clean
+flutter test      # unit + widget tests (test/ mirrors lib/)
 ```
 
-## Project Status
+Both commands run automatically in CI
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) on every push to
+`main` and on every pull request. A red CI means the change cannot be merged.
 
-This project is under active development by **HISP Ethiopia**. Features and improvements are continuously being added to support DHIS2-based health data collection workflows.
+## Release build (Android)
+
+Release APKs must be signed with the team's **release keystore**. The build is
+configured in `android/app/build.gradle.kts` and **fails on purpose** if the
+keystore is not set up:
+
+1. Generate a keystore once (guard the file and password — an app can only be
+   updated by APKs signed with the *same* key, forever):
+
+   ```bash
+   keytool -genkey -v -keystore ~/hisp-release.jks \
+     -keyalg RSA -keysize 2048 -validity 10000 -alias hisp
+   ```
+
+2. Create `android/key.properties` (gitignored — never commit it):
+
+   ```properties
+   storeFile=/absolute/path/to/hisp-release.jks
+   storePassword=<password>
+   keyPassword=<password>
+   keyAlias=hisp
+   ```
+
+3. Build:
+
+   ```bash
+   flutter build apk --release
+   ```
+
+To knowingly build a **non-distributable** test APK without the keystore
+(signed with debug keys), opt in explicitly:
+
+```bash
+ALLOW_DEBUG_SIGNING=true flutter build apk --release
+```
+
+> Why the hard failure: a debug-signed "release" APK installs fine but can
+> never be updated in place — users would have to uninstall (losing their
+> offline data). Failing the build is cheaper than discovering that in the
+> field. Note: release builds are HTTPS-only; plain `http://` servers work in
+> debug builds only.
+
+## Contributing
+
+- `main` is the default branch and must stay green (CI: analyze + test).
+- The backend/offline database layer is developed on the `database-access`
+  branch by the backend team; coordinate before editing files under
+  `lib/core/database/` or the sync services.
+- Work happens on short-lived feature branches named after the change
+  (e.g. `integrationReportPeriod`, `reorderCategoryComboAndDataelement`),
+  merged into `main` via pull request once CI passes.
+- Before pushing: `flutter analyze` and `flutter test` locally — CI runs
+  exactly those.
 
 ## License
 
-This project is proprietary software of HISP Ethiopia. All rights reserved.
+Proprietary software of HISP Ethiopia. All rights reserved.
 
 ---
 
-*Powered by HISP Ethiopia*
+*Developed by HISP Ethiopia for the Ministry of Health.*
