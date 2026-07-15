@@ -73,13 +73,23 @@ android {
             } else {
                 // A silently debug-signed "release" APK is a trap: once
                 // installed it can never be updated with the real key.
-                throw GradleException(
-                    "Release build requires android/key.properties with the " +
-                    "release keystore (see docs.flutter.dev/deployment/android" +
-                    "#sign-the-app). To knowingly build a NON-distributable " +
-                    "test APK with debug keys, pass -PallowDebugSigning=true " +
-                    "or set ALLOW_DEBUG_SIGNING=true."
-                )
+                // This block runs at configuration time for EVERY build,
+                // so only fail once a release task is actually scheduled —
+                // otherwise plain debug builds would break too.
+                gradle.taskGraph.whenReady {
+                    if (allTasks.any {
+                            it.project == project && it.name.contains("Release")
+                        }
+                    ) {
+                        throw GradleException(
+                            "Release build requires android/key.properties with the " +
+                            "release keystore (see docs.flutter.dev/deployment/android" +
+                            "#sign-the-app). To knowingly build a NON-distributable " +
+                            "test APK with debug keys, pass -PallowDebugSigning=true " +
+                            "or set ALLOW_DEBUG_SIGNING=true."
+                        )
+                    }
+                }
             }
         }
     }
