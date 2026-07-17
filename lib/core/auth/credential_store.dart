@@ -77,6 +77,7 @@ class CredentialStore {
     return sha256.convert(bytes).toString();
   }
 
+
   String _randomSalt() {
     final r = Random.secure();
     final bytes = List<int>.generate(16, (_) => r.nextInt(256));
