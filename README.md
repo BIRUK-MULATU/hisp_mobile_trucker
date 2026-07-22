@@ -115,6 +115,10 @@ lib/
 
 A deeper write-up is in [`OFFLINE_INTEGRATION.md`](OFFLINE_INTEGRATION.md).
 
+**Full developer documentation** — architecture, security, the sync engine, database
+schema, every feature module, testing, release process, and conventions — lives in
+[`docs/`](docs/README.md). Start there if you're new to this codebase.
+
 ## Prerequisites
 
 - **Flutter SDK** — any 3.x version works for development; CI (and therefore

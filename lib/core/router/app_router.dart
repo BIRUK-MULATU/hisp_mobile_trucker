@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/app_session.dart';
+import '../../debug/debug_sync_screen.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/settings/presentation/pages/settings_page.dart';
@@ -49,6 +50,16 @@ class AppRouter {
         name: 'settings',
         builder: (context, state) => const SettingsPage(),
       ),
+      // TEMPORARY dev-only route: browse the local DB tables in-app.
+      // Remove before shipping — not linked from any UI, reachable only
+      // by typing the URL.
+      if (kDebugMode)
+        GoRoute(
+          path: '/debug/db',
+          name: 'debug-db',
+          builder: (context, state) =>
+              DebugSyncScreen(session: AppSession.instance.service),
+        ),
     ],
     errorBuilder: (context, state) => Scaffold(
       body: Center(

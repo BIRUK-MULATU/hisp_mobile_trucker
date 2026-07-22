@@ -1,0 +1,23 @@
+%% DataValueSync.syncForm() decision logic — lib/core/data/data_value_sync.dart
+flowchart TD
+    Start(["Form opened while online"]) --> Pull["PULL server values\nGET /api/dataValueSets"]
+    Pull --> Loop["For each cell, compare\nlocal syncState vs server value"]
+    Loop --> Q1{"Local state?"}
+    Q1 -->|"draft"| R1["DRAFT ALWAYS WINS\nkeep local, never push\nuntil form completed"]
+    Q1 -->|"synced / empty"| R2["Apply server value as-is\nmark synced"]
+    Q1 -->|"pending / error"| Q2{"Local value == Server value?"}
+    Q2 -->|"Yes"| R3["Mark synced\n(no redundant write)"]
+    Q2 -->|"No, conflict"| Q3{"Clock tampering detected?"}
+    Q3 -->|"Yes"| R4["SERVER WINS\n(suspect local timestamp)"]
+    Q3 -->|"No"| Q4{"Server lastUpdated present?"}
+    Q4 -->|"No"| R5["SERVER WINS\n(can't compare fairly)"]
+    Q4 -->|"Yes"| Q5{"local.lastModified >\nserver.lastUpdated + 2min tolerance?"}
+    Q5 -->|"Yes"| R6["LOCAL WINS\nstays pending for push"]
+    Q5 -->|"No"| R7["SERVER WINS\noverwrite local"]
+
+    R1 --> Push
+    R3 --> Push
+    R6 --> Push["PUSH remaining pending values\nPOST /api/dataValueSets\n(500-value batches, CREATE_AND_UPDATE)"]
+    Push --> Verdict{"DHIS2 response"}
+    Verdict -->|"Accepted"| Synced["mark synced"]
+    Verdict -->|"HTTP 409 + ImportSummary"| Rejected["mark error + server reason\nshown red in form, editable to retry"]
