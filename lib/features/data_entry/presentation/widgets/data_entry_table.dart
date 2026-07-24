@@ -46,13 +46,11 @@ class _DataEntryTableState extends State<DataEntryTable> {
     }
   }
 
-  static List<CategoryOptionCombo> _combosFor(DataElementEntity element) {
-    if (element.categoryOptionCombos.isNotEmpty) {
-      return element.categoryOptionCombos;
-    }
-    // Fallback — default combo
-    return const [CategoryOptionCombo(id: 'default', name: 'Value')];
-  }
+  // The repository guarantees at least the instance's real default COC
+  // per element — no invented placeholder id here: 'default' is not a
+  // uid the server accepts, and it poisoned pushed values.
+  static List<CategoryOptionCombo> _combosFor(DataElementEntity element) =>
+      element.categoryOptionCombos;
 
   void _toggle(String elementId) {
     setState(() {

@@ -7,6 +7,7 @@ import 'package:hisp_mobile_trucker/features/data_entry/domain/usecases/save_dat
 import 'package:hisp_mobile_trucker/features/data_entry/presentation/widgets/data_entry_table.dart';
 import 'package:hisp_mobile_trucker/features/capture/domain/entities/dataset_entity.dart';
 import 'package:hisp_mobile_trucker/features/capture/presentation/widgets/dataset_card.dart';
+import 'package:hisp_mobile_trucker/core/data/validation_service.dart';
 import 'package:hisp_mobile_trucker/core/network/connectivity_service.dart';
 import 'package:hisp_mobile_trucker/features/home/presentation/widgets/home_app_bar.dart';
 
@@ -43,6 +44,14 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String period,
   }) =>
       throw UnimplementedError();
+
+  @override
+  Future<List<ValidationViolation>> validateDataSet({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  }) async =>
+      const [];
 
   @override
   Future<bool> isCompleted({

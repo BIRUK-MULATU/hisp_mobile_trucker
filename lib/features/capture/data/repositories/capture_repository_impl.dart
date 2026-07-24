@@ -123,6 +123,8 @@ class CaptureRepositoryImpl implements CaptureRepository {
       factsFor((r.dataSetUid, r.period, r.orgUnitUid))
         ..completed = true
         ..completionSynced = r.syncState == SyncState.synced
+        ..completionError =
+            r.syncState == SyncState.error ? r.syncError : null
         ..touch(r.lastModified);
     }
 
@@ -184,6 +186,7 @@ class CaptureRepositoryImpl implements CaptureRepository {
             status: v.status,
             synced: v.synced,
             lastModified: v.lastModified,
+            syncError: v.completionError,
           ),
     ]..sort((a, b) => b.lastModified.compareTo(a.lastModified));
   }
@@ -207,6 +210,7 @@ class CaptureRepositoryImpl implements CaptureRepository {
 class _ReportFacts {
   bool completed = false;
   bool completionSynced = true;
+  String? completionError;
   bool hasUnsyncedValues = false;
   bool hasDrafts = false;
   DateTime lastModified = DateTime.fromMillisecondsSinceEpoch(0);
