@@ -45,8 +45,9 @@ class Dhis2Chart extends StatelessWidget {
     }
     switch (data.type.toUpperCase()) {
       case 'SINGLE_VALUE':
-      case 'GAUGE':
         return _SingleValue(data: data);
+      case 'GAUGE':
+        return _Gauge(data: data);
       case 'PIE':
         return _Pie(data: data);
       case 'LINE':
@@ -55,9 +56,10 @@ class Dhis2Chart extends StatelessWidget {
         return _Lines(data: data, filled: data.type.toUpperCase() != 'LINE');
       case 'COLUMN':
       case 'STACKED_COLUMN':
+        return _Bars(data: data);
       case 'BAR':
       case 'STACKED_BAR':
-        return _Bars(data: data);
+        return _HBars(data: data);
       default:
         return _Table(data: data);
     }
@@ -185,6 +187,146 @@ class _SingleValue extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Gauge ──────────────────────────────────────────────────────
+
+/// Half-circle gauge. DHIS2 gauges show one number against 0–100
+/// (reporting rates, coverage indicators); values beyond 100 fill
+/// the whole arc and the real number is printed in the middle.
+class _Gauge extends StatelessWidget {
+  final AnalyticsData data;
+  const _Gauge({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final v = data.singleValue;
+    final fraction = ((v ?? 0) / 100).clamp(0.0, 1.0);
+    return SizedBox(
+      height: 150,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          PieChart(
+            PieChartData(
+              startDegreeOffset: 180,
+              sectionsSpace: 0,
+              centerSpaceRadius: 56,
+              sections: [
+                PieChartSectionData(
+                  value: fraction,
+                  color: AppColors.primary,
+                  radius: 22,
+                  showTitle: false,
+                ),
+                PieChartSectionData(
+                  value: 1 - fraction,
+                  color: AppColors.divider,
+                  radius: 22,
+                  showTitle: false,
+                ),
+                // Invisible lower half so the visible arc spans
+                // exactly the upper semicircle.
+                PieChartSectionData(
+                  value: 1,
+                  color: Colors.transparent,
+                  radius: 22,
+                  showTitle: false,
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppDimensions.spaceSM),
+            child: Text(
+              v == null ? '—' : _compact(v),
+              style: AppTextStyles.headingLarge.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w800,
+                fontSize: 32,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Horizontal bars (DHIS2 BAR) ────────────────────────────────
+
+/// DHIS2's BAR type is COLUMN turned sideways. fl_chart has no
+/// horizontal bar mode, so this is a plain widget list: one labelled
+/// track per category × series, scaled to the largest value — which
+/// also reads far better with long Ethiopian facility names.
+class _HBars extends StatelessWidget {
+  final AnalyticsData data;
+  const _HBars({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxValue = [
+      for (final s in data.series)
+        for (final v in s.values)
+          if (v != null) v.abs(),
+    ].fold<double>(0, (a, b) => a > b ? a : b);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var c = 0; c < data.categories.length; c++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppDimensions.spaceSM),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.categories[c],
+                  style: AppTextStyles.labelSmall
+                      .copyWith(color: AppColors.textSecondary),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                for (var s = 0; s < data.series.length; s++)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: LinearProgressIndicator(
+                              minHeight: 10,
+                              value: maxValue == 0
+                                  ? 0
+                                  : (data.series[s].values[c] ?? 0).abs() /
+                                      maxValue,
+                              backgroundColor: AppColors.backgroundGrey,
+                              color: Dhis2Chart.colorOf(s),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 52,
+                          child: Text(
+                            data.series[s].values[c] == null
+                                ? ''
+                                : _compact(data.series[s].values[c]!),
+                            textAlign: TextAlign.right,
+                            style: AppTextStyles.labelSmall
+                                .copyWith(color: AppColors.textPrimary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        _Legend(data: data),
+      ],
     );
   }
 }
