@@ -1,3 +1,4 @@
+import '../../../../core/data/validation_service.dart';
 import '../entities/data_element_entity.dart';
 
 abstract class DataEntryRepository {
@@ -18,6 +19,15 @@ abstract class DataEntryRepository {
   /// Save all data values to DHIS2
   Future<void> saveDataValues({
     required List<DataValueEntity> dataValues,
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+  });
+
+  /// Run the data set's validation rules against this form's local
+  /// values. Purely informative — violations warn, they never block
+  /// completing (same contract as the DHIS2 web/Android apps).
+  Future<List<ValidationViolation>> validateDataSet({
     required String dataSetId,
     required String orgUnitId,
     required String period,

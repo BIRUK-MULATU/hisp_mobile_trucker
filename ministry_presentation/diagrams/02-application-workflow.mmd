@@ -1,0 +1,30 @@
+%% End-to-end application workflow, verified against lib/core/auth, lib/core/metadata, lib/features/*
+flowchart TD
+    A["User opens app"] --> B{"Session cached?\n(AppSession)"}
+    B -->|"No"| C["Login screen\nusername + password"]
+    B -->|"Yes, offline-capable"| G
+    C --> D{"Online reachable?\n(ConnectivityService probes /system/ping)"}
+    D -->|"Online"| E["GET /api/me — Basic Auth\nverify credentials on server"]
+    D -->|"Offline"| F["Offline verify:\nSHA-256(salt:url:user:pass)\nvs stored verifier (constant-time)"]
+    E --> E1["Store salted verifier\nfor future offline logins"]
+    E1 --> H["Download / delta-sync metadata\n(org units, datasets, data elements,\ncategories, option sets, sections)"]
+    F --> G["Open per-user SQLite DB\n(hisp_<username>.sqlite)"]
+    H --> G
+    G --> I["Display Org Unit tree -> Datasets\n(lazy-loaded, scoped to user's subtree)"]
+    I --> J["Open data entry form\n(Section -> Period -> Cells)"]
+    J --> K["User enters values"]
+    K --> L["Save as DRAFT\n(local SQLite only, device-first)"]
+    L --> M{"User taps Complete?"}
+    M -->|"No, keep editing"| K
+    M -->|"Yes"| N["Promote draft rows -> PENDING\nregister completion"]
+    N --> O["Sync Engine\n(auto: connectivity/login/5-min heartbeat,\nor manual sync button)"]
+    O --> P{"Conflict check\nvs server value"}
+    P -->|"Draft"| Q1["Local always wins"]
+    P -->|"Equal"| Q2["Mark synced, skip"]
+    P -->|"Local newer (+-2min tolerance)"| Q3["Local wins, push"]
+    P -->|"Server newer / tampered clock"| Q4["Server wins, overwrite local"]
+    Q1 --> R["POST /api/dataValueSets\n+ /api/completeDataSetRegistrations"]
+    Q3 --> R
+    R --> S{"DHIS2 verdict"}
+    S -->|"Accepted"| T["Mark synced"]
+    S -->|"HTTP 409 rejected"| U["Mark error + show server reason\nred cell, editable to re-queue"]

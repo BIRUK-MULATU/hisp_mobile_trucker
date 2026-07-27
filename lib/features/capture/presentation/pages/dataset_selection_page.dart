@@ -404,6 +404,16 @@ class _ReportCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (report.syncError != null) ...[
+                      const SizedBox(height: AppDimensions.spaceXS),
+                      Text(
+                        report.syncError!,
+                        style: AppTextStyles.labelSmall
+                            .copyWith(color: AppColors.error),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
                 ),
               ),

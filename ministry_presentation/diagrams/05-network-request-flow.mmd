@@ -1,0 +1,14 @@
+%% Dio request/response pipeline — lib/core/network/api_client.dart + interceptors/
+flowchart LR
+    Repo["Repository\n(data layer)"] --> Client["ApiClient (Dio singleton)\nbaseUrl, 30s timeouts,\nBackgroundTransformer"]
+    Client --> AuthI["AuthInterceptor\nadds headers,\nhandles 401 -> logout + redirect"]
+    AuthI --> LogI["LoggingInterceptor\ndebug-only,\nredacts Authorization header,\ntruncates bodies"]
+    LogI --> API["DHIS2 REST API\n(hmis-staging.moh.gov.et)"]
+    API --> LogI2["LoggingInterceptor\n(response)"]
+    LogI2 --> AuthI2["AuthInterceptor\n(response / error mapping)"]
+    AuthI2 --> Model["Model.fromJson()\n(DTO)"]
+    Model --> Entity["Domain Entity"]
+    Entity --> Repo2["back to Repository -> Bloc -> UI"]
+
+    API -.->|"DioException\n(timeout / 401 / 5xx)"| Errors["Typed exceptions:\nNetworkException, UnauthorizedException,\nServerException, TimeoutException"]
+    Errors --> Repo2

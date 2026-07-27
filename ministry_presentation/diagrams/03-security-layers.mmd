@@ -1,0 +1,29 @@
+%% Security architecture, outer (network) to inner (data at rest)
+flowchart LR
+    subgraph L1["1. Transport"]
+        T1["HTTPS-only in release builds\n(cleartext only in debug manifest)"]
+        T2["No certificate pinning\n(system trust store) — recommended"]
+    end
+    subgraph L2["2. Authentication"]
+        A1["Basic Auth: base64(user:pass)\nbuilt in AuthInterceptor"]
+        A2["Offline: salted SHA-256 verifier\nbound to server URL,\nconstant-time compare"]
+    end
+    subgraph L3["3. Credential Storage"]
+        S1["flutter_secure_storage:\nAndroid EncryptedSharedPreferences\niOS Keychain"]
+        S2["Password never persisted,\nonline or offline"]
+    end
+    subgraph L4["4. Local Data at Rest"]
+        D1["Drift/SQLite, per-user DB file"]
+        D2["NOT encrypted at rest — recommended:\nSQLCipher"]
+        D3["No credentials/tokens stored in DB,\nonly metadata + pending field data"]
+    end
+    subgraph L5["5. Logging & Build"]
+        G1["Authorization header redacted\nin all log output"]
+        G2["Release build suppresses\ndebug/info logs"]
+        G3["Release APK requires real keystore\n(hard build failure otherwise)"]
+        G4["No ProGuard/R8 minification yet\n— recommended"]
+    end
+
+    L1 --> L2 --> L3 --> L4
+    L2 -.-> L5
+    L1 -.-> L5

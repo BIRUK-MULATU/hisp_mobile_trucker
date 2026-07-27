@@ -43,24 +43,40 @@ class Dhis2Chart extends StatelessWidget {
         ),
       );
     }
-    switch (data.type.toUpperCase()) {
-      case 'SINGLE_VALUE':
-      case 'GAUGE':
-        return _SingleValue(data: data);
-      case 'PIE':
-        return _Pie(data: data);
-      case 'LINE':
-      case 'AREA':
-      case 'STACKED_AREA':
-        return _Lines(data: data, filled: data.type.toUpperCase() != 'LINE');
-      case 'COLUMN':
-      case 'STACKED_COLUMN':
-      case 'BAR':
-      case 'STACKED_BAR':
-        return _Bars(data: data);
-      default:
-        return _Table(data: data);
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Phones (~360 wide) render at 1x; the extra room on a
+        // tablet or desktop window grows the chart itself rather
+        // than just padding it, capped so it never gets cartoonish.
+        final scale = constraints.maxWidth.isFinite
+            ? (constraints.maxWidth / 360).clamp(1.0, 1.8)
+            : 1.0;
+        switch (data.type.toUpperCase()) {
+          case 'SINGLE_VALUE':
+            return _SingleValue(data: data, scale: scale);
+          case 'GAUGE':
+            return _Gauge(data: data, scale: scale);
+          case 'PIE':
+            return _Pie(data: data, scale: scale);
+          case 'LINE':
+          case 'AREA':
+          case 'STACKED_AREA':
+            return _Lines(
+              data: data,
+              filled: data.type.toUpperCase() != 'LINE',
+              scale: scale,
+            );
+          case 'COLUMN':
+          case 'STACKED_COLUMN':
+            return _Bars(data: data, scale: scale);
+          case 'BAR':
+          case 'STACKED_BAR':
+            return _HBars(data: data, scale: scale);
+          default:
+            return _Table(data: data, scale: scale);
+        }
+      },
+    );
   }
 }
 
@@ -75,9 +91,11 @@ String _compact(double v) {
 }
 
 /// Category labels under the x-axis, thinned so they never collide.
-/// The text is boxed to a fixed width — DHIS2 names (org units,
-/// indicators) are long and would otherwise overflow the row.
-Widget _bottomTitle(AnalyticsData data, double value, TitleMeta meta) {
+/// The text is boxed to a width that grows with [scale] — DHIS2
+/// names (org units, indicators) are long and would otherwise
+/// overflow the row.
+Widget _bottomTitle(
+    AnalyticsData data, double value, TitleMeta meta, double scale) {
   final i = value.toInt();
   if (i < 0 || i >= data.categories.length) return const SizedBox.shrink();
   final every = (data.categories.length / 6).ceil();
@@ -86,12 +104,12 @@ Widget _bottomTitle(AnalyticsData data, double value, TitleMeta meta) {
     meta: meta,
     space: 4,
     child: SizedBox(
-      width: 56,
+      width: 56 * scale,
       child: Text(
         data.categories[i],
         style: AppTextStyles.labelSmall.copyWith(
           color: AppColors.textSecondary,
-          fontSize: 9,
+          fontSize: 9 * scale,
         ),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
@@ -102,16 +120,22 @@ Widget _bottomTitle(AnalyticsData data, double value, TitleMeta meta) {
 }
 
 /// One legend dot+label, width-capped so any DHIS2 name fits the
-/// phone screen (the label ellipsizes instead of overflowing).
+/// screen (the label ellipsizes instead of overflowing); the cap
+/// grows with [scale] on wider screens.
 class _LegendEntry extends StatelessWidget {
   final Color color;
   final String label;
-  const _LegendEntry({required this.color, required this.label});
+  final double scale;
+  const _LegendEntry({
+    required this.color,
+    required this.label,
+    this.scale = 1.0,
+  });
 
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 180),
+      constraints: BoxConstraints(maxWidth: 180 * scale),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -138,7 +162,8 @@ class _LegendEntry extends StatelessWidget {
 
 class _Legend extends StatelessWidget {
   final AnalyticsData data;
-  const _Legend({required this.data});
+  final double scale;
+  const _Legend({required this.data, this.scale = 1.0});
 
   @override
   Widget build(BuildContext context) {
@@ -153,6 +178,7 @@ class _Legend extends StatelessWidget {
             _LegendEntry(
               color: Dhis2Chart.colorOf(i),
               label: data.series[i].name,
+              scale: scale,
             ),
         ],
       ),
@@ -164,13 +190,14 @@ class _Legend extends StatelessWidget {
 
 class _SingleValue extends StatelessWidget {
   final AnalyticsData data;
-  const _SingleValue({required this.data});
+  final double scale;
+  const _SingleValue({required this.data, this.scale = 1.0});
 
   @override
   Widget build(BuildContext context) {
     final v = data.singleValue;
     return SizedBox(
-      height: 120,
+      height: 120 * scale,
       child: Center(
         // FittedBox: a wide number shrinks instead of overflowing.
         child: FittedBox(
@@ -180,11 +207,153 @@ class _SingleValue extends StatelessWidget {
             style: AppTextStyles.headingLarge.copyWith(
               color: AppColors.primary,
               fontWeight: FontWeight.w800,
-              fontSize: 44,
+              fontSize: 44 * scale,
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Gauge ──────────────────────────────────────────────────────
+
+/// Half-circle gauge. DHIS2 gauges show one number against 0–100
+/// (reporting rates, coverage indicators); values beyond 100 fill
+/// the whole arc and the real number is printed in the middle.
+class _Gauge extends StatelessWidget {
+  final AnalyticsData data;
+  final double scale;
+  const _Gauge({required this.data, this.scale = 1.0});
+
+  @override
+  Widget build(BuildContext context) {
+    final v = data.singleValue;
+    final fraction = ((v ?? 0) / 100).clamp(0.0, 1.0);
+    return SizedBox(
+      height: 150 * scale,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          PieChart(
+            PieChartData(
+              startDegreeOffset: 180,
+              sectionsSpace: 0,
+              centerSpaceRadius: 56 * scale,
+              sections: [
+                PieChartSectionData(
+                  value: fraction,
+                  color: AppColors.primary,
+                  radius: 22 * scale,
+                  showTitle: false,
+                ),
+                PieChartSectionData(
+                  value: 1 - fraction,
+                  color: AppColors.divider,
+                  radius: 22 * scale,
+                  showTitle: false,
+                ),
+                // Invisible lower half so the visible arc spans
+                // exactly the upper semicircle.
+                PieChartSectionData(
+                  value: 1,
+                  color: Colors.transparent,
+                  radius: 22 * scale,
+                  showTitle: false,
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppDimensions.spaceSM),
+            child: Text(
+              v == null ? '—' : _compact(v),
+              style: AppTextStyles.headingLarge.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w800,
+                fontSize: 32 * scale,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Horizontal bars (DHIS2 BAR) ────────────────────────────────
+
+/// DHIS2's BAR type is COLUMN turned sideways. fl_chart has no
+/// horizontal bar mode, so this is a plain widget list: one labelled
+/// track per category × series, scaled to the largest value — which
+/// also reads far better with long Ethiopian facility names.
+class _HBars extends StatelessWidget {
+  final AnalyticsData data;
+  final double scale;
+  const _HBars({required this.data, this.scale = 1.0});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxValue = [
+      for (final s in data.series)
+        for (final v in s.values)
+          if (v != null) v.abs(),
+    ].fold<double>(0, (a, b) => a > b ? a : b);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var c = 0; c < data.categories.length; c++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppDimensions.spaceSM),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  data.categories[c],
+                  style: AppTextStyles.labelSmall
+                      .copyWith(color: AppColors.textSecondary),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                for (var s = 0; s < data.series.length; s++)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: LinearProgressIndicator(
+                              minHeight: 10 * scale,
+                              value: maxValue == 0
+                                  ? 0
+                                  : (data.series[s].values[c] ?? 0).abs() /
+                                      maxValue,
+                              backgroundColor: AppColors.backgroundGrey,
+                              color: Dhis2Chart.colorOf(s),
+                            ),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 52 * scale,
+                          child: Text(
+                            data.series[s].values[c] == null
+                                ? ''
+                                : _compact(data.series[s].values[c]!),
+                            textAlign: TextAlign.right,
+                            style: AppTextStyles.labelSmall
+                                .copyWith(color: AppColors.textPrimary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        _Legend(data: data, scale: scale),
+      ],
     );
   }
 }
@@ -196,15 +365,20 @@ class _SingleValue extends StatelessWidget {
 /// bars and labels into the screen width.
 class _HScrollChart extends StatelessWidget {
   final int categoryCount;
+  final double scale;
   final Widget child;
-  static const minCategoryWidth = 56.0;
 
-  const _HScrollChart({required this.categoryCount, required this.child});
+  const _HScrollChart({
+    required this.categoryCount,
+    this.scale = 1.0,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final minCategoryWidth = 56.0 * scale;
         final needed = categoryCount * minCategoryWidth + 48;
         if (needed <= constraints.maxWidth) return child;
         return SingleChildScrollView(
@@ -218,7 +392,8 @@ class _HScrollChart extends StatelessWidget {
 
 class _Bars extends StatelessWidget {
   final AnalyticsData data;
-  const _Bars({required this.data});
+  final double scale;
+  const _Bars({required this.data, this.scale = 1.0});
 
   @override
   Widget build(BuildContext context) {
@@ -226,9 +401,10 @@ class _Bars extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 220,
+          height: 220 * scale,
           child: _HScrollChart(
             categoryCount: data.categories.length,
+            scale: scale,
             child: BarChart(
               BarChartData(
                 gridData: FlGridData(
@@ -245,12 +421,12 @@ class _Bars extends StatelessWidget {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 40,
+                      reservedSize: 40 * scale,
                       getTitlesWidget: (v, meta) => Text(
                         _compact(v),
                         style: AppTextStyles.labelSmall.copyWith(
                           color: AppColors.textSecondary,
-                          fontSize: 9,
+                          fontSize: 9 * scale,
                         ),
                       ),
                     ),
@@ -258,8 +434,9 @@ class _Bars extends StatelessWidget {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 32,
-                      getTitlesWidget: (v, meta) => _bottomTitle(data, v, meta),
+                      reservedSize: 32 * scale,
+                      getTitlesWidget: (v, meta) =>
+                          _bottomTitle(data, v, meta, scale),
                     ),
                   ),
                 ),
@@ -274,7 +451,8 @@ class _Bars extends StatelessWidget {
                             color: Dhis2Chart.colorOf(s),
                             // ≥56px per category (scrolling guarantees
                             // it), shared between the series' rods.
-                            width: (40 / data.series.length).clamp(3.0, 16.0),
+                            width: ((40 * scale) / data.series.length)
+                                .clamp(3.0, 16.0 * scale),
                             borderRadius: BorderRadius.circular(2),
                           ),
                       ],
@@ -284,7 +462,7 @@ class _Bars extends StatelessWidget {
             ),
           ),
         ),
-        _Legend(data: data),
+        _Legend(data: data, scale: scale),
       ],
     );
   }
@@ -295,7 +473,8 @@ class _Bars extends StatelessWidget {
 class _Lines extends StatelessWidget {
   final AnalyticsData data;
   final bool filled;
-  const _Lines({required this.data, required this.filled});
+  final double scale;
+  const _Lines({required this.data, required this.filled, this.scale = 1.0});
 
   @override
   Widget build(BuildContext context) {
@@ -303,9 +482,10 @@ class _Lines extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 220,
+          height: 220 * scale,
           child: _HScrollChart(
             categoryCount: data.categories.length,
+            scale: scale,
             child: LineChart(
               LineChartData(
                 gridData: FlGridData(
@@ -322,12 +502,12 @@ class _Lines extends StatelessWidget {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 40,
+                      reservedSize: 40 * scale,
                       getTitlesWidget: (v, meta) => Text(
                         _compact(v),
                         style: AppTextStyles.labelSmall.copyWith(
                           color: AppColors.textSecondary,
-                          fontSize: 9,
+                          fontSize: 9 * scale,
                         ),
                       ),
                     ),
@@ -335,8 +515,9 @@ class _Lines extends StatelessWidget {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 32,
-                      getTitlesWidget: (v, meta) => _bottomTitle(data, v, meta),
+                      reservedSize: 32 * scale,
+                      getTitlesWidget: (v, meta) =>
+                          _bottomTitle(data, v, meta, scale),
                     ),
                   ),
                 ),
@@ -344,7 +525,7 @@ class _Lines extends StatelessWidget {
                   for (var s = 0; s < data.series.length; s++)
                     LineChartBarData(
                       color: Dhis2Chart.colorOf(s),
-                      barWidth: 2.5,
+                      barWidth: 2.5 * scale,
                       isCurved: false,
                       dotData: FlDotData(show: data.categories.length <= 12),
                       belowBarData: BarAreaData(
@@ -362,7 +543,7 @@ class _Lines extends StatelessWidget {
             ),
           ),
         ),
-        _Legend(data: data),
+        _Legend(data: data, scale: scale),
       ],
     );
   }
@@ -372,7 +553,8 @@ class _Lines extends StatelessWidget {
 
 class _Pie extends StatelessWidget {
   final AnalyticsData data;
-  const _Pie({required this.data});
+  final double scale;
+  const _Pie({required this.data, this.scale = 1.0});
 
   @override
   Widget build(BuildContext context) {
@@ -391,17 +573,17 @@ class _Pie extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
-          height: 200,
+          height: 200 * scale,
           child: PieChart(
             PieChartData(
               sectionsSpace: 2,
-              centerSpaceRadius: 36,
+              centerSpaceRadius: 36 * scale,
               sections: [
                 for (var i = 0; i < values.length; i++)
                   PieChartSectionData(
                     value: values[i],
                     color: Dhis2Chart.colorOf(i),
-                    radius: 56,
+                    radius: 56 * scale,
                     title: total == 0
                         ? ''
                         : '${(values[i] / total * 100).round()}%',
@@ -422,7 +604,11 @@ class _Pie extends StatelessWidget {
             alignment: WrapAlignment.center,
             children: [
               for (var i = 0; i < labels.length; i++)
-                _LegendEntry(color: Dhis2Chart.colorOf(i), label: labels[i]),
+                _LegendEntry(
+                  color: Dhis2Chart.colorOf(i),
+                  label: labels[i],
+                  scale: scale,
+                ),
             ],
           ),
         ),
@@ -435,17 +621,18 @@ class _Pie extends StatelessWidget {
 
 class _Table extends StatelessWidget {
   final AnalyticsData data;
-  const _Table({required this.data});
+  final double scale;
+  const _Table({required this.data, this.scale = 1.0});
 
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
-        headingRowHeight: 36,
-        dataRowMinHeight: 32,
-        dataRowMaxHeight: 40,
-        columnSpacing: AppDimensions.spaceLG,
+        headingRowHeight: 36 * scale,
+        dataRowMinHeight: 32 * scale,
+        dataRowMaxHeight: 40 * scale,
+        columnSpacing: AppDimensions.spaceLG * scale,
         headingTextStyle: AppTextStyles.labelSmall.copyWith(
           fontWeight: FontWeight.w700,
           color: AppColors.textPrimary,

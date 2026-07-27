@@ -31,6 +31,12 @@ class ReportInstanceEntity {
   /// Most recent local change — the list sorts newest first.
   final DateTime lastModified;
 
+  /// The server's verdict when the completion push was REJECTED
+  /// (e.g. "Data set X is not assigned to organisation unit Y") —
+  /// null while pending or synced. Shown on the card so a stuck
+  /// report explains itself instead of just staying red.
+  final String? syncError;
+
   const ReportInstanceEntity({
     required this.dataSetId,
     required this.dataSetName,
@@ -42,5 +48,6 @@ class ReportInstanceEntity {
     required this.status,
     required this.synced,
     required this.lastModified,
+    this.syncError,
   });
 }

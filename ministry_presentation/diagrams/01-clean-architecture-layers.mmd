@@ -1,0 +1,46 @@
+%% Clean Architecture layering used in every feature (auth, capture, data_entry, home, settings, visualization)
+%% Verified by import inspection: domain/ imports only entities + core/errors (no Flutter, Dio, or Drift imports)
+flowchart TB
+    subgraph PRESENTATION["PRESENTATION LAYER — Pages, Widgets, Bloc (flutter_bloc)"]
+        P1["Pages / Widgets"]
+        P2["Bloc: Events -> States"]
+    end
+    subgraph DOMAIN["DOMAIN LAYER — pure Dart, zero framework imports"]
+        D1["Entities (UserEntity, DataElementEntity, DataValueEntity...)"]
+        D2["Use Cases (LoginUseCase, SaveDataValuesUseCase...)"]
+        D3["Repository Interfaces (contracts only)"]
+    end
+    subgraph DATA["DATA LAYER — implements domain contracts"]
+        DA1["Repository Implementations"]
+        DA2["Remote / Local Data Sources"]
+        DA3["Models / DTOs (fromJson/toJson)"]
+    end
+    subgraph CORE["CORE LAYER — cross-cutting infrastructure"]
+        C1["Network (Dio ApiClient, interceptors)"]
+        C2["Database (Drift/SQLite)"]
+        C3["Storage (flutter_secure_storage)"]
+        C4["Sync (SyncCoordinator, DriftSyncManager)"]
+        C5["Auth (SessionService, CredentialStore)"]
+        C6["Errors (Exceptions/Failures)"]
+    end
+
+    P1 --> P2
+    P2 -->|calls| D2
+    D2 -->|depends on| D3
+    D2 -->|returns/consumes| D1
+    DA1 -->|implements| D3
+    DA1 --> DA2
+    DA2 --> DA3
+    DA1 --> C1
+    DA1 --> C2
+    DA1 --> C3
+    DA1 --> C5
+    C4 --> C1
+    C4 --> C2
+    C1 --> C6
+    C2 --> C6
+
+    style DOMAIN fill:#eaf3fb,stroke:#02569B,stroke-width:2px
+    style PRESENTATION fill:#fff7e6,stroke:#F2A900,stroke-width:2px
+    style DATA fill:#e9f7f3,stroke:#00A689,stroke-width:2px
+    style CORE fill:#f2f2f2,stroke:#333333,stroke-width:2px

@@ -1,0 +1,14 @@
+%% lib/core/router/app_router.dart — go_router with AppSession as refreshListenable
+flowchart TD
+    Start(["Any navigation event\nor AppSession change"]) --> Check{"AppSession.isLoggedIn?"}
+    Check -->|"false, target != /login"| ToLogin["redirect -> /login"]
+    Check -->|"true, target == /login"| ToHome["redirect -> /home"]
+    Check -->|"otherwise"| Allow["allow navigation"]
+    subgraph Routes["Declared routes"]
+        RLogin["/login — LoginPage"]
+        RHome["/home — HomePage"]
+        RSettings["/settings — SettingsPage"]
+    end
+    ToLogin --> RLogin
+    ToHome --> RHome
+    Allow --> Routes

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
+import '../../../../core/data/validation_service.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -234,6 +235,21 @@ class _DataEntryViewState extends State<_DataEntryView> {
   Future<void> _showCompleteDialog() async {
     if (!mounted) return;
 
+    // Validation rule check on the saved local values. Informative
+    // only — a failure to VALIDATE (missing metadata, bad rule) must
+    // never stand between the user and completing.
+    var violations = const <ValidationViolation>[];
+    try {
+      violations =
+          await context.read<DataEntryBloc>().repository.validateDataSet(
+                dataSetId: widget.dataSetId,
+                orgUnitId: widget.orgUnitId,
+                period: widget.period,
+              );
+    } catch (_) {}
+    if (!mounted) return;
+    final hasViolations = violations.isNotEmpty;
+
     final result = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.white,
@@ -255,9 +271,13 @@ class _DataEntryViewState extends State<_DataEntryView> {
           children: [
             // ── Title ──────────────────────────────
             Text(
-              'Everything looks good',
+              hasViolations
+                  ? '${violations.length} validation '
+                      'issue${violations.length == 1 ? '' : 's'} found'
+                  : 'Everything looks good',
               style: AppTextStyles.headingMedium.copyWith(
                 fontWeight: FontWeight.w600,
+                color: hasViolations ? AppColors.error : null,
               ),
             ),
 
@@ -265,13 +285,34 @@ class _DataEntryViewState extends State<_DataEntryView> {
 
             // ── Message ────────────────────────────
             Text(
-              'Complete the data set to send it to the server, or '
-              'keep it as a draft on this device to finish later.',
+              hasViolations
+                  ? 'The values below conflict with this data set\'s '
+                      'validation rules. Review them, or complete '
+                      'anyway if the data is correct.'
+                  : 'Complete the data set to send it to the server, or '
+                      'keep it as a draft on this device to finish later.',
               style: AppTextStyles.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
                 height: 1.5,
               ),
             ),
+
+            if (hasViolations) ...[
+              const SizedBox(height: AppDimensions.spaceMD),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.35,
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: violations.length,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: AppDimensions.spaceSM),
+                  itemBuilder: (_, i) =>
+                      _ValidationViolationTile(violation: violations[i]),
+                ),
+              ),
+            ],
 
             const SizedBox(height: AppDimensions.spaceXL),
             const Divider(color: AppColors.divider),
@@ -280,10 +321,12 @@ class _DataEntryViewState extends State<_DataEntryView> {
             // ── Buttons ────────────────────────────
             Row(
               children: [
-                // Incomplete — stays a device-only draft
+                // With violations: back to the form. Clean: keep as a
+                // device-only draft.
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx, false),
+                    onPressed: () =>
+                        Navigator.pop(ctx, hasViolations ? null : false),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primary,
                       side: const BorderSide(
@@ -298,7 +341,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                           vertical: AppDimensions.spaceMD),
                     ),
                     child: Text(
-                      'Incomplete',
+                      hasViolations ? 'Review data' : 'Incomplete',
                       style: AppTextStyles.buttonMedium
                           .copyWith(color: AppColors.primary),
                     ),
@@ -312,7 +355,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
                   child: ElevatedButton(
                     onPressed: () => Navigator.pop(ctx, true),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor:
+                          hasViolations ? AppColors.error : AppColors.primary,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -323,7 +367,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                           vertical: AppDimensions.spaceMD),
                     ),
                     child: Text(
-                      'Complete',
+                      hasViolations ? 'Complete anyway' : 'Complete',
                       style: AppTextStyles.buttonMedium
                           .copyWith(color: Colors.white),
                     ),
@@ -375,8 +419,9 @@ class _DataEntryViewState extends State<_DataEntryView> {
           );
         }
       }
-    } else {
+    } else if (result == false) {
       // User chose Incomplete — the values stay a device-only draft.
+      // (null = dismissed / "Review data": stay on the form.)
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -774,6 +819,60 @@ class _ErrorView extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Validation violation tile (complete bottom sheet) ────────────
+class _ValidationViolationTile extends StatelessWidget {
+  final ValidationViolation violation;
+
+  const _ValidationViolationTile({required this.violation});
+
+  @override
+  Widget build(BuildContext context) {
+    final high = violation.importance == 'HIGH';
+    final color = high ? AppColors.error : AppColors.warning;
+    return Container(
+      padding: const EdgeInsets.all(AppDimensions.spaceMD),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.rule_rounded, size: AppDimensions.iconSM, color: color),
+          const SizedBox(width: AppDimensions.spaceSM),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  violation.ruleName,
+                  style: AppTextStyles.bodySmall
+                      .copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: AppDimensions.spaceXS),
+                Text(
+                  violation.detail,
+                  style: AppTextStyles.labelSmall
+                      .copyWith(color: AppColors.textSecondary),
+                ),
+                if (violation.instruction != null &&
+                    violation.instruction!.trim().isNotEmpty) ...[
+                  const SizedBox(height: AppDimensions.spaceXS),
+                  Text(
+                    violation.instruction!,
+                    style: AppTextStyles.labelSmall.copyWith(color: color),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

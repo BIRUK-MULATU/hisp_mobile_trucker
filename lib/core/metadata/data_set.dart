@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
+import '../network/api_client.dart';
 import 'metadata_resource.dart';
 import 'attribute.dart';
 
@@ -130,6 +131,35 @@ class DataSetResource extends MetadataResource<DataSet> {
         });
       }
     });
+  }
+
+  /// Org-unit assignment edits don't reliably bump a data set's
+  /// lastUpdated, so the cheap id+lastUpdated delta can miss them and
+  /// leave STALE assignment links — the capture flow then offers a
+  /// facility a form whose completion the server refuses ("Data set
+  /// not assigned to organisation unit"). Data sets are few, so a
+  /// delta sync refetches ALL of them and mirrors deletions instead.
+  @override
+  Future<({int updated, int deleted})> syncDelta(ApiClient api) async {
+    final items = await fetchJson(api);
+    final remote = {for (final i in items) i['id'] as String};
+    final localRows =
+        await (db.selectOnly(table)..addColumns([uidColumn])).get();
+    final removed = [
+      for (final r in localRows)
+        if (!remote.contains(r.read(uidColumn))) r.read(uidColumn)!,
+    ];
+    await saveAll(items);
+    if (removed.isNotEmpty) {
+      await deleteByIds(removed);
+      await (db.delete(db.dataSetElementsTable)
+            ..where((t) => t.dataSetUid.isIn(removed)))
+          .go();
+      await (db.delete(db.dataSetOrgUnitsTable)
+            ..where((t) => t.dataSetUid.isIn(removed)))
+          .go();
+    }
+    return (updated: items.length, deleted: removed.length);
   }
 
   /// Ordered element uids of one data set (business logic resolves
