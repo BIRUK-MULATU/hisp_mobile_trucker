@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/network/connectivity_service.dart';
+import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -41,8 +42,8 @@ class _ChartViewPageState extends State<ChartViewPage> {
     await ConnectivityService.instance.checkNow();
     if (!mounted) return;
     if (!(ConnectivityService.instance.online ?? false)) {
-      setState(() => _error =
-          'You are offline. Charts need a connection to the server.');
+      setState(() =>
+          _error = 'You are offline. Charts need a connection to the server.');
       return;
     }
     try {
@@ -118,17 +119,19 @@ class _ChartViewPageState extends State<ChartViewPage> {
                   child: ListView(
                     padding: const EdgeInsets.all(AppDimensions.space),
                     children: [
-                      Card(
-                        color: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(AppDimensions.radiusMD),
-                          side: const BorderSide(color: AppColors.divider),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(AppDimensions.space),
-                          child: Dhis2Chart(data: _data!),
+                      ResponsiveContent(
+                        child: Card(
+                          color: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppDimensions.radiusMD),
+                            side: const BorderSide(color: AppColors.divider),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppDimensions.space),
+                            child: Dhis2Chart(data: _data!),
+                          ),
                         ),
                       ),
                     ],

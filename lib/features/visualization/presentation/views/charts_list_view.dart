@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -19,7 +20,8 @@ class ChartsListView extends StatefulWidget {
   /// Jump to the Create New tab (used by the empty state's button).
   final VoidCallback onCreateNew;
 
-  const ChartsListView({super.key, this.searchQuery, required this.onCreateNew});
+  const ChartsListView(
+      {super.key, this.searchQuery, required this.onCreateNew});
 
   @override
   State<ChartsListView> createState() => ChartsListViewState();
@@ -127,83 +129,95 @@ class ChartsListViewState extends State<ChartsListView> {
     return RefreshIndicator(
       color: AppColors.primary,
       onRefresh: reload,
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceMD),
-        itemCount: charts.length,
-        itemBuilder: (context, index) {
-          final chart = charts[index];
-          return Card(
-            color: Colors.white,
-            elevation: 0,
-            margin: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.space,
-              vertical: AppDimensions.spaceXS,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
-              side: const BorderSide(color: AppColors.divider),
-            ),
-            child: InkWell(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ChartViewPage(config: chart),
+      // A width-capped grid: one column on phones, more on tablets/
+      // desktop, so saved charts use the extra screen space instead
+      // of stretching into one very wide column.
+      child: ResponsiveContent(
+        maxWidth: 1000,
+        child: GridView.builder(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.space,
+            vertical: AppDimensions.spaceMD,
+          ),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 460,
+            mainAxisExtent: 104,
+            crossAxisSpacing: AppDimensions.spaceMD,
+            mainAxisSpacing: AppDimensions.spaceSM,
+          ),
+          itemCount: charts.length,
+          itemBuilder: (context, index) {
+            final chart = charts[index];
+            return Card(
+              color: Colors.white,
+              elevation: 0,
+              margin: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+                side: const BorderSide(color: AppColors.divider),
+              ),
+              child: InkWell(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChartViewPage(config: chart),
+                  ),
+                ),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.space,
+                    vertical: AppDimensions.spaceSM,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: const BoxDecoration(
+                          color: AppColors.primarySurface,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          chartTypeIcon(chart.chartType),
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: AppDimensions.spaceMD),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              chart.name,
+                              style: AppTextStyles.bodyLarge
+                                  .copyWith(fontWeight: FontWeight.w600),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: AppDimensions.spaceXS),
+                            Text(
+                              chart.summary,
+                              style: AppTextStyles.bodySmall
+                                  .copyWith(color: AppColors.textSecondary),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded,
+                            color: AppColors.textSecondary),
+                        onPressed: () => _confirmDelete(chart),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimensions.space,
-                  vertical: AppDimensions.spaceSM,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: const BoxDecoration(
-                        color: AppColors.primarySurface,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        chartTypeIcon(chart.chartType),
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(width: AppDimensions.spaceMD),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            chart.name,
-                            style: AppTextStyles.bodyLarge
-                                .copyWith(fontWeight: FontWeight.w600),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: AppDimensions.spaceXS),
-                          Text(
-                            chart.summary,
-                            style: AppTextStyles.bodySmall
-                                .copyWith(color: AppColors.textSecondary),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline_rounded,
-                          color: AppColors.textSecondary),
-                      onPressed: () => _confirmDelete(chart),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

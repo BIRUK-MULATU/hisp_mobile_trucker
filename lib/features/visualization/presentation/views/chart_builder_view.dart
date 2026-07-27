@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/network/connectivity_service.dart';
+import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -152,29 +153,26 @@ class _ChartBuilderViewState extends State<ChartBuilderView> {
         initialSelected: [for (final e in _dataElements) e.ref]);
     if (picked == null) return;
     final byId = {for (final e in _groupElements) e.ref.id: e};
-    setState(() =>
-        _dataElements = [for (final r in picked) byId[r.id]!]);
+    setState(() => _dataElements = [for (final r in picked) byId[r.id]!]);
   }
 
   Future<void> _pickDataSet() async {
     final sets = await _fetch(_repository.getDataSets);
     if (sets == null || !mounted) return;
-    final picked = await showItemPicker(context,
-        title: 'Select Dataset', items: sets);
+    final picked =
+        await showItemPicker(context, title: 'Select Dataset', items: sets);
     if (picked == null || picked.isEmpty) return;
     setState(() => _dataSet = picked.first);
   }
 
   Future<void> _pickMetric() async {
-    final picked = await showItemPicker(context,
-        title: 'Select Metric Type',
-        items: [
-          for (final m in DataSetMetric.values)
-            ChartItemRef(id: m.name, name: m.label),
-        ]);
+    final picked =
+        await showItemPicker(context, title: 'Select Metric Type', items: [
+      for (final m in DataSetMetric.values)
+        ChartItemRef(id: m.name, name: m.label),
+    ]);
     if (picked == null || picked.isEmpty) return;
-    setState(() =>
-        _metric = DataSetMetric.values.asNameMap()[picked.first.id]);
+    setState(() => _metric = DataSetMetric.values.asNameMap()[picked.first.id]);
   }
 
   Future<void> _pickOrgUnit() async {
@@ -242,8 +240,7 @@ class _ChartBuilderViewState extends State<ChartBuilderView> {
   String get _defaultName {
     final items = _selectedItems();
     final what = switch (_dataType) {
-      ChartDataType.dataSet =>
-        '${_dataSet?.name} — ${_metric?.label ?? ''}',
+      ChartDataType.dataSet => '${_dataSet?.name} — ${_metric?.label ?? ''}',
       _ => items.length == 1
           ? items.first.name
           : '${items.length} ${_dataType == ChartDataType.indicator ? 'indicators' : 'data elements'}',
@@ -320,222 +317,225 @@ class _ChartBuilderViewState extends State<ChartBuilderView> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(AppDimensions.space),
-      children: [
-        const Text('Chart Type', style: AppTextStyles.labelLarge),
-        const SizedBox(height: AppDimensions.spaceSM),
-        ChartTypeSelector(
-          selected: _chartType,
-          onChanged: (t) => setState(() => _chartType = t),
-        ),
-        const SizedBox(height: AppDimensions.space),
-        _SectionCard(
-          title: 'Data',
-          error: _showErrors ? _dataError : null,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _PickerField(
-                label: 'Data Type',
-                value: _dataType?.label,
-                hint: 'Select data type',
-                onTap: () async {
-                  final picked = await showItemPicker(context,
-                      title: 'Select Data Type',
-                      items: [
-                        for (final t in ChartDataType.values)
-                          ChartItemRef(id: t.name, name: t.label),
-                      ]);
-                  if (picked == null || picked.isEmpty) return;
-                  setState(() {
-                    _dataType =
-                        ChartDataType.values.asNameMap()[picked.first.id];
-                  });
-                },
-              ),
-              if (_dataType == ChartDataType.indicator) ...[
-                _PickerField(
-                  label: 'Indicator Group',
-                  value: _indicatorGroup?.name,
-                  hint: 'Select indicator group',
-                  onTap: _pickIndicatorGroup,
-                ),
-                _PickerField(
-                  label: 'Indicators',
-                  value: _indicators.isEmpty
-                      ? null
-                      : _indicators.length == 1
-                          ? _indicators.first.name
-                          : '${_indicators.length} selected',
-                  hint: 'Select indicators',
-                  enabled: _indicatorGroup != null,
-                  onTap: _pickIndicators,
-                ),
-              ],
-              if (_dataType == ChartDataType.dataElement) ...[
-                _PickerField(
-                  label: 'Data Element Group',
-                  value: _deGroup?.name,
-                  hint: 'Select data element group',
-                  onTap: _pickDataElementGroup,
-                ),
-                _PickerField(
-                  label: 'Data Elements',
-                  value: _dataElements.isEmpty
-                      ? null
-                      : _dataElements.length == 1
-                          ? _dataElements.first.ref.name
-                          : '${_dataElements.length} selected',
-                  hint: 'Select data elements',
-                  enabled: _deGroup != null,
-                  onTap: _pickDataElements,
-                ),
-                const SizedBox(height: AppDimensions.spaceSM),
-                const Text('Disaggregation',
-                    style: AppTextStyles.labelMedium),
-                RadioGroup<Disaggregation>(
-                  groupValue: _disaggregation,
-                  onChanged: (v) =>
-                      setState(() => _disaggregation = v ?? _disaggregation),
-                  child: Column(
-                    children: [
-                      for (final d in Disaggregation.values)
-                        RadioListTile<Disaggregation>(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          activeColor: AppColors.primary,
-                          title:
-                              Text(d.label, style: AppTextStyles.bodyMedium),
-                          value: d,
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-              if (_dataType == ChartDataType.dataSet) ...[
-                _PickerField(
-                  label: 'Dataset',
-                  value: _dataSet?.name,
-                  hint: 'Select dataset',
-                  onTap: _pickDataSet,
-                ),
-                _PickerField(
-                  label: 'Metric Type',
-                  value: _metric?.label,
-                  hint: 'Select metric type',
-                  onTap: _pickMetric,
-                ),
-              ],
-            ],
+    return ResponsiveContent(
+      maxWidth: AppBreakpoints.formMaxWidth,
+      child: ListView(
+        padding: const EdgeInsets.all(AppDimensions.space),
+        children: [
+          const Text('Chart Type', style: AppTextStyles.labelLarge),
+          const SizedBox(height: AppDimensions.spaceSM),
+          ChartTypeSelector(
+            selected: _chartType,
+            onChanged: (t) => setState(() => _chartType = t),
           ),
-        ),
-        _SectionCard(
-          title: 'Organisation Unit',
-          error: _showErrors ? _orgUnitError : null,
-          child: _PickerField(
-            label: 'Organisation Unit',
-            value: _orgUnit?.name,
-            hint: 'Select one organisation unit',
-            onTap: _pickOrgUnit,
-          ),
-        ),
-        _SectionCard(
-          title: 'Period',
-          error: _showErrors ? _periodError : null,
-          child: PeriodSelector(
-            selected: _period,
-            onChanged: (p) => setState(() => _period = p),
-          ),
-        ),
-        _SectionCard(
-          title: 'Chart Name (optional)',
-          child: TextField(
-            controller: _nameController,
-            decoration: InputDecoration(
-              hintText: 'Named after the data if left empty',
-              isDense: true,
-              filled: true,
-              fillColor: AppColors.backgroundGrey,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: AppDimensions.spaceSM),
-        SizedBox(
-          height: AppDimensions.buttonHeightLG,
-          child: ElevatedButton.icon(
-            onPressed: _updating || _loadingPicker ? null : _update,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: AppColors.backgroundGrey,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
-              ),
-            ),
-            icon: _updating || _loadingPicker
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: AppColors.primary),
-                  )
-                : const Icon(Icons.refresh_rounded),
-            label: Text(_updating ? 'Loading...' : 'Update'),
-          ),
-        ),
-        if (_preview != null) ...[
           const SizedBox(height: AppDimensions.space),
-          Card(
-            color: Colors.white,
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
-              side: const BorderSide(color: AppColors.divider),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(AppDimensions.space),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _previewConfig?.name ?? '',
-                    style: AppTextStyles.bodyLarge
-                        .copyWith(fontWeight: FontWeight.w600),
+          _SectionCard(
+            title: 'Data',
+            error: _showErrors ? _dataError : null,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _PickerField(
+                  label: 'Data Type',
+                  value: _dataType?.label,
+                  hint: 'Select data type',
+                  onTap: () async {
+                    final picked = await showItemPicker(context,
+                        title: 'Select Data Type',
+                        items: [
+                          for (final t in ChartDataType.values)
+                            ChartItemRef(id: t.name, name: t.label),
+                        ]);
+                    if (picked == null || picked.isEmpty) return;
+                    setState(() {
+                      _dataType =
+                          ChartDataType.values.asNameMap()[picked.first.id];
+                    });
+                  },
+                ),
+                if (_dataType == ChartDataType.indicator) ...[
+                  _PickerField(
+                    label: 'Indicator Group',
+                    value: _indicatorGroup?.name,
+                    hint: 'Select indicator group',
+                    onTap: _pickIndicatorGroup,
                   ),
-                  const SizedBox(height: AppDimensions.spaceMD),
-                  Dhis2Chart(data: _preview!),
-                  const SizedBox(height: AppDimensions.space),
-                  SizedBox(
-                    width: double.infinity,
-                    height: AppDimensions.buttonHeightMD,
-                    child: ElevatedButton.icon(
-                      onPressed: _save,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.success,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(AppDimensions.radiusFull),
-                        ),
-                      ),
-                      icon: const Icon(Icons.save_rounded),
-                      label: const Text('Save Chart'),
+                  _PickerField(
+                    label: 'Indicators',
+                    value: _indicators.isEmpty
+                        ? null
+                        : _indicators.length == 1
+                            ? _indicators.first.name
+                            : '${_indicators.length} selected',
+                    hint: 'Select indicators',
+                    enabled: _indicatorGroup != null,
+                    onTap: _pickIndicators,
+                  ),
+                ],
+                if (_dataType == ChartDataType.dataElement) ...[
+                  _PickerField(
+                    label: 'Data Element Group',
+                    value: _deGroup?.name,
+                    hint: 'Select data element group',
+                    onTap: _pickDataElementGroup,
+                  ),
+                  _PickerField(
+                    label: 'Data Elements',
+                    value: _dataElements.isEmpty
+                        ? null
+                        : _dataElements.length == 1
+                            ? _dataElements.first.ref.name
+                            : '${_dataElements.length} selected',
+                    hint: 'Select data elements',
+                    enabled: _deGroup != null,
+                    onTap: _pickDataElements,
+                  ),
+                  const SizedBox(height: AppDimensions.spaceSM),
+                  const Text('Disaggregation',
+                      style: AppTextStyles.labelMedium),
+                  RadioGroup<Disaggregation>(
+                    groupValue: _disaggregation,
+                    onChanged: (v) =>
+                        setState(() => _disaggregation = v ?? _disaggregation),
+                    child: Column(
+                      children: [
+                        for (final d in Disaggregation.values)
+                          RadioListTile<Disaggregation>(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            activeColor: AppColors.primary,
+                            title:
+                                Text(d.label, style: AppTextStyles.bodyMedium),
+                            value: d,
+                          ),
+                      ],
                     ),
                   ),
                 ],
+                if (_dataType == ChartDataType.dataSet) ...[
+                  _PickerField(
+                    label: 'Dataset',
+                    value: _dataSet?.name,
+                    hint: 'Select dataset',
+                    onTap: _pickDataSet,
+                  ),
+                  _PickerField(
+                    label: 'Metric Type',
+                    value: _metric?.label,
+                    hint: 'Select metric type',
+                    onTap: _pickMetric,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          _SectionCard(
+            title: 'Organisation Unit',
+            error: _showErrors ? _orgUnitError : null,
+            child: _PickerField(
+              label: 'Organisation Unit',
+              value: _orgUnit?.name,
+              hint: 'Select one organisation unit',
+              onTap: _pickOrgUnit,
+            ),
+          ),
+          _SectionCard(
+            title: 'Period',
+            error: _showErrors ? _periodError : null,
+            child: PeriodSelector(
+              selected: _period,
+              onChanged: (p) => setState(() => _period = p),
+            ),
+          ),
+          _SectionCard(
+            title: 'Chart Name (optional)',
+            child: TextField(
+              controller: _nameController,
+              decoration: InputDecoration(
+                hintText: 'Named after the data if left empty',
+                isDense: true,
+                filled: true,
+                fillColor: AppColors.backgroundGrey,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+                  borderSide: BorderSide.none,
+                ),
               ),
             ),
           ),
+          const SizedBox(height: AppDimensions.spaceSM),
+          SizedBox(
+            height: AppDimensions.buttonHeightLG,
+            child: ElevatedButton.icon(
+              onPressed: _updating || _loadingPicker ? null : _update,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: AppColors.backgroundGrey,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+                ),
+              ),
+              icon: _updating || _loadingPicker
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.primary),
+                    )
+                  : const Icon(Icons.refresh_rounded),
+              label: Text(_updating ? 'Loading...' : 'Update'),
+            ),
+          ),
+          if (_preview != null) ...[
+            const SizedBox(height: AppDimensions.space),
+            Card(
+              color: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+                side: const BorderSide(color: AppColors.divider),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(AppDimensions.space),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _previewConfig?.name ?? '',
+                      style: AppTextStyles.bodyLarge
+                          .copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: AppDimensions.spaceMD),
+                    Dhis2Chart(data: _preview!),
+                    const SizedBox(height: AppDimensions.space),
+                    SizedBox(
+                      width: double.infinity,
+                      height: AppDimensions.buttonHeightMD,
+                      child: ElevatedButton.icon(
+                        onPressed: _save,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.success,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppDimensions.radiusFull),
+                          ),
+                        ),
+                        icon: const Icon(Icons.save_rounded),
+                        label: const Text('Save Chart'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: AppDimensions.spaceXXL),
         ],
-        const SizedBox(height: AppDimensions.spaceXXL),
-      ],
+      ),
     );
   }
 }
@@ -569,8 +569,8 @@ class _SectionCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: AppDimensions.spaceXS),
                 child: Text(
                   error!,
-                  style: AppTextStyles.labelSmall
-                      .copyWith(color: AppColors.error),
+                  style:
+                      AppTextStyles.labelSmall.copyWith(color: AppColors.error),
                 ),
               ),
             const SizedBox(height: AppDimensions.spaceSM),
