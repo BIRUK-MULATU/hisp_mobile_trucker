@@ -2,6 +2,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hisp_mobile_trucker/core/data/ethiopian_period_service.dart';
+import 'package:hisp_mobile_trucker/core/data/period_access.dart';
 import 'package:hisp_mobile_trucker/core/database/app_database.dart';
 
 void main() {
@@ -50,5 +51,35 @@ void main() {
     final periods = await EthiopianPeriodService(db)
         .periodsFor(dataSet: dataSet('Monthly', expiryDays: 0), count: 12);
     expect(periods.every((p) => p.isOpen), isTrue);
+  });
+
+  group('statusForPeriod', () {
+    // Reopening a report (or a form freshly opened after picking a
+    // period) only has the period id, not the picker's whole list —
+    // this is the one-off lookup that gates DataEntryPage's readOnly.
+    test('agrees with periodsFor for the same period id', () async {
+      final service = EthiopianPeriodService(db);
+      final ds = dataSet('Monthly');
+      final periods = await service.periodsFor(dataSet: ds, count: 12);
+
+      final current = await service.statusForPeriod(
+          dataSet: ds, periodId: periods.first.id);
+      expect(current, PeriodStatus.open);
+
+      final old = await service.statusForPeriod(
+          dataSet: ds, periodId: periods[3].id);
+      expect(old, PeriodStatus.expired,
+          reason: '${periods[3].id} ended months ago');
+    });
+
+    test('expiryDays == 0 never expires', () async {
+      final service = EthiopianPeriodService(db);
+      final ds = dataSet('Monthly', expiryDays: 0);
+      final periods = await service.periodsFor(dataSet: ds, count: 12);
+
+      final status = await service.statusForPeriod(
+          dataSet: ds, periodId: periods.last.id);
+      expect(status, isNot(PeriodStatus.expired));
+    });
   });
 }

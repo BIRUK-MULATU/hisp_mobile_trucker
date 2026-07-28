@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/auth/app_session.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
+import '../../../../core/data/period_access.dart';
 import '../../../../core/data/validation_service.dart';
+import '../../../../core/metadata/data_set.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
 import '../../../../shared/widgets/connectivity_indicator.dart';
+import '../../../../shared/widgets/search_field.dart';
 import '../../data/repositories/data_entry_repository_impl.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
 import '../bloc/data_entry_bloc.dart';
 import '../widgets/data_entry_table.dart';
+import '../widgets/disease_entry_list.dart';
 
 class DataEntryPage extends StatelessWidget {
   final String dataSetId;
@@ -135,14 +140,41 @@ class _DataEntryViewState extends State<_DataEntryView> {
   /// bottom sheet the save flow shows (complete vs reopen).
   bool _isCompleted = false;
 
+  /// True once this period's expiryDays deadline has passed — cells
+  /// go read-only (view only) but stay fully visible. Checked on
+  /// open so both a freshly-picked period and a reopened past report
+  /// get the same gate; entry itself never re-checks it mid-session.
+  bool _isPeriodClosed = false;
+
   final _searchController = TextEditingController();
   String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _loadCompletionStatus());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCompletionStatus();
+      _loadPeriodStatus();
+    });
+  }
+
+  Future<void> _loadPeriodStatus() async {
+    if (!mounted) return;
+    try {
+      final db = AppSession.instance.service.db;
+      final dataSet = await DataSetResource(db).getById(widget.dataSetId);
+      if (dataSet == null) return;
+      final status = await EthiopianPeriodService(db).statusForPeriod(
+        dataSet: dataSet,
+        periodId: widget.period,
+      );
+      if (mounted) {
+        setState(() => _isPeriodClosed = status == PeriodStatus.expired);
+      }
+    } catch (_) {
+      // Metadata not on the device yet — err open, same as the rest
+      // of this page's best-effort loads.
+    }
   }
 
   @override
@@ -699,48 +731,29 @@ class _DataEntryViewState extends State<_DataEntryView> {
             period: widget.period,
             orgUnitName: widget.orgUnitName,
             completed: _isCompleted,
+            periodClosed: _isPeriodClosed,
           ),
           const Divider(height: 1, color: AppColors.divider),
 
-          // ── Search — long forms (e.g. disease lists) need this
-          // to stay usable ─────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.space,
-              vertical: AppDimensions.spaceSM,
-            ),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (q) => setState(() => _searchQuery = q),
-              style: AppTextStyles.bodyMedium,
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: 'Search...',
-                hintStyle: const TextStyle(color: AppColors.textHint),
-                prefixIcon: const Icon(Icons.search_rounded,
-                    color: AppColors.textSecondary, size: AppDimensions.iconMD),
-                suffixIcon: _searchQuery.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded,
-                            color: AppColors.textSecondary, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                      ),
-                filled: true,
-                fillColor: AppColors.backgroundGrey,
-                contentPadding:
-                    const EdgeInsets.symmetric(vertical: AppDimensions.spaceSM),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
-                  borderSide: BorderSide.none,
-                ),
+          // Disease Registration leads with "Select for new disease"
+          // (see DiseaseEntryList) instead of a plain search bar —
+          // there can be hundreds of diseases, so nothing is listed
+          // until it's recorded or explicitly picked.
+          if (!widget.isDiseaseRegistration) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.space,
+                vertical: AppDimensions.spaceSM,
+              ),
+              child: SearchField(
+                controller: _searchController,
+                hint: 'Search...',
+                value: _searchQuery,
+                onChanged: (q) => setState(() => _searchQuery = q),
               ),
             ),
-          ),
-          const Divider(height: 1, color: AppColors.divider),
+            const Divider(height: 1, color: AppColors.divider),
+          ],
 
           // ── Table ─────────────────────────────────
           Expanded(
@@ -765,13 +778,22 @@ class _DataEntryViewState extends State<_DataEntryView> {
                   );
                 }
                 if (state is DataEntryLoaded) {
-                  return DataEntryTable(
-                    dataElements: state.dataElements,
-                    dataValues: state.dataValues,
-                    orgUnitId: widget.orgUnitId,
-                    period: widget.period,
-                    searchQuery: _searchQuery,
-                  );
+                  return widget.isDiseaseRegistration
+                      ? DiseaseEntryList(
+                          dataElements: state.dataElements,
+                          dataValues: state.dataValues,
+                          orgUnitId: widget.orgUnitId,
+                          period: widget.period,
+                          readOnly: _isPeriodClosed,
+                        )
+                      : DataEntryTable(
+                          dataElements: state.dataElements,
+                          dataValues: state.dataValues,
+                          orgUnitId: widget.orgUnitId,
+                          period: widget.period,
+                          searchQuery: _searchQuery,
+                          readOnly: _isPeriodClosed,
+                        );
                 }
                 // Initial state (load event not processed yet) —
                 // keep the spinner up instead of a blank page.
@@ -782,29 +804,32 @@ class _DataEntryViewState extends State<_DataEntryView> {
         ],
       ),
 
-      // ── Save FAB ──────────────────────────────────
-      floatingActionButton: FloatingActionButton(
-        onPressed: (_isSaving || _isCompleting) ? null : _onSaveTapped,
-        backgroundColor: widget.isDiseaseRegistration
-            ? AppColors.diseaseAccent
-            : AppColors.primary,
-        elevation: 4,
-        shape: const CircleBorder(),
-        child: (_isSaving || _isCompleting)
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(
-                Icons.check_rounded,
-                color: Colors.white,
-                size: AppDimensions.iconXL,
-              ),
-      ),
+      // ── Save FAB — hidden once the period is closed: view only,
+      // nothing left to save ─────────────────────────────
+      floatingActionButton: _isPeriodClosed
+          ? null
+          : FloatingActionButton(
+              onPressed: (_isSaving || _isCompleting) ? null : _onSaveTapped,
+              backgroundColor: widget.isDiseaseRegistration
+                  ? AppColors.diseaseAccent
+                  : AppColors.primary,
+              elevation: 4,
+              shape: const CircleBorder(),
+              child: (_isSaving || _isCompleting)
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: AppDimensions.iconXL,
+                    ),
+            ),
     );
   }
 }
@@ -814,10 +839,12 @@ class _SubHeader extends StatelessWidget {
   final String period;
   final String orgUnitName;
   final bool completed;
+  final bool periodClosed;
   const _SubHeader({
     required this.period,
     required this.orgUnitName,
     this.completed = false,
+    this.periodClosed = false,
   });
 
   @override
@@ -871,6 +898,37 @@ class _SubHeader extends StatelessWidget {
                     'Completed',
                     style: AppTextStyles.labelMedium.copyWith(
                       color: AppColors.success,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (periodClosed) ...[
+            const SizedBox(width: AppDimensions.spaceSM),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceSM,
+                vertical: AppDimensions.spaceXXS,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.lock_outline_rounded,
+                    color: AppColors.warning,
+                    size: AppDimensions.iconSM,
+                  ),
+                  const SizedBox(width: AppDimensions.spaceXXS),
+                  Text(
+                    'Closed · View only',
+                    style: AppTextStyles.labelMedium.copyWith(
+                      color: AppColors.warning,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

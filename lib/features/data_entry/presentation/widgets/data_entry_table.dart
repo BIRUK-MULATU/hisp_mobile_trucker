@@ -23,6 +23,15 @@ class DataEntryTable extends StatefulWidget {
   /// usable. Empty/null shows everything.
   final String? searchQuery;
 
+  /// Appends a read-only Total row (sum of every category option
+  /// combo currently entered) at the end of each expanded element —
+  /// Disease Registration only; Routine leaves this off.
+  final bool showElementTotal;
+
+  /// True once the period's expiry deadline has passed — every cell
+  /// becomes view-only (still fully visible, just not editable).
+  final bool readOnly;
+
   const DataEntryTable({
     super.key,
     required this.dataElements,
@@ -30,6 +39,8 @@ class DataEntryTable extends StatefulWidget {
     required this.orgUnitId,
     required this.period,
     this.searchQuery,
+    this.showElementTotal = false,
+    this.readOnly = false,
   });
 
   @override
@@ -218,8 +229,10 @@ class _DataEntryTableState extends State<DataEntryTable> {
         ),
 
         // ── Category option combo rows ───────────────────────
-        if (expanded)
+        if (expanded) ...[
           ...combos.map((combo) => _buildComboRow(element, combo)),
+          if (widget.showElementTotal) _buildTotalRow(element, combos),
+        ],
 
         const Divider(height: 1, color: AppColors.divider),
       ],
@@ -258,6 +271,7 @@ class _DataEntryTableState extends State<DataEntryTable> {
                 valueType: element.valueType,
                 options: element.options,
                 errorText: existing?.syncError,
+                isReadOnly: widget.readOnly,
                 onChanged: (value) {
                   context.read<DataEntryBloc>().add(
                         DataEntryValueChanged(
@@ -267,6 +281,66 @@ class _DataEntryTableState extends State<DataEntryTable> {
                         ),
                       );
                 },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Sum of every combo currently entered for this element — updates
+  // live as the user types, since it reads straight from
+  // widget.dataValues (refreshed on every DataEntryValueChanged).
+  Widget _buildTotalRow(
+      DataElementEntity element, List<CategoryOptionCombo> combos) {
+    var total = 0.0;
+    var anyValue = false;
+    for (final combo in combos) {
+      final raw = widget.dataValues['${element.id}_${combo.id}']?.value;
+      final n = double.tryParse((raw ?? '').trim());
+      if (n != null) {
+        total += n;
+        anyValue = true;
+      }
+    }
+    final display = !anyValue
+        ? '—'
+        : (total == total.roundToDouble()
+            ? total.toInt().toString()
+            : total.toString());
+
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: AppDimensions.space,
+        right: AppDimensions.spaceSM,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Total',
+              style: AppTextStyles.bodySmall
+                  .copyWith(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spaceSM),
+          SizedBox(
+            width: 140,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Container(
+                height: 40,
+                alignment: Alignment.center,
+                decoration:
+                    const BoxDecoration(color: AppColors.inputBackground),
+                child: Text(
+                  display,
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
           ),

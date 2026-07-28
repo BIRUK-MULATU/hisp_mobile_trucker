@@ -211,6 +211,10 @@ void main() {
       expect(find.text('Malaria cases'), findsOneWidget);
       expect(find.text('Stock-outs'), findsOneWidget);
 
+      // Routine never gets the Total row — that's opt-in
+      // (showElementTotal), Disease Registration only.
+      expect(find.text('Total'), findsNothing);
+
       // The first element starts expanded: its combos are visible.
       expect(find.text('Under 5'), findsOneWidget);
       expect(find.text('5 and above'), findsOneWidget);
@@ -239,6 +243,107 @@ void main() {
       await tester.pump();
       expect(find.text('Under 5'), findsNothing);
       expect(find.text('5 and above'), findsNothing);
+    });
+
+    testWidgets(
+        'showElementTotal sums the combos entered so far, live, at the '
+        'end of the section', (tester) async {
+      const element = DataElementEntity(
+        id: 'de1',
+        name: 'Malaria cases',
+        categoryOptionCombos: [
+          CategoryOptionCombo(id: 'c1', name: 'Male'),
+          CategoryOptionCombo(id: 'c2', name: 'Female'),
+        ],
+      );
+
+      Widget buildWith(Map<String, DataValueEntity> dataValues) => MaterialApp(
+            home: Scaffold(
+              body: DataEntryTable(
+                dataElements: const [element],
+                dataValues: dataValues,
+                orgUnitId: 'ou1',
+                period: '202607',
+                showElementTotal: true,
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(buildWith({
+        'de1_c1': DataValueEntity(
+          dataElementId: 'de1',
+          categoryOptionComboId: 'c1',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: '5',
+        ),
+      }));
+
+      // Only Male entered so far — the Total row exists. (Its value
+      // is also "5" here, same digit as the Male field itself, so
+      // that particular number isn't asserted until it's unambiguous
+      // below.)
+      expect(find.text('Total'), findsOneWidget);
+
+      // The parent (BlocBuilder in the real app) rebuilds with fresh
+      // dataValues on every edit — simulate that here and confirm
+      // Total recomputes from whatever is now entered.
+      await tester.pumpWidget(buildWith({
+        'de1_c1': DataValueEntity(
+          dataElementId: 'de1',
+          categoryOptionComboId: 'c1',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: '5',
+        ),
+        'de1_c2': DataValueEntity(
+          dataElementId: 'de1',
+          categoryOptionComboId: 'c2',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: '3',
+        ),
+      }));
+      expect(find.text('8'), findsOneWidget);
+    });
+
+    testWidgets('readOnly makes every combo cell view-only, not editable',
+        (tester) async {
+      const element = DataElementEntity(
+        id: 'de1',
+        name: 'Malaria cases',
+        categoryOptionCombos: [
+          CategoryOptionCombo(id: 'c1', name: 'Cases'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: const [element],
+              dataValues: {
+                'de1_c1': DataValueEntity(
+                  dataElementId: 'de1',
+                  categoryOptionComboId: 'c1',
+                  orgUnitId: 'ou1',
+                  period: '202607',
+                  value: '5',
+                ),
+              },
+              orgUnitId: 'ou1',
+              period: '202607',
+              readOnly: true,
+            ),
+          ),
+        ),
+      );
+
+      // The value is still fully visible...
+      expect(find.text('5'), findsOneWidget);
+      // ...but the field itself refuses edits.
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.readOnly, isTrue);
     });
   });
 
