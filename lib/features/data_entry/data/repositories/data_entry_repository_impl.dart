@@ -126,8 +126,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
     final elementUids = await DataSetResource(_db).dataElementUids(dataSetId);
 
     // Fresh server state when reachable; purely best-effort.
@@ -171,8 +173,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
     final store = DataValueStore(_db);
     final storedBy = await SecureStorage().getUsername();
 
@@ -198,8 +202,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
     return ValidationService(_db).validateForm(
       dataSetUid: dataSetId,
       period: period,
@@ -213,8 +219,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
 
     // Completing is the sign-off: the form's drafts become sendable.
     final elementUids = await DataSetResource(_db).dataElementUids(dataSetId);
@@ -249,8 +257,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
     final reg = await CompletenessStore(_db).statusOf(
       dataSetUid: dataSetId,
       period: period,
@@ -265,8 +275,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
 
     // completed=false is its own pending fact: the push turns it into
     // a DELETE against completeDataSetRegistrations. Drafts stay

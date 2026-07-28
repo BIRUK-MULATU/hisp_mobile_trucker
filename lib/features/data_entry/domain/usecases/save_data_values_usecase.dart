@@ -10,6 +10,7 @@ class SaveDataValuesUseCase {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
     // Only save modified values
     final modified = dataValues.where((v) => v.isModified).toList();
@@ -20,6 +21,7 @@ class SaveDataValuesUseCase {
       dataSetId: dataSetId,
       orgUnitId: orgUnitId,
       period: period,
+      attributeOptionComboUid: attributeOptionComboUid,
     );
   }
 }

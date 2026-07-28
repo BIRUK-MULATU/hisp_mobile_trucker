@@ -37,6 +37,22 @@ class ReportInstanceEntity {
   /// report explains itself instead of just staying red.
   final String? syncError;
 
+  /// True for reports whose data set is tagged "Dataset Category" =
+  /// "Disease" — drives the card's disease styling and, when
+  /// reopened, the form's AppBar theming.
+  final bool isDiseaseRegistration;
+
+  /// The category-combo cell this report belongs to (data set's OWN
+  /// combo — e.g. one Department × Outcome pair). Part of the
+  /// report's real identity: two reports can share the same dataset,
+  /// period and org unit but differ here, and must not be conflated.
+  final String attributeOptionComboUid;
+
+  /// Human-readable label for [attributeOptionComboUid] (e.g. "OPD,
+  /// Cured") — null for the trivial default combo, where there is
+  /// nothing distinguishing to show.
+  final String? attributeOptionComboLabel;
+
   const ReportInstanceEntity({
     required this.dataSetId,
     required this.dataSetName,
@@ -48,6 +64,9 @@ class ReportInstanceEntity {
     required this.status,
     required this.synced,
     required this.lastModified,
+    required this.attributeOptionComboUid,
     this.syncError,
+    this.isDiseaseRegistration = false,
+    this.attributeOptionComboLabel,
   });
 }

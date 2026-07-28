@@ -20,6 +20,10 @@ class SectionSelectionPage extends StatefulWidget {
   final String orgUnitId;
   final String orgUnitName;
 
+  /// Tags this dataset as Disease Registration — themes this page
+  /// and every step after it (period, form) with the disease accent.
+  final bool isDiseaseRegistration;
+
   const SectionSelectionPage({
     super.key,
     required this.dataSetId,
@@ -27,6 +31,7 @@ class SectionSelectionPage extends StatefulWidget {
     required this.periodType,
     required this.orgUnitId,
     required this.orgUnitName,
+    this.isDiseaseRegistration = false,
   });
 
   @override
@@ -67,6 +72,7 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
               periodType: widget.periodType,
               orgUnitId: widget.orgUnitId,
               orgUnitName: widget.orgUnitName,
+              isDiseaseRegistration: widget.isDiseaseRegistration,
             ),
           ),
         );
@@ -92,6 +98,7 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
           orgUnitName: widget.orgUnitName,
           sectionId: section.id,
           sectionName: section.name,
+          isDiseaseRegistration: widget.isDiseaseRegistration,
         ),
       ),
     );
@@ -102,7 +109,9 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
     return Scaffold(
       backgroundColor: AppColors.backgroundGrey,
       appBar: AppBar(
-        backgroundColor: AppColors.primary,
+        backgroundColor: widget.isDiseaseRegistration
+            ? AppColors.diseaseAccent
+            : AppColors.primary,
         elevation: 0,
         actions: const [
           ConnectivityIndicator(),
@@ -115,7 +124,12 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Select Section', style: AppTextStyles.appBarTitle),
+            Text(
+              widget.isDiseaseRegistration
+                  ? 'Select Section · Disease Registration'
+                  : 'Select Section',
+              style: AppTextStyles.appBarTitle,
+            ),
             Text(
               widget.dataSetName,
               style: AppTextStyles.bodySmall.copyWith(

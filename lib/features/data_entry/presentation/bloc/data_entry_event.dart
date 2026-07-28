@@ -12,11 +12,17 @@ class DataEntryLoad extends DataEntryEvent {
   /// Restricts the form to one dataset section; null = whole dataset.
   final String? sectionId;
 
+  /// Scopes the form to one category-combo cell of the data set's OWN
+  /// category combination (e.g. Disease Registration's Department ×
+  /// Outcome). Null uses the data set's default combo.
+  final String? attributeOptionComboUid;
+
   const DataEntryLoad({
     required this.dataSetId,
     required this.orgUnitId,
     required this.period,
     this.sectionId,
+    this.attributeOptionComboUid,
   });
 }
 

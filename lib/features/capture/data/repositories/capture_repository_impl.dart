@@ -78,6 +78,8 @@ class CaptureRepositoryImpl implements CaptureRepository {
     // Chip truth comes from the local write queue: a dataset is
     // "unsync" while any of its values/completions here await upload.
     final unsynced = await DataValueStore(_db).unsyncedDataSetsAt(orgUnitId);
+    final diseaseDataSets =
+        await DataSetResource(_db).diseaseRegistrationDataSetUids();
     return [
       for (final ds in rows)
         DataSetEntity(
@@ -87,6 +89,7 @@ class CaptureRepositoryImpl implements CaptureRepository {
           syncStatus: unsynced.contains(ds.uid)
               ? SyncStatus.unsynced
               : SyncStatus.synced,
+          isDiseaseRegistration: diseaseDataSets.contains(ds.uid),
         ),
     ]..sort((a, b) => a.name.compareTo(b.name));
   }
@@ -110,21 +113,23 @@ class CaptureRepositoryImpl implements CaptureRepository {
 
   @override
   Future<List<ReportInstanceEntity>> getUserReports() async {
-    // (dataset, period, orgUnit) -> the report's local truth.
-    final byKey = <(String, String, String), _ReportFacts>{};
-    _ReportFacts factsFor((String, String, String) key) =>
+    // (dataset, period, orgUnit, attributeOptionCombo) -> the
+    // report's local truth. The AOC is part of the key: a dataset
+    // with a real category combo (e.g. Disease Registration's
+    // Department × Outcome) can have several distinct reports for
+    // the very same dataset/period/org unit.
+    final byKey = <(String, String, String, String), _ReportFacts>{};
+    _ReportFacts factsFor((String, String, String, String) key) =>
         byKey[key] ??= _ReportFacts();
 
     final cdr = _db.completeDataSetRegistrationsTable;
-    final completions = await (_db.select(cdr)
-          ..where((t) => t.completed.equals(true)))
-        .get();
+    final completions =
+        await (_db.select(cdr)..where((t) => t.completed.equals(true))).get();
     for (final r in completions) {
-      factsFor((r.dataSetUid, r.period, r.orgUnitUid))
+      factsFor((r.dataSetUid, r.period, r.orgUnitUid, r.attributeOptionComboUid))
         ..completed = true
         ..completionSynced = r.syncState == SyncState.synced
-        ..completionError =
-            r.syncState == SyncState.error ? r.syncError : null
+        ..completionError = r.syncState == SyncState.error ? r.syncError : null
         ..touch(r.lastModified);
     }
 
@@ -150,7 +155,7 @@ class CaptureRepositoryImpl implements CaptureRepository {
       for (final d in unsyncedValues) {
         for (final ds
             in dataSetsByElement[d.dataElementUid] ?? const <String>{}) {
-          factsFor((ds, d.period, d.orgUnitUid))
+          factsFor((ds, d.period, d.orgUnitUid, d.attributeOptionComboUid))
             ..hasUnsyncedValues = true
             ..hasDrafts |= d.syncState == SyncState.draft
             ..touch(d.lastModified);
@@ -170,6 +175,15 @@ class CaptureRepositoryImpl implements CaptureRepository {
     final orgUnitNames = {
       for (final r in orgUnitRows) r.uid: r.displayName,
     };
+    // Reports carry the same disease flag as the dataset list, so a
+    // reopened Disease Registration report gets the same styling.
+    final diseaseDataSets =
+        await DataSetResource(_db).diseaseRegistrationDataSetUids();
+    // AOC display names — null/'default' means nothing worth showing.
+    final aocRows = await (_db.select(_db.categoryOptionCombosTable)
+          ..where((t) => t.uid.isIn({for (final k in byKey.keys) k.$4})))
+        .get();
+    final aocNames = {for (final r in aocRows) r.uid: r.name};
 
     return [
       for (final MapEntry(key: k, value: v) in byKey.entries)
@@ -187,6 +201,12 @@ class CaptureRepositoryImpl implements CaptureRepository {
             synced: v.synced,
             lastModified: v.lastModified,
             syncError: v.completionError,
+            isDiseaseRegistration: diseaseDataSets.contains(k.$1),
+            attributeOptionComboUid: k.$4,
+            attributeOptionComboLabel: aocNames[k.$4] == null ||
+                    aocNames[k.$4] == 'default'
+                ? null
+                : aocNames[k.$4],
           ),
     ]..sort((a, b) => b.lastModified.compareTo(a.lastModified));
   }

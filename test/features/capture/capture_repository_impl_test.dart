@@ -63,6 +63,7 @@ void main() {
 
   Future<void> insertCompletion({
     String dataSet = ds1,
+    String attributeOptionComboUid = coc,
     required SyncState syncState,
     DateTime? at,
   }) =>
@@ -71,7 +72,7 @@ void main() {
               dataSetUid: dataSet,
               period: period,
               orgUnitUid: ou1,
-              attributeOptionComboUid: coc,
+              attributeOptionComboUid: attributeOptionComboUid,
               completed: true,
               date: at ?? t0,
               syncState: syncState,
@@ -127,8 +128,7 @@ void main() {
       expect(report.status, ReportStatus.incomplete,
           reason: 'draft work means the report is being reworked');
       expect(report.synced, isFalse);
-      expect(report.lastModified, t1,
-          reason: 'the newest local touch wins');
+      expect(report.lastModified, t1, reason: 'the newest local touch wins');
     });
 
     test('unsynced values map to their dataset through dataSetElements',
@@ -150,6 +150,92 @@ void main() {
       await insertCompletion(dataSet: ds2, syncState: SyncState.synced);
       expect(await repository.getUserReports(), isEmpty,
           reason: 'nothing to open when the dataset is unassigned');
+    });
+
+    test('a Disease Registration report is included and flagged', () async {
+      const diseaseDs = 'dataSet0004';
+      const categoryAttr = 'attribute01';
+      await db.into(db.dataSetsTable).insert(
+            DataSetsTableCompanion.insert(
+              uid: diseaseDs,
+              name: '16 - Disease Registration',
+              displayName: '16 - Disease Registration',
+              periodType: 'Monthly',
+              categoryComboUid: coc,
+            ),
+          );
+      await db.into(db.attributesTable).insert(
+            AttributesTableCompanion.insert(
+              uid: categoryAttr,
+              name: 'Dataset Category',
+              displayName: 'Dataset Category',
+              valueType: 'TEXT',
+            ),
+          );
+      await db.into(db.attributeValuesTable).insert(
+            AttributeValuesTableCompanion.insert(
+              objectType: 'dataSet',
+              objectUid: diseaseDs,
+              attributeUid: categoryAttr,
+              value: 'Disease',
+            ),
+          );
+      await insertCompletion(dataSet: diseaseDs, syncState: SyncState.synced);
+      await insertCompletion(syncState: SyncState.synced); // routine (ds1)
+
+      final reports = await repository.getUserReports();
+      expect(reports, hasLength(2),
+          reason: 'Routine and Disease Registration reports now share '
+              'one merged list');
+
+      final diseaseReport =
+          reports.singleWhere((r) => r.dataSetId == diseaseDs);
+      expect(diseaseReport.isDiseaseRegistration, isTrue,
+          reason: 'flagged so the reopened form gets the disease styling');
+
+      final routineReport = reports.singleWhere((r) => r.dataSetId == ds1);
+      expect(routineReport.isDiseaseRegistration, isFalse);
+    });
+
+    test(
+        'two attribute option combos of the same dataset/period/org unit '
+        'stay separate reports', () async {
+      const opdCured = 'cocOpdCure1';
+      const ipdDied = 'cocIpdDied1';
+      await db.into(db.categoryOptionCombosTable).insert(
+            CategoryOptionCombosTableCompanion.insert(
+              uid: opdCured,
+              name: 'OPD, Cured',
+              categoryComboUid: coc,
+            ),
+          );
+      await db.into(db.categoryOptionCombosTable).insert(
+            CategoryOptionCombosTableCompanion.insert(
+              uid: ipdDied,
+              name: 'IPD, Died',
+              categoryComboUid: coc,
+            ),
+          );
+      await insertCompletion(
+          attributeOptionComboUid: opdCured, syncState: SyncState.synced);
+      await insertCompletion(
+          attributeOptionComboUid: ipdDied, syncState: SyncState.synced);
+
+      final reports = await repository.getUserReports();
+      expect(reports, hasLength(2),
+          reason: 'same dataset/period/org unit but different category '
+              'combo cells are distinct reports, not one merged report');
+
+      final labels = {for (final r in reports) r.attributeOptionComboLabel};
+      expect(labels, {'OPD, Cured', 'IPD, Died'});
+    });
+
+    test('the default attribute option combo has no label', () async {
+      await insertCompletion(syncState: SyncState.synced);
+      final report = (await repository.getUserReports()).single;
+      expect(report.attributeOptionComboUid, coc);
+      expect(report.attributeOptionComboLabel, isNull,
+          reason: 'nothing distinguishing to show for the trivial combo');
     });
 
     test('sorted newest local change first', () async {

@@ -43,6 +43,11 @@ class AppColors {
   static const Color info = Color(0xFF2C6EBA);
   static const Color infoLight = Color(0xFFE8F1FB);
 
+  // ── Disease Registration accent ─────────────────────────────
+  // Marks Disease Registration datasets/forms within the merged
+  // Routine capture flow (dataset icons, section/period/entry AppBars).
+  static const Color diseaseAccent = Color(0xFFC62828);
+
   // ── Shadows ────────────────────────────────────────────────
   static const Color shadow = Color(0x1A000000);
   static const Color shadowMedium = Color(0x33000000);

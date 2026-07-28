@@ -18,12 +18,18 @@ class DataEntryTable extends StatefulWidget {
   final String orgUnitId;
   final String period;
 
+  /// Filters the visible sections by data element name — forms with
+  /// many elements (e.g. long disease lists) need this to stay
+  /// usable. Empty/null shows everything.
+  final String? searchQuery;
+
   const DataEntryTable({
     super.key,
     required this.dataElements,
     required this.dataValues,
     required this.orgUnitId,
     required this.period,
+    this.searchQuery,
   });
 
   @override
@@ -52,9 +58,18 @@ class _DataEntryTableState extends State<DataEntryTable> {
   static List<CategoryOptionCombo> _combosFor(DataElementEntity element) =>
       element.categoryOptionCombos;
 
+  // Accordion: opening one element auto-closes whatever else was
+  // open (Routine and Disease Registration share this widget, so
+  // both get it) — tapping the ALREADY-open one just collapses it.
   void _toggle(String elementId) {
     setState(() {
-      if (!_expandedIds.remove(elementId)) _expandedIds.add(elementId);
+      if (_expandedIds.contains(elementId)) {
+        _expandedIds.remove(elementId);
+      } else {
+        _expandedIds
+          ..clear()
+          ..add(elementId);
+      }
     });
   }
 
@@ -66,16 +81,31 @@ class _DataEntryTableState extends State<DataEntryTable> {
       );
     }
 
+    final query = widget.searchQuery?.trim().toLowerCase() ?? '';
+    final visibleElements = query.isEmpty
+        ? widget.dataElements
+        : [
+            for (final e in widget.dataElements)
+              if (e.displayName.toLowerCase().contains(query)) e,
+          ];
+    if (visibleElements.isEmpty) {
+      return Center(
+        child: Text('No results for "${widget.searchQuery}"',
+            style: AppTextStyles.bodyMedium
+                .copyWith(color: AppColors.textSecondary)),
+      );
+    }
+
     // Sections are built lazily — large datasets would otherwise
     // inflate thousands of text fields at once.
     final list = ListView.builder(
-      itemCount: widget.dataElements.length,
-      itemBuilder: (context, index) =>
-          _buildSection(widget.dataElements[index]),
+      itemCount: visibleElements.length,
+      itemBuilder: (context, index) => _buildSection(visibleElements[index]),
     );
 
     // Server-rejected values must be impossible to miss — red cells
-    // alone can sit below the fold on long forms.
+    // alone can sit below the fold on long forms, so this counts the
+    // WHOLE form, not just what the search currently shows.
     final formIds = {for (final e in widget.dataElements) e.id};
     final rejectedCount = widget.dataValues.values
         .where((v) => v.syncError != null && formIds.contains(v.dataElementId))

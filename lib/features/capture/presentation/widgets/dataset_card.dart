@@ -21,7 +21,7 @@ class DataSetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconColor = DataSetIconHelper.getColor(dataSet.name);
+    final iconColor = DataSetIconHelper.colorFor(dataSet);
 
     return GestureDetector(
       onTap: onTap,

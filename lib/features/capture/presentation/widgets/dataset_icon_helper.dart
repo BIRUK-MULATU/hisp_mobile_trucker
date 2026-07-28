@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
 import '../../../../shared/theme/app_colors.dart';
+import '../../domain/entities/dataset_entity.dart';
 
 class DataSetIconHelper {
   DataSetIconHelper._();
 
+  /// Forced styling for datasets tagged Disease Registration —
+  /// takes priority over the name-keyword lookup below.
+  static const Color diseaseColor = AppColors.diseaseAccent;
+  static const IconData diseaseIcon = Icons.sick_outlined;
+
   static const List<_IconConfig> _configs = [
+    _IconConfig(
+      keywords: ['disease'],
+      icon: diseaseIcon,
+      color: diseaseColor,
+    ),
     _IconConfig(
       keywords: ['maternal', 'reproductive', 'mother'],
       icon: Icons.people_alt_outlined,
@@ -41,6 +52,15 @@ class DataSetIconHelper {
       color: Color(0xFF00796B),
     ),
   ];
+
+  /// The real "Dataset Category" attribute wins over the name
+  /// heuristic below — a disease dataset that happens not to say
+  /// "disease" in its name still gets the disease styling.
+  static IconData iconFor(DataSetEntity dataSet) =>
+      dataSet.isDiseaseRegistration ? diseaseIcon : getIcon(dataSet.name);
+
+  static Color colorFor(DataSetEntity dataSet) =>
+      dataSet.isDiseaseRegistration ? diseaseColor : getColor(dataSet.name);
 
   static IconData getIcon(String name) {
     final lower = name.toLowerCase();

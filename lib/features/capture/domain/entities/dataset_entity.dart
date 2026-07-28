@@ -10,6 +10,10 @@ class DataSetEntity {
   final String? iconType; // determines which icon to show
   final DateTime? lastSynced;
 
+  /// True for data sets tagged "Dataset Category" = "Disease" —
+  /// drives the disease icon/color and downstream AppBar theming.
+  final bool isDiseaseRegistration;
+
   const DataSetEntity({
     required this.id,
     required this.name,
@@ -19,6 +23,7 @@ class DataSetEntity {
     this.syncStatus = SyncStatus.unsynced,
     this.iconType,
     this.lastSynced,
+    this.isDiseaseRegistration = false,
   });
 
   @override

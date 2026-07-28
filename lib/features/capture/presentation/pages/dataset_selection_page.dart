@@ -121,6 +121,8 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
           orgUnitName: report.orgUnitName,
           period: report.periodId,
           periodType: report.periodType,
+          isDiseaseRegistration: report.isDiseaseRegistration,
+          attributeOptionComboUid: report.attributeOptionComboUid,
         ),
       ),
     );
@@ -142,6 +144,7 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
           periodType: dataSet.periodType,
           orgUnitId: widget.orgUnitId,
           orgUnitName: widget.orgUnitName,
+          isDiseaseRegistration: dataSet.isDiseaseRegistration,
         ),
       ),
     );
@@ -398,7 +401,10 @@ class _ReportCard extends StatelessWidget {
                     ),
                     const SizedBox(height: AppDimensions.spaceXS),
                     Text(
-                      '${report.periodLabel} · ${report.orgUnitName}',
+                      report.attributeOptionComboLabel == null
+                          ? '${report.periodLabel} · ${report.orgUnitName}'
+                          : '${report.periodLabel} · ${report.orgUnitName} '
+                              '· ${report.attributeOptionComboLabel}',
                       style: AppTextStyles.bodySmall
                           .copyWith(color: AppColors.textSecondary),
                       maxLines: 1,
@@ -432,9 +438,7 @@ class _ReportCard extends StatelessWidget {
                     icon: report.synced
                         ? Icons.cloud_done_rounded
                         : Icons.cloud_upload_rounded,
-                    color: report.synced
-                        ? AppColors.primary
-                        : AppColors.error,
+                    color: report.synced ? AppColors.primary : AppColors.error,
                   ),
                 ],
               ),

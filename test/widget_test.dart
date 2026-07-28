@@ -20,6 +20,7 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
     savedValues = dataValues;
   }
@@ -34,6 +35,7 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) =>
       throw UnimplementedError();
 
@@ -42,6 +44,7 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) =>
       throw UnimplementedError();
 
@@ -50,6 +53,7 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async =>
       const [];
 
@@ -58,6 +62,7 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) =>
       throw UnimplementedError();
 
@@ -66,6 +71,7 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) =>
       throw UnimplementedError();
 }
@@ -212,12 +218,23 @@ void main() {
       // The rest start collapsed: their combos are hidden.
       expect(find.text('Value'), findsNothing);
 
-      // Tapping a collapsed header reveals its combo rows.
+      // Tapping a collapsed header reveals its combo rows AND
+      // auto-closes whatever else was open (accordion, not
+      // multi-expand) — shared by both Routine and Disease forms.
       await tester.tap(find.text('Stock-outs'));
       await tester.pump();
       expect(find.text('Value'), findsOneWidget);
+      expect(find.text('Under 5'), findsNothing);
+      expect(find.text('5 and above'), findsNothing);
 
-      // Tapping an expanded header collapses it again.
+      // Tapping another header swaps which one is open.
+      await tester.tap(find.text('Malaria cases'));
+      await tester.pump();
+      expect(find.text('Under 5'), findsOneWidget);
+      expect(find.text('5 and above'), findsOneWidget);
+      expect(find.text('Value'), findsNothing);
+
+      // Tapping the currently-open header just collapses it.
       await tester.tap(find.text('Malaria cases'));
       await tester.pump();
       expect(find.text('Under 5'), findsNothing);

@@ -27,6 +27,15 @@ class DataEntryPage extends StatelessWidget {
 
   final DataEntryBloc? preloadedBloc;
 
+  /// Tags this dataset as Disease Registration — themes the AppBar
+  /// and save FAB with the disease accent.
+  final bool isDiseaseRegistration;
+
+  /// Scopes this form to one category-combo cell of the data set's
+  /// OWN category combination (e.g. Department × Outcome). Null uses
+  /// the data set's default combo — every Routine data set today.
+  final String? attributeOptionComboUid;
+
   const DataEntryPage({
     super.key,
     required this.dataSetId,
@@ -38,6 +47,8 @@ class DataEntryPage extends StatelessWidget {
     this.sectionId,
     this.sectionName,
     this.preloadedBloc,
+    this.isDiseaseRegistration = false,
+    this.attributeOptionComboUid,
   });
 
   @override
@@ -52,6 +63,8 @@ class DataEntryPage extends StatelessWidget {
         periodType: periodType,
         sectionId: sectionId,
         sectionName: sectionName,
+        isDiseaseRegistration: isDiseaseRegistration,
+        attributeOptionComboUid: attributeOptionComboUid,
       );
     }
 
@@ -67,6 +80,7 @@ class DataEntryPage extends StatelessWidget {
           orgUnitId: orgUnitId,
           period: period,
           sectionId: sectionId,
+          attributeOptionComboUid: attributeOptionComboUid,
         )),
       child: _DataEntryView(
         dataSetId: dataSetId,
@@ -77,6 +91,8 @@ class DataEntryPage extends StatelessWidget {
         periodType: periodType,
         sectionId: sectionId,
         sectionName: sectionName,
+        isDiseaseRegistration: isDiseaseRegistration,
+        attributeOptionComboUid: attributeOptionComboUid,
       ),
     );
   }
@@ -91,6 +107,8 @@ class _DataEntryView extends StatefulWidget {
   final String periodType;
   final String? sectionId;
   final String? sectionName;
+  final bool isDiseaseRegistration;
+  final String? attributeOptionComboUid;
 
   const _DataEntryView({
     required this.dataSetId,
@@ -101,6 +119,8 @@ class _DataEntryView extends StatefulWidget {
     required this.periodType,
     this.sectionId,
     this.sectionName,
+    this.isDiseaseRegistration = false,
+    this.attributeOptionComboUid,
   });
 
   @override
@@ -115,11 +135,20 @@ class _DataEntryViewState extends State<_DataEntryView> {
   /// bottom sheet the save flow shows (complete vs reopen).
   bool _isCompleted = false;
 
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _loadCompletionStatus());
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCompletionStatus() async {
@@ -130,6 +159,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                 dataSetId: widget.dataSetId,
                 orgUnitId: widget.orgUnitId,
                 period: widget.period,
+                attributeOptionComboUid: widget.attributeOptionComboUid,
               );
       if (mounted) setState(() => _isCompleted = completed);
     } catch (_) {
@@ -158,6 +188,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
       orgUnitId: widget.orgUnitId,
       period: widget.period,
       sectionId: widget.sectionId,
+      attributeOptionComboUid: widget.attributeOptionComboUid,
     ));
   }
 
@@ -205,6 +236,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
           dataSetId: widget.dataSetId,
           orgUnitId: widget.orgUnitId,
           period: widget.period,
+          attributeOptionComboUid: widget.attributeOptionComboUid,
         );
       }
 
@@ -245,6 +277,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                 dataSetId: widget.dataSetId,
                 orgUnitId: widget.orgUnitId,
                 period: widget.period,
+                attributeOptionComboUid: widget.attributeOptionComboUid,
               );
     } catch (_) {}
     if (!mounted) return;
@@ -390,6 +423,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
               dataSetId: widget.dataSetId,
               orgUnitId: widget.orgUnitId,
               period: widget.period,
+              attributeOptionComboUid: widget.attributeOptionComboUid,
             );
         if (mounted) {
           setState(() => _isCompleted = true);
@@ -561,6 +595,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
           dataSetId: widget.dataSetId,
           orgUnitId: widget.orgUnitId,
           period: widget.period,
+          attributeOptionComboUid: widget.attributeOptionComboUid,
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -582,6 +617,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
           dataSetId: widget.dataSetId,
           orgUnitId: widget.orgUnitId,
           period: widget.period,
+          attributeOptionComboUid: widget.attributeOptionComboUid,
         );
         // Stay on the form — reopening means the user keeps working.
         if (mounted) {
@@ -619,17 +655,31 @@ class _DataEntryViewState extends State<_DataEntryView> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: AppColors.primary,
+        backgroundColor: widget.isDiseaseRegistration
+            ? AppColors.diseaseAccent
+            : AppColors.primary,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          widget.sectionName ?? widget.dataSetName,
-          style: AppTextStyles.appBarTitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.sectionName ?? widget.dataSetName,
+              style: AppTextStyles.appBarTitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (widget.isDiseaseRegistration)
+              Text(
+                'Disease Registration',
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
+              ),
+          ],
         ),
         actions: [
           const ConnectivityIndicator(),
@@ -652,6 +702,46 @@ class _DataEntryViewState extends State<_DataEntryView> {
           ),
           const Divider(height: 1, color: AppColors.divider),
 
+          // ── Search — long forms (e.g. disease lists) need this
+          // to stay usable ─────────────────────────────
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppDimensions.space,
+              vertical: AppDimensions.spaceSM,
+            ),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (q) => setState(() => _searchQuery = q),
+              style: AppTextStyles.bodyMedium,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Search...',
+                hintStyle: const TextStyle(color: AppColors.textHint),
+                prefixIcon: const Icon(Icons.search_rounded,
+                    color: AppColors.textSecondary, size: AppDimensions.iconMD),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close_rounded,
+                            color: AppColors.textSecondary, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      ),
+                filled: true,
+                fillColor: AppColors.backgroundGrey,
+                contentPadding:
+                    const EdgeInsets.symmetric(vertical: AppDimensions.spaceSM),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          const Divider(height: 1, color: AppColors.divider),
+
           // ── Table ─────────────────────────────────
           Expanded(
             child: BlocBuilder<DataEntryBloc, DataEntryState>(
@@ -668,6 +758,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
                             orgUnitId: widget.orgUnitId,
                             period: widget.period,
                             sectionId: widget.sectionId,
+                            attributeOptionComboUid:
+                                widget.attributeOptionComboUid,
                           ),
                         ),
                   );
@@ -678,6 +770,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                     dataValues: state.dataValues,
                     orgUnitId: widget.orgUnitId,
                     period: widget.period,
+                    searchQuery: _searchQuery,
                   );
                 }
                 // Initial state (load event not processed yet) —
@@ -692,7 +785,9 @@ class _DataEntryViewState extends State<_DataEntryView> {
       // ── Save FAB ──────────────────────────────────
       floatingActionButton: FloatingActionButton(
         onPressed: (_isSaving || _isCompleting) ? null : _onSaveTapped,
-        backgroundColor: AppColors.primary,
+        backgroundColor: widget.isDiseaseRegistration
+            ? AppColors.diseaseAccent
+            : AppColors.primary,
         elevation: 4,
         shape: const CircleBorder(),
         child: (_isSaving || _isCompleting)
