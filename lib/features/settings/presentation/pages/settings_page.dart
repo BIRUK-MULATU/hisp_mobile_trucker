@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:showcaseview/showcaseview.dart';
+import '../../../../core/auth/app_session.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/onboarding/tour_helper.dart';
 import '../../../../core/router/app_router.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/server_url_dialog.dart';
+import '../../../audit_log/presentation/pages/audit_log_page.dart';
 import '../../../auth/data/datasources/auth_remote_datasource.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
 import '../../../auth/domain/usecases/logout_usecase.dart';
@@ -25,12 +29,23 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String? _username;
   String? _orgUnitName;
+  String? _orgUnitUid;
   String _serverUrl = ApiConstants.baseUrl;
+
+  final _auditLogShowcaseKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      maybeStartTour(
+        context,
+        tourId: 'settings',
+        keys: [_auditLogShowcaseKey],
+      );
+    });
   }
 
   Future<void> _load() async {
@@ -43,10 +58,26 @@ class _SettingsPageState extends State<SettingsPage> {
       _orgUnitName = orgUnit?['displayName'] as String? ??
           orgUnit?['name'] as String? ??
           orgUnit?['shortName'] as String?;
+      _orgUnitUid = orgUnit?['id'] as String?;
       _serverUrl = (storedUrl != null && storedUrl.isNotEmpty)
           ? storedUrl
           : ApiConstants.baseUrl;
     });
+  }
+
+  void _openAuditLog() {
+    final orgUnitUid = _orgUnitUid;
+    if (orgUnitUid == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AuditLogPage(
+          db: AppSession.instance.service.db,
+          orgUnitUid: orgUnitUid,
+          api: AppSession.instance.api,
+        ),
+      ),
+    );
   }
 
   Future<void> _editServerUrl() async {
@@ -157,6 +188,23 @@ class _SettingsPageState extends State<SettingsPage> {
                     title: 'DHIS2 server URL',
                     subtitle: _serverUrl,
                     onTap: _editServerUrl,
+                  ),
+                ]),
+
+                const _SectionHeader('Data'),
+                _SettingsCard(children: [
+                  Showcase(
+                    key: _auditLogShowcaseKey,
+                    title: 'Audit log',
+                    description: "See DHIS2's own edit history for your "
+                        'organisation unit — who changed what, and when.',
+                    child: _SettingsTile(
+                      icon: Icons.history_rounded,
+                      color: AppColors.primary,
+                      title: 'Audit log',
+                      subtitle: "DHIS2's server history for your org unit",
+                      onTap: _orgUnitUid == null ? null : _openAuditLog,
+                    ),
                   ),
                 ]),
 

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:showcaseview/showcaseview.dart';
 import '../../../../core/auth/app_session.dart';
+import '../../../../core/onboarding/onboarding_service.dart';
+import '../../../../core/onboarding/tour_helper.dart';
 import '../../../../core/sync/manual_sync.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
@@ -37,6 +40,45 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   HomeMode _mode = HomeMode.visualization;
+
+  // ── App tour targets ────────────────────────────────────────
+  // Always-visible anchors only — the filter button is Capture-only
+  // and would be missing from the tree on a fresh Visualization-mode
+  // launch, which showcaseview can't point at.
+  final _modeToggleShowcaseKey = GlobalKey();
+  final _menuShowcaseKey = GlobalKey();
+  final _searchShowcaseKey = GlobalKey();
+  final _syncShowcaseKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStartTour());
+  }
+
+  Future<void> _maybeStartTour({bool force = false}) async {
+    if (!mounted) return;
+    await maybeStartTour(
+      context,
+      tourId: 'home',
+      keys: [
+        _modeToggleShowcaseKey,
+        _menuShowcaseKey,
+        _searchShowcaseKey,
+        _syncShowcaseKey,
+      ],
+      force: force,
+    );
+  }
+
+  /// "App Tour" drawer item — resets every screen's tour flag, then
+  /// replays Home's immediately; the rest auto-replay on next visit.
+  void _retakeTour() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await OnboardingService.resetAllTours();
+      await _maybeStartTour(force: true);
+    });
+  }
 
   // ── App-bar controls (search / sync / filters) ─────────────
   bool _showFilters = false;
@@ -157,8 +199,11 @@ class _HomePageState extends State<HomePage> {
           if (!_searchActive) _searchQuery = '';
         }),
         onSearchChanged: (query) => setState(() => _searchQuery = query),
+        menuShowcaseKey: _menuShowcaseKey,
+        searchShowcaseKey: _searchShowcaseKey,
+        syncShowcaseKey: _syncShowcaseKey,
       ),
-      drawer: const _HomeDrawer(),
+      drawer: _HomeDrawer(onRetakeTour: _retakeTour),
       body: LayoutBuilder(
         builder: (context, constraints) {
           // The keyboard shrinks the body (resizeToAvoidBottomInset);
@@ -185,25 +230,31 @@ class _HomePageState extends State<HomePage> {
                     // screens.
                     ResponsiveContent(
                       maxWidth: AppBreakpoints.formMaxWidth,
-                      child: SegmentedToggle(
-                        items: const [
-                          SegmentedToggleItem(
-                            label: 'Visualization',
-                            icon: Icons.insights_rounded,
-                          ),
-                          SegmentedToggleItem(
-                            label: 'Capture',
-                            icon: Icons.edit_note_rounded,
-                          ),
-                        ],
-                        index: _mode.index,
-                        // A query typed for one mode means nothing in the
-                        // other — close the search on switch.
-                        onChanged: (i) => setState(() {
-                          _mode = HomeMode.values[i];
-                          _searchActive = false;
-                          _searchQuery = '';
-                        }),
+                      child: Showcase(
+                        key: _modeToggleShowcaseKey,
+                        title: 'Switch modes',
+                        description: 'Flip between Visualization (charts) '
+                            'and Capture (data entry).',
+                        child: SegmentedToggle(
+                          items: const [
+                            SegmentedToggleItem(
+                              label: 'Visualization',
+                              icon: Icons.insights_rounded,
+                            ),
+                            SegmentedToggleItem(
+                              label: 'Capture',
+                              icon: Icons.edit_note_rounded,
+                            ),
+                          ],
+                          index: _mode.index,
+                          // A query typed for one mode means nothing in the
+                          // other — close the search on switch.
+                          onChanged: (i) => setState(() {
+                            _mode = HomeMode.values[i];
+                            _searchActive = false;
+                            _searchQuery = '';
+                          }),
+                        ),
                       ),
                     ),
                     const Divider(height: 1, color: AppColors.divider),
@@ -270,7 +321,8 @@ class _HomePageState extends State<HomePage> {
 
 // ── Drawer (unchanged behavior) ────────────────────────────────
 class _HomeDrawer extends StatelessWidget {
-  const _HomeDrawer();
+  final VoidCallback? onRetakeTour;
+  const _HomeDrawer({this.onRetakeTour});
 
   Future<void> _logout(BuildContext context) async {
     final secureStorage = SecureStorage();
@@ -408,6 +460,14 @@ class _HomeDrawer extends StatelessWidget {
             onTap: () {
               Navigator.pop(context);
               context.push(AppRouter.settings);
+            },
+          ),
+          _DrawerItem(
+            icon: Icons.travel_explore_rounded,
+            label: 'App Tour',
+            onTap: () {
+              Navigator.pop(context);
+              onRetakeTour?.call();
             },
           ),
           _DrawerItem(

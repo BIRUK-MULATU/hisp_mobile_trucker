@@ -206,6 +206,8 @@ class ChartsListViewState extends State<ChartsListView> {
                           ],
                         ),
                       ),
+                      if (chart.syncState != ChartSyncState.synced)
+                        _SyncStatusIcon(chart: chart),
                       IconButton(
                         icon: const Icon(Icons.delete_outline_rounded,
                             color: AppColors.textSecondary),
@@ -218,6 +220,40 @@ class ChartsListViewState extends State<ChartsListView> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+/// Not-yet-on-the-server state for one chart card — quiet by design
+/// (synced is the common case and shows nothing); long-press an error
+/// icon to read why the server rejected it, same pattern as the
+/// data-entry cell's rejected-value tooltip.
+class _SyncStatusIcon extends StatelessWidget {
+  const _SyncStatusIcon({required this.chart});
+
+  final ChartConfig chart;
+
+  @override
+  Widget build(BuildContext context) {
+    if (chart.syncState == ChartSyncState.error) {
+      return Tooltip(
+        message: chart.syncError ?? 'Rejected by the server',
+        triggerMode: TooltipTriggerMode.longPress,
+        child: const Padding(
+          padding: EdgeInsets.all(AppDimensions.spaceXS),
+          child: Icon(Icons.error_outline_rounded,
+              color: AppColors.error, size: AppDimensions.iconSM),
+        ),
+      );
+    }
+    return const Tooltip(
+      message: 'Not yet on the server — syncs once online',
+      triggerMode: TooltipTriggerMode.longPress,
+      child: Padding(
+        padding: EdgeInsets.all(AppDimensions.spaceXS),
+        child: Icon(Icons.cloud_upload_outlined,
+            color: AppColors.textSecondary, size: AppDimensions.iconSM),
       ),
     );
   }

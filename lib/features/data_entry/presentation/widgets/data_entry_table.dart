@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../audit_log/presentation/widgets/cell_history_sheet.dart';
 import '../../domain/entities/data_element_entity.dart';
 import '../bloc/data_entry_bloc.dart';
 import 'data_entry_cell.dart';
@@ -258,7 +259,24 @@ class _DataEntryTableState extends State<DataEntryTable> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: AppDimensions.spaceSM),
+          InkWell(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+            onTap: () => showCellHistorySheet(
+              context,
+              dataElementId: element.id,
+              dataElementName: element.displayName,
+              comboId: combo.id,
+              comboName: combo.displayName,
+              orgUnitId: widget.orgUnitId,
+              period: widget.period,
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(AppDimensions.spaceXS),
+              child: Icon(Icons.history_rounded,
+                  size: AppDimensions.iconSM, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spaceXS),
           SizedBox(
             width: 140,
             child: Padding(

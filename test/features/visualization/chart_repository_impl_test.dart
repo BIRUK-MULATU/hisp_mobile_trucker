@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hisp_mobile_trucker/core/auth/session_service.dart';
 import 'package:hisp_mobile_trucker/core/database/app_database.dart';
+import 'package:hisp_mobile_trucker/core/errors/exceptions.dart';
 import 'package:hisp_mobile_trucker/core/network/api_client.dart';
 import 'package:hisp_mobile_trucker/features/visualization/data/repositories/chart_repository_impl.dart';
 import 'package:hisp_mobile_trucker/features/visualization/domain/entities/chart_config.dart';
@@ -34,6 +35,45 @@ class _CannedAdapter implements HttpClientAdapter {
     return ResponseBody.fromString(
       jsonEncode(body),
       200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// Every request fails as if the server were unreachable.
+class _ThrowingAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? _,
+      Future<void>? __) async {
+    throw DioException(
+        requestOptions: options, type: DioExceptionType.connectionError);
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// Returns one canned status/body for every request and records the
+/// last request's method, path and body for assertions.
+class _RecordingAdapter implements HttpClientAdapter {
+  _RecordingAdapter({required this.statusCode, required this.body});
+
+  final int statusCode;
+  final Map<String, dynamic> body;
+  RequestOptions? lastRequest;
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? _,
+      Future<void>? __) async {
+    lastRequest = options;
+    return ResponseBody.fromString(
+      jsonEncode(body),
+      statusCode,
       headers: {
         Headers.contentTypeHeader: ['application/json'],
       },
@@ -193,6 +233,243 @@ void main() {
       expect(data.series.single.name, 'ANC 1st visit');
       expect(data.series.single.values, [20.0, 25.0]);
       expect(data.type, 'COLUMN');
+    });
+
+    Map<String, dynamic> cannedBody() => {
+          'headers': [
+            {'name': 'dx'},
+            {'name': 'pe'},
+            {'name': 'value'},
+          ],
+          'metaData': {
+            'items': {
+              'indicator01': {'name': 'ANC 1st visit'},
+              '201811': {'name': 'Hamle 2018'},
+            },
+            'dimensions': {
+              'dx': ['indicator01'],
+              'pe': ['201811'],
+            },
+          },
+          'rows': [
+            ['indicator01', '201811', '25.0'],
+          ],
+        };
+
+    test('runChart caches its result for later offline viewing', () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _CannedAdapter(body: cannedBody());
+      final repo =
+          ChartRepositoryImpl(session: _TestSession(db), api: client);
+
+      await repo.runChart(config());
+
+      // A later live attempt that fails falls back to what was cached.
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final result = await repo.loadChart(config());
+      expect(result.isFromCache, isTrue);
+      expect(result.cachedAt, isNotNull);
+      expect(result.data.series.single.values, [25.0]);
+    });
+
+    test('loadChart with skipLiveAttempt reads the cache directly',
+        () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _CannedAdapter(body: cannedBody());
+      final repo =
+          ChartRepositoryImpl(session: _TestSession(db), api: client);
+      await repo.runChart(config());
+
+      final result =
+          await repo.loadChart(config(), skipLiveAttempt: true);
+      expect(result.isFromCache, isTrue);
+      expect(result.data.categories, ['Hamle 2018']);
+    });
+
+    test('loadChart throws when offline and nothing is cached yet',
+        () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo =
+          ChartRepositoryImpl(session: _TestSession(db), api: client);
+
+      expect(
+        () => repo.loadChart(config(), skipLiveAttempt: true),
+        throwsA(isA<NetworkException>()),
+      );
+    });
+
+    test('deleteChart also clears its cached result', () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _CannedAdapter(body: cannedBody());
+      final repo =
+          ChartRepositoryImpl(session: _TestSession(db), api: client);
+      await repo.saveChart(config());
+      await repo.runChart(config());
+
+      await repo.deleteChart('chart1');
+
+      expect(
+        () => repo.loadChart(config(), skipLiveAttempt: true),
+        throwsA(isA<NetworkException>()),
+      );
+    });
+  });
+
+  group('push to server', () {
+    test('creates a new Visualization and stores the server uid', () async {
+      final adapter = _RecordingAdapter(statusCode: 201, body: {
+        'httpStatus': 'Created',
+        'response': {'uid': 'viz00000001'},
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
+      await repo.saveChart(config());
+
+      final pushed = await repo.pushPendingCharts();
+
+      expect(pushed, 1);
+      expect(adapter.lastRequest!.method, 'POST');
+      expect(adapter.lastRequest!.path, '/api/visualizations.json');
+      final saved = (await repo.getSavedCharts()).single;
+      expect(saved.syncState, ChartSyncState.synced);
+      expect(saved.serverVisualizationId, 'viz00000001');
+    });
+
+    test('already-synced charts are not pushed again', () async {
+      final adapter = _ThrowingAdapter();
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
+      await repo.saveChart(config().copyWith(
+        syncState: ChartSyncState.synced,
+        serverVisualizationId: 'viz00000001',
+      ));
+
+      final pushed = await repo.pushPendingCharts();
+      expect(pushed, 0);
+    });
+
+    test('a previously-created chart PUTs to its own object on a later push',
+        () async {
+      final adapter = _RecordingAdapter(statusCode: 200, body: {
+        'httpStatus': 'OK',
+        'response': {},
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
+      await repo.saveChart(config().copyWith(
+        syncState: ChartSyncState.error,
+        serverVisualizationId: 'vizExisting1',
+        syncError: 'stale error to be cleared',
+      ));
+
+      await repo.pushPendingCharts();
+
+      expect(adapter.lastRequest!.method, 'PUT');
+      expect(adapter.lastRequest!.path, '/api/visualizations/vizExisting1.json');
+      final saved = (await repo.getSavedCharts()).single;
+      expect(saved.syncState, ChartSyncState.synced);
+      expect(saved.serverVisualizationId, 'vizExisting1');
+      expect(saved.syncError, isNull);
+    });
+
+    test('server rejection settles the chart as error with the message',
+        () async {
+      final adapter = _RecordingAdapter(statusCode: 409, body: {
+        'httpStatus': 'Conflict',
+        'message': 'Object referenced by another object.',
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
+      await repo.saveChart(config());
+
+      final pushed = await repo.pushPendingCharts();
+
+      expect(pushed, 0);
+      final saved = (await repo.getSavedCharts()).single;
+      expect(saved.syncState, ChartSyncState.error);
+      expect(saved.syncError, 'Object referenced by another object.');
+    });
+
+    test('transport failure leaves the chart pending for the next attempt',
+        () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
+      await repo.saveChart(config());
+
+      final pushed = await repo.pushPendingCharts();
+
+      expect(pushed, 0);
+      final saved = (await repo.getSavedCharts()).single;
+      expect(saved.syncState, ChartSyncState.pending);
+    });
+
+    test(
+        'dataset metrics nest dataSet+metric (verified against a live '
+        '2.40.1 server’s own saved visualizations)', () async {
+      final adapter = _RecordingAdapter(statusCode: 201, body: {
+        'response': {'uid': 'viz1'}
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
+
+      await repo.saveChart(config(
+        dataType: ChartDataType.dataSet,
+        items: const [ChartItemRef(id: 'dataSet0001', name: 'HMIS Monthly')],
+        metric: DataSetMetric.expectedReports,
+      ));
+      await repo.pushPendingCharts();
+
+      final body = adapter.lastRequest!.data as Map<String, dynamic>;
+      final items = body['dataDimensionItems'] as List;
+      expect(items.single['dataDimensionItemType'], 'REPORTING_RATE');
+      final reportingRate = items.single['reportingRate'] as Map;
+      expect((reportingRate['dataSet'] as Map)['id'], 'dataSet0001');
+      expect(reportingRate['metric'], 'EXPECTED_REPORTS');
+
+      // Confirmed live: columns[].items carries the PLAIN dataset id,
+      // never a composite "dataSet.METRIC" string.
+      final columns = (body['columns'] as List).single as Map;
+      expect(columns['items'], [
+        {'id': 'dataSet0001'}
+      ]);
+    });
+
+    test('indicators and totals-only data elements nest a plain id',
+        () async {
+      final adapter = _RecordingAdapter(statusCode: 201, body: {
+        'response': {'uid': 'viz1'}
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
+
+      await repo.saveChart(config(items: const [
+        ChartItemRef(id: 'indicator01', name: 'ANC 1st visit'),
+      ]));
+      await repo.pushPendingCharts();
+
+      final body = adapter.lastRequest!.data as Map<String, dynamic>;
+      final item = (body['dataDimensionItems'] as List).single as Map;
+      expect(item['dataDimensionItemType'], 'INDICATOR');
+      expect((item['indicator'] as Map)['id'], 'indicator01');
     });
   });
 }

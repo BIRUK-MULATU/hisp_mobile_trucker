@@ -2,18 +2,23 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
+import '../metadata/category_option_combo.dart';
 import '../network/api_client.dart';
 import '../utils/app_logger.dart';
+import 'audit_log_store.dart';
 import 'period_access.dart';
 
 /// Complete / incomplete a dataset for a form instance. Same offline
 /// pattern as data values (sync-stated, push-first), simpler (no
 /// per-cell conflict — a registration is one boolean fact).
 class CompletenessStore {
-  CompletenessStore(this._db) : _clock = PeriodAccess(_db);
+  CompletenessStore(this._db)
+      : _clock = PeriodAccess(_db),
+        _auditLog = AuditLogStore(_db);
 
   final AppDatabase _db;
   final PeriodAccess _clock;
+  final AuditLogStore _auditLog;
 
   /// Mark a form complete or incomplete locally, pending push.
   Future<void> setComplete({
@@ -24,22 +29,43 @@ class CompletenessStore {
     required bool completed,
     String? storedBy,
   }) async {
-    await _db.into(_db.completeDataSetRegistrationsTable).insertOnConflictUpdate(
-          CompleteDataSetRegistrationsTableCompanion.insert(
-            dataSetUid: dataSetUid,
-            period: period,
-            orgUnitUid: orgUnitUid,
-            attributeOptionComboUid: attributeOptionComboUid,
-            completed: completed,
-            storedBy: Value(storedBy),
-            // effectiveNow (monotonic high-water clock), NOT
-            // DateTime.now() — same rule as DataValueStore, so a
-            // backdated device can't fake completion timestamps.
-            date: await _clock.effectiveNow(),
-            syncState: SyncState.pending,
-            lastModified: await _clock.effectiveNow(),
-          ),
-        );
+    final previous = await statusOf(
+      dataSetUid: dataSetUid,
+      period: period,
+      orgUnitUid: orgUnitUid,
+      attributeOptionComboUid: attributeOptionComboUid,
+    );
+    final now = await _clock.effectiveNow();
+    await _db.transaction(() async {
+      await _db
+          .into(_db.completeDataSetRegistrationsTable)
+          .insertOnConflictUpdate(
+            CompleteDataSetRegistrationsTableCompanion.insert(
+              dataSetUid: dataSetUid,
+              period: period,
+              orgUnitUid: orgUnitUid,
+              attributeOptionComboUid: attributeOptionComboUid,
+              completed: completed,
+              storedBy: Value(storedBy),
+              // effectiveNow (monotonic high-water clock), NOT
+              // DateTime.now() — same rule as DataValueStore, so a
+              // backdated device can't fake completion timestamps.
+              date: now,
+              syncState: SyncState.pending,
+              lastModified: now,
+            ),
+          );
+      await _auditLog.recordCompleteness(
+        dataSetUid: dataSetUid,
+        period: period,
+        orgUnitUid: orgUnitUid,
+        attributeOptionComboUid: attributeOptionComboUid,
+        previousCompleted: previous?.completed,
+        completed: completed,
+        modifiedBy: storedBy,
+        modifiedAt: now,
+      );
+    });
   }
 
   Future<CompleteDataSetRegistration?> statusOf({
@@ -133,25 +159,8 @@ class CompletenessSync {
     return ok;
   }
 
-  /// cc (the attribute combo's categoryCombo) + cp (its categoryOption
-  /// uids, ';'-joined per the DHIS2 web API) for a non-default
-  /// attributeOptionCombo. Empty for the default combo or when the
-  /// combo is not in the local cache — the server then falls back to
-  /// its own default resolution, which matches how the registration
-  /// was created.
-  Future<Map<String, String>> _attributeParams(String aocUid) async {
-    final coc = await (_db.select(_db.categoryOptionCombosTable)
-          ..where((t) => t.uid.equals(aocUid)))
-        .getSingleOrNull();
-    if (coc == null || coc.name == 'default') return const {};
-    final links = await (_db.select(_db.categoryOptionComboOptionsTable)
-          ..where((t) => t.categoryOptionComboUid.equals(aocUid)))
-        .get();
-    return {
-      'cc': coc.categoryComboUid,
-      'cp': [for (final l in links) l.categoryOptionUid].join(';'),
-    };
-  }
+  Future<Map<String, String>> _attributeParams(String aocUid) =>
+      resolveCcCpParams(_db, aocUid);
 
   Future<void> _markSynced(CompleteDataSetRegistration r) =>
       _writeState(r, SyncState.synced);

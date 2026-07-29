@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
+import 'option_grid.dart';
 
 /// A single applied filter, shown as a chip/summary instead of
 /// "No filters applied" once the user picks something.
@@ -408,85 +409,11 @@ class _DateFilterGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 3,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: AppDimensions.spaceXS,
-      crossAxisSpacing: AppDimensions.spaceXS,
-      // Keeps each cell ~44dp tall so the radio rows meet the
-      // minimum touch-target size.
-      childAspectRatio: 2.4,
-      children: kDateFilterOptions
-          .map((option) => _DateRadioOption(
-                label: option,
-                selected: option == selected,
-                onTap: () => onSelected(option),
-              ))
-          .toList(),
-    );
-  }
-}
-
-class _DateRadioOption extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _DateRadioOption({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return MergeSemantics(
-      child: Semantics(
-        inMutuallyExclusiveGroup: true,
-        checked: selected,
-        label: label,
-        child: InkWell(
-          onTap: onTap,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.5),
-                  color: Colors.transparent,
-                ),
-                child: selected
-                    ? Center(
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: AppDimensions.spaceXS),
-              Flexible(
-                child: ExcludeSemantics(
-                  child: Text(
-                    label,
-                    style:
-                        AppTextStyles.bodySmall.copyWith(color: Colors.white),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return OptionGrid(
+      options: kDateFilterOptions,
+      selected: selected,
+      onSelected: onSelected,
+      color: Colors.white,
     );
   }
 }

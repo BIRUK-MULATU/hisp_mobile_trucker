@@ -98,3 +98,26 @@ class CategoryOptionComboResource
     return {for (final r in rows) r.categoryOptionUid};
   }
 }
+
+/// cc (a combo's categoryCombo) + cp (its categoryOption uids,
+/// ';'-joined per the DHIS2 web API) for a non-default
+/// categoryOptionCombo — the classic API has no single "give me this
+/// exact combo" query param, so callers address it by its category
+/// combo + option set instead. Empty for the default combo or when the
+/// combo is missing from the local cache — the server then falls back
+/// to its own default resolution (or, for audits, no combo filter at
+/// all — see [ServerAuditService]).
+Future<Map<String, String>> resolveCcCpParams(
+    AppDatabase db, String cocUid) async {
+  final coc = await (db.select(db.categoryOptionCombosTable)
+        ..where((t) => t.uid.equals(cocUid)))
+      .getSingleOrNull();
+  if (coc == null || coc.name == 'default') return const {};
+  final links = await (db.select(db.categoryOptionComboOptionsTable)
+        ..where((t) => t.categoryOptionComboUid.equals(cocUid)))
+      .get();
+  return {
+    'cc': coc.categoryComboUid,
+    'cp': [for (final l in links) l.categoryOptionUid].join(';'),
+  };
+}

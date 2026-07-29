@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
 import '../utils/app_logger.dart';
+import 'audit_log_store.dart';
 import 'period_access.dart';
 
 /// Locally-owned data values. NOT a MetadataResource subclass — data
@@ -19,10 +20,13 @@ import 'period_access.dart';
 /// warning if a write arrives while the tamper flag is set, but stays
 /// mechanical.
 class DataValueStore {
-  DataValueStore(this._db) : _clock = PeriodAccess(_db);
+  DataValueStore(this._db)
+      : _clock = PeriodAccess(_db),
+        _auditLog = AuditLogStore(_db);
 
   final AppDatabase _db;
   final PeriodAccess _clock;
+  final AuditLogStore _auditLog;
 
   // ── WRITE (local entry) ──────────────────────────────────────────────
 
@@ -45,20 +49,41 @@ class DataValueStore {
       log.w('[dataValues] write while clock tamper flag is set '
           '($dataElementUid/$period) — stamp uses high-water mark');
     }
-    await _db.into(_db.dataValuesTable).insertOnConflictUpdate(
-          DataValuesTableCompanion.insert(
-            dataElementUid: dataElementUid,
-            period: period,
-            orgUnitUid: orgUnitUid,
-            categoryOptionComboUid: categoryOptionComboUid,
-            attributeOptionComboUid: attributeOptionComboUid,
-            value: Value(value),
-            comment: Value(comment),
-            storedBy: Value(storedBy),
-            syncState: draft ? SyncState.draft : SyncState.pending,
-            lastModified: await _clock.effectiveNow(),
-          ),
-        );
+    final previous = await findCell(
+      dataElementUid: dataElementUid,
+      period: period,
+      orgUnitUid: orgUnitUid,
+      categoryOptionComboUid: categoryOptionComboUid,
+      attributeOptionComboUid: attributeOptionComboUid,
+    );
+    final now = await _clock.effectiveNow();
+    await _db.transaction(() async {
+      await _db.into(_db.dataValuesTable).insertOnConflictUpdate(
+            DataValuesTableCompanion.insert(
+              dataElementUid: dataElementUid,
+              period: period,
+              orgUnitUid: orgUnitUid,
+              categoryOptionComboUid: categoryOptionComboUid,
+              attributeOptionComboUid: attributeOptionComboUid,
+              value: Value(value),
+              comment: Value(comment),
+              storedBy: Value(storedBy),
+              syncState: draft ? SyncState.draft : SyncState.pending,
+              lastModified: now,
+            ),
+          );
+      await _auditLog.recordDataValue(
+        dataElementUid: dataElementUid,
+        period: period,
+        orgUnitUid: orgUnitUid,
+        categoryOptionComboUid: categoryOptionComboUid,
+        attributeOptionComboUid: attributeOptionComboUid,
+        previousValue: previous?.value,
+        newValue: value,
+        modifiedBy: storedBy,
+        modifiedAt: now,
+      );
+    });
   }
 
   /// Completing a form is the moment drafts become sendable: flip the

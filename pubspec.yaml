@@ -37,6 +37,14 @@ dependencies:
   flutter_svg: ^2.3.0
   fl_chart: ^1.2.0
 
+  # Printing / PDF export
+  pdf: ^3.11.1
+  printing: ^5.13.3
+
+  # Onboarding / app tour
+  shared_preferences: ^2.3.2
+  showcaseview: ^4.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -48,3 +56,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/fonts/

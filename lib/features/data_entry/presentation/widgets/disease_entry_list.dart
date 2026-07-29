@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:showcaseview/showcaseview.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -27,6 +28,10 @@ class DiseaseEntryList extends StatefulWidget {
   /// meaningful to type into a fresh one) is hidden.
   final bool readOnly;
 
+  /// App-tour anchor for "Select for new disease" (see data_entry_page
+  /// .dart) — null outside the tour, no behavior change.
+  final GlobalKey? searchShowcaseKey;
+
   const DiseaseEntryList({
     super.key,
     required this.dataElements,
@@ -34,6 +39,7 @@ class DiseaseEntryList extends StatefulWidget {
     required this.orgUnitId,
     required this.period,
     this.readOnly = false,
+    this.searchShowcaseKey,
   });
 
   @override
@@ -63,6 +69,20 @@ class _DiseaseEntryListState extends State<DiseaseEntryList> {
     _newDiseaseController.dispose();
     _newDiseaseFocusNode.dispose();
     super.dispose();
+  }
+
+  /// Wraps [child] in a Showcase when the app tour supplied a key;
+  /// otherwise returns it untouched.
+  Widget _showcaseSearchField(Widget child) {
+    final key = widget.searchShowcaseKey;
+    if (key == null) return child;
+    return Showcase(
+      key: key,
+      title: 'Add a disease',
+      description: 'Search or browse every disease not yet recorded — '
+          'picking one opens a fresh form above.',
+      child: child,
+    );
   }
 
   bool _isRecorded(DataElementEntity e) {
@@ -127,23 +147,25 @@ class _DiseaseEntryListState extends State<DiseaseEntryList> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SearchField(
-                  controller: _newDiseaseController,
-                  focusNode: _newDiseaseFocusNode,
-                  hint: 'Select for new disease',
-                  value: _newDiseaseQuery,
-                  onChanged: (q) => setState(() => _newDiseaseQuery = q),
-                  trailing: IconButton(
-                    icon: Icon(
-                      newDropdownOpen
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      color: AppColors.textSecondary,
+                _showcaseSearchField(
+                  SearchField(
+                    controller: _newDiseaseController,
+                    focusNode: _newDiseaseFocusNode,
+                    hint: 'Select for new disease',
+                    value: _newDiseaseQuery,
+                    onChanged: (q) => setState(() => _newDiseaseQuery = q),
+                    trailing: IconButton(
+                      icon: Icon(
+                        newDropdownOpen
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.textSecondary,
+                      ),
+                      tooltip: newDropdownOpen ? 'Collapse' : 'Expand',
+                      onPressed: () => newDropdownOpen
+                          ? _newDiseaseFocusNode.unfocus()
+                          : _newDiseaseFocusNode.requestFocus(),
                     ),
-                    tooltip: newDropdownOpen ? 'Collapse' : 'Expand',
-                    onPressed: () => newDropdownOpen
-                        ? _newDiseaseFocusNode.unfocus()
-                        : _newDiseaseFocusNode.requestFocus(),
                   ),
                 ),
                 if (newDropdownOpen)

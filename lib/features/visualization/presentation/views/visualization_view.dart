@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:showcaseview/showcaseview.dart';
 
+import '../../../../core/onboarding/tour_helper.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/widgets/segmented_toggle.dart';
 import 'chart_builder_view.dart';
@@ -22,6 +24,7 @@ class VisualizationView extends StatefulWidget {
 
 class _VisualizationViewState extends State<VisualizationView> {
   final _chartsKey = GlobalKey<ChartsListViewState>();
+  final _toggleShowcaseKey = GlobalKey();
   int _tab = 0;
 
   void _showCharts() {
@@ -30,22 +33,41 @@ class _VisualizationViewState extends State<VisualizationView> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      maybeStartTour(
+        context,
+        tourId: 'visualization',
+        keys: [_toggleShowcaseKey],
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        SegmentedToggle(
-          items: const [
-            SegmentedToggleItem(
-              label: 'Charts',
-              icon: Icons.insert_chart_outlined_rounded,
-            ),
-            SegmentedToggleItem(
-              label: 'Create New',
-              icon: Icons.add_chart_rounded,
-            ),
-          ],
-          index: _tab,
-          onChanged: (i) => setState(() => _tab = i),
+        Showcase(
+          key: _toggleShowcaseKey,
+          title: 'Charts & builder',
+          description: 'Switch between your saved charts and building '
+              'a new one from indicators, data elements or datasets.',
+          child: SegmentedToggle(
+            items: const [
+              SegmentedToggleItem(
+                label: 'Charts',
+                icon: Icons.insert_chart_outlined_rounded,
+              ),
+              SegmentedToggleItem(
+                label: 'Create New',
+                icon: Icons.add_chart_rounded,
+              ),
+            ],
+            index: _tab,
+            onChanged: (i) => setState(() => _tab = i),
+          ),
         ),
         const Divider(height: 1, color: AppColors.divider),
         Expanded(

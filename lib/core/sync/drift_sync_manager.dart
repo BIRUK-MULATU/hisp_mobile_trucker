@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../features/visualization/data/repositories/chart_repository_impl.dart';
 import '../auth/app_session.dart';
 import '../data/completeness.dart';
 import '../data/data_value_push.dart';
@@ -42,8 +43,11 @@ class DriftSyncManager implements SyncManager {
       final db = session.service.db;
       final pushed = await _pushDataValues(db);
       final completions = await CompletenessSync(db, api).pushPending();
-      if (pushed > 0 || completions > 0) {
-        log.i('[autoSync] pushed $pushed values, $completions completions');
+      final charts = await ChartRepositoryImpl(session: session.service, api: api)
+          .pushPendingCharts();
+      if (pushed > 0 || completions > 0 || charts > 0) {
+        log.i('[autoSync] pushed $pushed values, $completions completions, '
+            '$charts charts');
       }
     } finally {
       _running = false;

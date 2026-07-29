@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:showcaseview/showcaseview.dart';
 import 'core/network/api_client.dart';
 import 'core/network/network_info.dart';
+import 'core/onboarding/onboarding_service.dart';
 import 'core/router/app_router.dart';
 import 'core/storage/secure_storage.dart';
 import 'core/sync/sync_coordinator.dart';
@@ -12,6 +14,10 @@ import 'core/constants/app_constants.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Onboarding/app-tour flags — loaded synchronously into memory here
+  // so the router's redirect (a plain sync function) can read them.
+  await OnboardingService.load();
 
   // Lock orientation to portrait
   await SystemChrome.setPreferredOrientations([
@@ -59,6 +65,11 @@ class HispMobileTrackerApp extends StatelessWidget {
 
       // ── Router ──────────────────────────────────────
       routerConfig: AppRouter.router,
+
+      // ── App tour overlay (see home_page.dart) ────────
+      builder: (context, child) => ShowCaseWidget(
+        builder: (context) => child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

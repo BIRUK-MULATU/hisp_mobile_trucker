@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:printing/printing.dart';
+import 'package:showcaseview/showcaseview.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
 import '../../../../core/data/period_access.dart';
 import '../../../../core/data/validation_service.dart';
 import '../../../../core/metadata/data_set.dart';
+import '../../../../core/onboarding/tour_helper.dart';
+import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -15,6 +19,7 @@ import '../../data/repositories/data_entry_repository_impl.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
 import '../bloc/data_entry_bloc.dart';
+import '../utils/data_entry_pdf.dart';
 import '../widgets/data_entry_table.dart';
 import '../widgets/disease_entry_list.dart';
 
@@ -149,13 +154,46 @@ class _DataEntryViewState extends State<_DataEntryView> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // ── App tour targets ────────────────────────────────────────
+  // Routine and Disease Registration share this page, but get their
+  // OWN tour id — Disease Registration's extra "Select for new
+  // disease" step has nothing to show a Routine user, and a user who
+  // only ever opens one of the two should still see the other's tour
+  // on their first visit to it.
+  final _printShowcaseKey = GlobalKey();
+  final _syncShowcaseKey = GlobalKey();
+  final _saveFabShowcaseKey = GlobalKey();
+  final _diseaseSearchShowcaseKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       _loadCompletionStatus();
-      _loadPeriodStatus();
+      // Awaited (not fire-and-forget) so _isPeriodClosed is settled
+      // before the tour decides whether the Save FAB — hidden once
+      // the period is closed — belongs in its target list.
+      await _loadPeriodStatus();
+      await _maybeStartTour();
     });
+  }
+
+  Future<void> _maybeStartTour({bool force = false}) async {
+    if (!mounted) return;
+    await maybeStartTour(
+      context,
+      tourId: widget.isDiseaseRegistration
+          ? 'data_entry_disease'
+          : 'data_entry_routine',
+      keys: [
+        _printShowcaseKey,
+        _syncShowcaseKey,
+        if (!_isPeriodClosed) _saveFabShowcaseKey,
+        if (widget.isDiseaseRegistration && !_isPeriodClosed)
+          _diseaseSearchShowcaseKey,
+      ],
+      force: force,
+    );
   }
 
   Future<void> _loadPeriodStatus() async {
@@ -222,6 +260,49 @@ class _DataEntryViewState extends State<_DataEntryView> {
       sectionId: widget.sectionId,
       attributeOptionComboUid: widget.attributeOptionComboUid,
     ));
+  }
+
+  // ── Print tapped — export/print whatever is currently recorded ──
+  Future<void> _onPrintTapped() async {
+    final state = context.read<DataEntryBloc>().state;
+    if (state is! DataEntryLoaded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Form is still loading — try again in a moment.'),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final recorded = recordedDataElements(
+      dataElements: state.dataElements,
+      dataValues: state.dataValues,
+    );
+    if (recorded.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nothing recorded yet — enter some values first.'),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final printedBy = await SecureStorage().getUsername();
+    final title = widget.sectionName ?? widget.dataSetName;
+    await Printing.layoutPdf(
+      name: '$title - ${widget.period}',
+      onLayout: (_) => buildDataEntryPdf(
+        title: title,
+        orgUnitName: widget.orgUnitName,
+        periodLabel: EthiopianPeriodService.formatPeriodId(widget.period),
+        isDiseaseRegistration: widget.isDiseaseRegistration,
+        dataElements: state.dataElements,
+        dataValues: state.dataValues,
+        printedBy: printedBy,
+      ),
+    );
   }
 
   // ── FAB tapped — save first ───────────────────────────────
@@ -715,10 +796,26 @@ class _DataEntryViewState extends State<_DataEntryView> {
         ),
         actions: [
           const ConnectivityIndicator(),
-          IconButton(
-            icon: const Icon(Icons.sync_rounded, color: Colors.white),
-            tooltip: 'Reload values',
-            onPressed: _onSyncTapped,
+          Showcase(
+            key: _printShowcaseKey,
+            title: 'Print / Export',
+            description: "Print or export this form as a PDF — only "
+                "what you've recorded is included.",
+            child: IconButton(
+              icon: const Icon(Icons.print_rounded, color: Colors.white),
+              tooltip: 'Print / Export PDF',
+              onPressed: _onPrintTapped,
+            ),
+          ),
+          Showcase(
+            key: _syncShowcaseKey,
+            title: 'Reload',
+            description: 'Reload this form\'s values from the server.',
+            child: IconButton(
+              icon: const Icon(Icons.sync_rounded, color: Colors.white),
+              tooltip: 'Reload values',
+              onPressed: _onSyncTapped,
+            ),
           ),
           const SizedBox(width: AppDimensions.spaceXS),
         ],
@@ -785,6 +882,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                           orgUnitId: widget.orgUnitId,
                           period: widget.period,
                           readOnly: _isPeriodClosed,
+                          searchShowcaseKey: _diseaseSearchShowcaseKey,
                         )
                       : DataEntryTable(
                           dataElements: state.dataElements,
@@ -808,27 +906,35 @@ class _DataEntryViewState extends State<_DataEntryView> {
       // nothing left to save ─────────────────────────────
       floatingActionButton: _isPeriodClosed
           ? null
-          : FloatingActionButton(
-              onPressed: (_isSaving || _isCompleting) ? null : _onSaveTapped,
-              backgroundColor: widget.isDiseaseRegistration
-                  ? AppColors.diseaseAccent
-                  : AppColors.primary,
-              elevation: 4,
-              shape: const CircleBorder(),
-              child: (_isSaving || _isCompleting)
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
+          : Showcase(
+              key: _saveFabShowcaseKey,
+              title: 'Save',
+              description: "Save your entries — you'll then be asked to "
+                  'complete the report or keep it as a draft.',
+              targetShapeBorder: const CircleBorder(),
+              child: FloatingActionButton(
+                onPressed:
+                    (_isSaving || _isCompleting) ? null : _onSaveTapped,
+                backgroundColor: widget.isDiseaseRegistration
+                    ? AppColors.diseaseAccent
+                    : AppColors.primary,
+                elevation: 4,
+                shape: const CircleBorder(),
+                child: (_isSaving || _isCompleting)
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.check_rounded,
                         color: Colors.white,
+                        size: AppDimensions.iconXL,
                       ),
-                    )
-                  : const Icon(
-                      Icons.check_rounded,
-                      color: Colors.white,
-                      size: AppDimensions.iconXL,
-                    ),
+              ),
             ),
     );
   }

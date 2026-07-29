@@ -10005,6 +10005,656 @@ class CompleteDataSetRegistrationsTableCompanion
   }
 }
 
+class $AuditLogTableTable extends AuditLogTable
+    with TableInfo<$AuditLogTableTable, AuditEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AuditLogTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  @override
+  late final GeneratedColumnWithTypeConverter<AuditEntityType, int> entityType =
+      GeneratedColumn<int>('entity_type', aliasedName, false,
+              type: DriftSqlType.int, requiredDuringInsert: true)
+          .withConverter<AuditEntityType>(
+              $AuditLogTableTable.$converterentityType);
+  static const VerificationMeta _dataElementUidMeta =
+      const VerificationMeta('dataElementUid');
+  @override
+  late final GeneratedColumn<String> dataElementUid = GeneratedColumn<String>(
+      'data_element_uid', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _categoryOptionComboUidMeta =
+      const VerificationMeta('categoryOptionComboUid');
+  @override
+  late final GeneratedColumn<String> categoryOptionComboUid =
+      GeneratedColumn<String>('category_option_combo_uid', aliasedName, true,
+          type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _dataSetUidMeta =
+      const VerificationMeta('dataSetUid');
+  @override
+  late final GeneratedColumn<String> dataSetUid = GeneratedColumn<String>(
+      'data_set_uid', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _periodMeta = const VerificationMeta('period');
+  @override
+  late final GeneratedColumn<String> period = GeneratedColumn<String>(
+      'period', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _orgUnitUidMeta =
+      const VerificationMeta('orgUnitUid');
+  @override
+  late final GeneratedColumn<String> orgUnitUid = GeneratedColumn<String>(
+      'org_unit_uid', aliasedName, false,
+      additionalChecks:
+          GeneratedColumn.checkTextLength(minTextLength: 11, maxTextLength: 11),
+      type: DriftSqlType.string,
+      requiredDuringInsert: true);
+  static const VerificationMeta _attributeOptionComboUidMeta =
+      const VerificationMeta('attributeOptionComboUid');
+  @override
+  late final GeneratedColumn<String> attributeOptionComboUid =
+      GeneratedColumn<String>('attribute_option_combo_uid', aliasedName, false,
+          additionalChecks: GeneratedColumn.checkTextLength(
+              minTextLength: 11, maxTextLength: 11),
+          type: DriftSqlType.string,
+          requiredDuringInsert: true);
+  static const VerificationMeta _previousValueMeta =
+      const VerificationMeta('previousValue');
+  @override
+  late final GeneratedColumn<String> previousValue = GeneratedColumn<String>(
+      'previous_value', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _newValueMeta =
+      const VerificationMeta('newValue');
+  @override
+  late final GeneratedColumn<String> newValue = GeneratedColumn<String>(
+      'new_value', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _modifiedByMeta =
+      const VerificationMeta('modifiedBy');
+  @override
+  late final GeneratedColumn<String> modifiedBy = GeneratedColumn<String>(
+      'modified_by', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _modifiedAtMeta =
+      const VerificationMeta('modifiedAt');
+  @override
+  late final GeneratedColumn<DateTime> modifiedAt = GeneratedColumn<DateTime>(
+      'modified_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        entityType,
+        dataElementUid,
+        categoryOptionComboUid,
+        dataSetUid,
+        period,
+        orgUnitUid,
+        attributeOptionComboUid,
+        previousValue,
+        newValue,
+        modifiedBy,
+        modifiedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'audit_log_table';
+  @override
+  VerificationContext validateIntegrity(Insertable<AuditEntry> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('data_element_uid')) {
+      context.handle(
+          _dataElementUidMeta,
+          dataElementUid.isAcceptableOrUnknown(
+              data['data_element_uid']!, _dataElementUidMeta));
+    }
+    if (data.containsKey('category_option_combo_uid')) {
+      context.handle(
+          _categoryOptionComboUidMeta,
+          categoryOptionComboUid.isAcceptableOrUnknown(
+              data['category_option_combo_uid']!, _categoryOptionComboUidMeta));
+    }
+    if (data.containsKey('data_set_uid')) {
+      context.handle(
+          _dataSetUidMeta,
+          dataSetUid.isAcceptableOrUnknown(
+              data['data_set_uid']!, _dataSetUidMeta));
+    }
+    if (data.containsKey('period')) {
+      context.handle(_periodMeta,
+          period.isAcceptableOrUnknown(data['period']!, _periodMeta));
+    } else if (isInserting) {
+      context.missing(_periodMeta);
+    }
+    if (data.containsKey('org_unit_uid')) {
+      context.handle(
+          _orgUnitUidMeta,
+          orgUnitUid.isAcceptableOrUnknown(
+              data['org_unit_uid']!, _orgUnitUidMeta));
+    } else if (isInserting) {
+      context.missing(_orgUnitUidMeta);
+    }
+    if (data.containsKey('attribute_option_combo_uid')) {
+      context.handle(
+          _attributeOptionComboUidMeta,
+          attributeOptionComboUid.isAcceptableOrUnknown(
+              data['attribute_option_combo_uid']!,
+              _attributeOptionComboUidMeta));
+    } else if (isInserting) {
+      context.missing(_attributeOptionComboUidMeta);
+    }
+    if (data.containsKey('previous_value')) {
+      context.handle(
+          _previousValueMeta,
+          previousValue.isAcceptableOrUnknown(
+              data['previous_value']!, _previousValueMeta));
+    }
+    if (data.containsKey('new_value')) {
+      context.handle(_newValueMeta,
+          newValue.isAcceptableOrUnknown(data['new_value']!, _newValueMeta));
+    }
+    if (data.containsKey('modified_by')) {
+      context.handle(
+          _modifiedByMeta,
+          modifiedBy.isAcceptableOrUnknown(
+              data['modified_by']!, _modifiedByMeta));
+    }
+    if (data.containsKey('modified_at')) {
+      context.handle(
+          _modifiedAtMeta,
+          modifiedAt.isAcceptableOrUnknown(
+              data['modified_at']!, _modifiedAtMeta));
+    } else if (isInserting) {
+      context.missing(_modifiedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AuditEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AuditEntry(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      entityType: $AuditLogTableTable.$converterentityType.fromSql(
+          attachedDatabase.typeMapping
+              .read(DriftSqlType.int, data['${effectivePrefix}entity_type'])!),
+      dataElementUid: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}data_element_uid']),
+      categoryOptionComboUid: attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}category_option_combo_uid']),
+      dataSetUid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}data_set_uid']),
+      period: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}period'])!,
+      orgUnitUid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}org_unit_uid'])!,
+      attributeOptionComboUid: attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}attribute_option_combo_uid'])!,
+      previousValue: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}previous_value']),
+      newValue: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}new_value']),
+      modifiedBy: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}modified_by']),
+      modifiedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}modified_at'])!,
+    );
+  }
+
+  @override
+  $AuditLogTableTable createAlias(String alias) {
+    return $AuditLogTableTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<AuditEntityType, int, int> $converterentityType =
+      const EnumIndexConverter<AuditEntityType>(AuditEntityType.values);
+}
+
+class AuditEntry extends DataClass implements Insertable<AuditEntry> {
+  final int id;
+  final AuditEntityType entityType;
+
+  /// Populated for dataValue entries only.
+  final String? dataElementUid;
+  final String? categoryOptionComboUid;
+
+  /// Populated for completeness entries only.
+  final String? dataSetUid;
+  final String period;
+  final String orgUnitUid;
+  final String attributeOptionComboUid;
+  final String? previousValue;
+  final String? newValue;
+  final String? modifiedBy;
+  final DateTime modifiedAt;
+  const AuditEntry(
+      {required this.id,
+      required this.entityType,
+      this.dataElementUid,
+      this.categoryOptionComboUid,
+      this.dataSetUid,
+      required this.period,
+      required this.orgUnitUid,
+      required this.attributeOptionComboUid,
+      this.previousValue,
+      this.newValue,
+      this.modifiedBy,
+      required this.modifiedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    {
+      map['entity_type'] = Variable<int>(
+          $AuditLogTableTable.$converterentityType.toSql(entityType));
+    }
+    if (!nullToAbsent || dataElementUid != null) {
+      map['data_element_uid'] = Variable<String>(dataElementUid);
+    }
+    if (!nullToAbsent || categoryOptionComboUid != null) {
+      map['category_option_combo_uid'] =
+          Variable<String>(categoryOptionComboUid);
+    }
+    if (!nullToAbsent || dataSetUid != null) {
+      map['data_set_uid'] = Variable<String>(dataSetUid);
+    }
+    map['period'] = Variable<String>(period);
+    map['org_unit_uid'] = Variable<String>(orgUnitUid);
+    map['attribute_option_combo_uid'] =
+        Variable<String>(attributeOptionComboUid);
+    if (!nullToAbsent || previousValue != null) {
+      map['previous_value'] = Variable<String>(previousValue);
+    }
+    if (!nullToAbsent || newValue != null) {
+      map['new_value'] = Variable<String>(newValue);
+    }
+    if (!nullToAbsent || modifiedBy != null) {
+      map['modified_by'] = Variable<String>(modifiedBy);
+    }
+    map['modified_at'] = Variable<DateTime>(modifiedAt);
+    return map;
+  }
+
+  AuditLogTableCompanion toCompanion(bool nullToAbsent) {
+    return AuditLogTableCompanion(
+      id: Value(id),
+      entityType: Value(entityType),
+      dataElementUid: dataElementUid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dataElementUid),
+      categoryOptionComboUid: categoryOptionComboUid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(categoryOptionComboUid),
+      dataSetUid: dataSetUid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dataSetUid),
+      period: Value(period),
+      orgUnitUid: Value(orgUnitUid),
+      attributeOptionComboUid: Value(attributeOptionComboUid),
+      previousValue: previousValue == null && nullToAbsent
+          ? const Value.absent()
+          : Value(previousValue),
+      newValue: newValue == null && nullToAbsent
+          ? const Value.absent()
+          : Value(newValue),
+      modifiedBy: modifiedBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(modifiedBy),
+      modifiedAt: Value(modifiedAt),
+    );
+  }
+
+  factory AuditEntry.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AuditEntry(
+      id: serializer.fromJson<int>(json['id']),
+      entityType: $AuditLogTableTable.$converterentityType
+          .fromJson(serializer.fromJson<int>(json['entityType'])),
+      dataElementUid: serializer.fromJson<String?>(json['dataElementUid']),
+      categoryOptionComboUid:
+          serializer.fromJson<String?>(json['categoryOptionComboUid']),
+      dataSetUid: serializer.fromJson<String?>(json['dataSetUid']),
+      period: serializer.fromJson<String>(json['period']),
+      orgUnitUid: serializer.fromJson<String>(json['orgUnitUid']),
+      attributeOptionComboUid:
+          serializer.fromJson<String>(json['attributeOptionComboUid']),
+      previousValue: serializer.fromJson<String?>(json['previousValue']),
+      newValue: serializer.fromJson<String?>(json['newValue']),
+      modifiedBy: serializer.fromJson<String?>(json['modifiedBy']),
+      modifiedAt: serializer.fromJson<DateTime>(json['modifiedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'entityType': serializer.toJson<int>(
+          $AuditLogTableTable.$converterentityType.toJson(entityType)),
+      'dataElementUid': serializer.toJson<String?>(dataElementUid),
+      'categoryOptionComboUid':
+          serializer.toJson<String?>(categoryOptionComboUid),
+      'dataSetUid': serializer.toJson<String?>(dataSetUid),
+      'period': serializer.toJson<String>(period),
+      'orgUnitUid': serializer.toJson<String>(orgUnitUid),
+      'attributeOptionComboUid':
+          serializer.toJson<String>(attributeOptionComboUid),
+      'previousValue': serializer.toJson<String?>(previousValue),
+      'newValue': serializer.toJson<String?>(newValue),
+      'modifiedBy': serializer.toJson<String?>(modifiedBy),
+      'modifiedAt': serializer.toJson<DateTime>(modifiedAt),
+    };
+  }
+
+  AuditEntry copyWith(
+          {int? id,
+          AuditEntityType? entityType,
+          Value<String?> dataElementUid = const Value.absent(),
+          Value<String?> categoryOptionComboUid = const Value.absent(),
+          Value<String?> dataSetUid = const Value.absent(),
+          String? period,
+          String? orgUnitUid,
+          String? attributeOptionComboUid,
+          Value<String?> previousValue = const Value.absent(),
+          Value<String?> newValue = const Value.absent(),
+          Value<String?> modifiedBy = const Value.absent(),
+          DateTime? modifiedAt}) =>
+      AuditEntry(
+        id: id ?? this.id,
+        entityType: entityType ?? this.entityType,
+        dataElementUid:
+            dataElementUid.present ? dataElementUid.value : this.dataElementUid,
+        categoryOptionComboUid: categoryOptionComboUid.present
+            ? categoryOptionComboUid.value
+            : this.categoryOptionComboUid,
+        dataSetUid: dataSetUid.present ? dataSetUid.value : this.dataSetUid,
+        period: period ?? this.period,
+        orgUnitUid: orgUnitUid ?? this.orgUnitUid,
+        attributeOptionComboUid:
+            attributeOptionComboUid ?? this.attributeOptionComboUid,
+        previousValue:
+            previousValue.present ? previousValue.value : this.previousValue,
+        newValue: newValue.present ? newValue.value : this.newValue,
+        modifiedBy: modifiedBy.present ? modifiedBy.value : this.modifiedBy,
+        modifiedAt: modifiedAt ?? this.modifiedAt,
+      );
+  AuditEntry copyWithCompanion(AuditLogTableCompanion data) {
+    return AuditEntry(
+      id: data.id.present ? data.id.value : this.id,
+      entityType:
+          data.entityType.present ? data.entityType.value : this.entityType,
+      dataElementUid: data.dataElementUid.present
+          ? data.dataElementUid.value
+          : this.dataElementUid,
+      categoryOptionComboUid: data.categoryOptionComboUid.present
+          ? data.categoryOptionComboUid.value
+          : this.categoryOptionComboUid,
+      dataSetUid:
+          data.dataSetUid.present ? data.dataSetUid.value : this.dataSetUid,
+      period: data.period.present ? data.period.value : this.period,
+      orgUnitUid:
+          data.orgUnitUid.present ? data.orgUnitUid.value : this.orgUnitUid,
+      attributeOptionComboUid: data.attributeOptionComboUid.present
+          ? data.attributeOptionComboUid.value
+          : this.attributeOptionComboUid,
+      previousValue: data.previousValue.present
+          ? data.previousValue.value
+          : this.previousValue,
+      newValue: data.newValue.present ? data.newValue.value : this.newValue,
+      modifiedBy:
+          data.modifiedBy.present ? data.modifiedBy.value : this.modifiedBy,
+      modifiedAt:
+          data.modifiedAt.present ? data.modifiedAt.value : this.modifiedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AuditEntry(')
+          ..write('id: $id, ')
+          ..write('entityType: $entityType, ')
+          ..write('dataElementUid: $dataElementUid, ')
+          ..write('categoryOptionComboUid: $categoryOptionComboUid, ')
+          ..write('dataSetUid: $dataSetUid, ')
+          ..write('period: $period, ')
+          ..write('orgUnitUid: $orgUnitUid, ')
+          ..write('attributeOptionComboUid: $attributeOptionComboUid, ')
+          ..write('previousValue: $previousValue, ')
+          ..write('newValue: $newValue, ')
+          ..write('modifiedBy: $modifiedBy, ')
+          ..write('modifiedAt: $modifiedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      entityType,
+      dataElementUid,
+      categoryOptionComboUid,
+      dataSetUid,
+      period,
+      orgUnitUid,
+      attributeOptionComboUid,
+      previousValue,
+      newValue,
+      modifiedBy,
+      modifiedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AuditEntry &&
+          other.id == this.id &&
+          other.entityType == this.entityType &&
+          other.dataElementUid == this.dataElementUid &&
+          other.categoryOptionComboUid == this.categoryOptionComboUid &&
+          other.dataSetUid == this.dataSetUid &&
+          other.period == this.period &&
+          other.orgUnitUid == this.orgUnitUid &&
+          other.attributeOptionComboUid == this.attributeOptionComboUid &&
+          other.previousValue == this.previousValue &&
+          other.newValue == this.newValue &&
+          other.modifiedBy == this.modifiedBy &&
+          other.modifiedAt == this.modifiedAt);
+}
+
+class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
+  final Value<int> id;
+  final Value<AuditEntityType> entityType;
+  final Value<String?> dataElementUid;
+  final Value<String?> categoryOptionComboUid;
+  final Value<String?> dataSetUid;
+  final Value<String> period;
+  final Value<String> orgUnitUid;
+  final Value<String> attributeOptionComboUid;
+  final Value<String?> previousValue;
+  final Value<String?> newValue;
+  final Value<String?> modifiedBy;
+  final Value<DateTime> modifiedAt;
+  const AuditLogTableCompanion({
+    this.id = const Value.absent(),
+    this.entityType = const Value.absent(),
+    this.dataElementUid = const Value.absent(),
+    this.categoryOptionComboUid = const Value.absent(),
+    this.dataSetUid = const Value.absent(),
+    this.period = const Value.absent(),
+    this.orgUnitUid = const Value.absent(),
+    this.attributeOptionComboUid = const Value.absent(),
+    this.previousValue = const Value.absent(),
+    this.newValue = const Value.absent(),
+    this.modifiedBy = const Value.absent(),
+    this.modifiedAt = const Value.absent(),
+  });
+  AuditLogTableCompanion.insert({
+    this.id = const Value.absent(),
+    required AuditEntityType entityType,
+    this.dataElementUid = const Value.absent(),
+    this.categoryOptionComboUid = const Value.absent(),
+    this.dataSetUid = const Value.absent(),
+    required String period,
+    required String orgUnitUid,
+    required String attributeOptionComboUid,
+    this.previousValue = const Value.absent(),
+    this.newValue = const Value.absent(),
+    this.modifiedBy = const Value.absent(),
+    required DateTime modifiedAt,
+  })  : entityType = Value(entityType),
+        period = Value(period),
+        orgUnitUid = Value(orgUnitUid),
+        attributeOptionComboUid = Value(attributeOptionComboUid),
+        modifiedAt = Value(modifiedAt);
+  static Insertable<AuditEntry> custom({
+    Expression<int>? id,
+    Expression<int>? entityType,
+    Expression<String>? dataElementUid,
+    Expression<String>? categoryOptionComboUid,
+    Expression<String>? dataSetUid,
+    Expression<String>? period,
+    Expression<String>? orgUnitUid,
+    Expression<String>? attributeOptionComboUid,
+    Expression<String>? previousValue,
+    Expression<String>? newValue,
+    Expression<String>? modifiedBy,
+    Expression<DateTime>? modifiedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (entityType != null) 'entity_type': entityType,
+      if (dataElementUid != null) 'data_element_uid': dataElementUid,
+      if (categoryOptionComboUid != null)
+        'category_option_combo_uid': categoryOptionComboUid,
+      if (dataSetUid != null) 'data_set_uid': dataSetUid,
+      if (period != null) 'period': period,
+      if (orgUnitUid != null) 'org_unit_uid': orgUnitUid,
+      if (attributeOptionComboUid != null)
+        'attribute_option_combo_uid': attributeOptionComboUid,
+      if (previousValue != null) 'previous_value': previousValue,
+      if (newValue != null) 'new_value': newValue,
+      if (modifiedBy != null) 'modified_by': modifiedBy,
+      if (modifiedAt != null) 'modified_at': modifiedAt,
+    });
+  }
+
+  AuditLogTableCompanion copyWith(
+      {Value<int>? id,
+      Value<AuditEntityType>? entityType,
+      Value<String?>? dataElementUid,
+      Value<String?>? categoryOptionComboUid,
+      Value<String?>? dataSetUid,
+      Value<String>? period,
+      Value<String>? orgUnitUid,
+      Value<String>? attributeOptionComboUid,
+      Value<String?>? previousValue,
+      Value<String?>? newValue,
+      Value<String?>? modifiedBy,
+      Value<DateTime>? modifiedAt}) {
+    return AuditLogTableCompanion(
+      id: id ?? this.id,
+      entityType: entityType ?? this.entityType,
+      dataElementUid: dataElementUid ?? this.dataElementUid,
+      categoryOptionComboUid:
+          categoryOptionComboUid ?? this.categoryOptionComboUid,
+      dataSetUid: dataSetUid ?? this.dataSetUid,
+      period: period ?? this.period,
+      orgUnitUid: orgUnitUid ?? this.orgUnitUid,
+      attributeOptionComboUid:
+          attributeOptionComboUid ?? this.attributeOptionComboUid,
+      previousValue: previousValue ?? this.previousValue,
+      newValue: newValue ?? this.newValue,
+      modifiedBy: modifiedBy ?? this.modifiedBy,
+      modifiedAt: modifiedAt ?? this.modifiedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (entityType.present) {
+      map['entity_type'] = Variable<int>(
+          $AuditLogTableTable.$converterentityType.toSql(entityType.value));
+    }
+    if (dataElementUid.present) {
+      map['data_element_uid'] = Variable<String>(dataElementUid.value);
+    }
+    if (categoryOptionComboUid.present) {
+      map['category_option_combo_uid'] =
+          Variable<String>(categoryOptionComboUid.value);
+    }
+    if (dataSetUid.present) {
+      map['data_set_uid'] = Variable<String>(dataSetUid.value);
+    }
+    if (period.present) {
+      map['period'] = Variable<String>(period.value);
+    }
+    if (orgUnitUid.present) {
+      map['org_unit_uid'] = Variable<String>(orgUnitUid.value);
+    }
+    if (attributeOptionComboUid.present) {
+      map['attribute_option_combo_uid'] =
+          Variable<String>(attributeOptionComboUid.value);
+    }
+    if (previousValue.present) {
+      map['previous_value'] = Variable<String>(previousValue.value);
+    }
+    if (newValue.present) {
+      map['new_value'] = Variable<String>(newValue.value);
+    }
+    if (modifiedBy.present) {
+      map['modified_by'] = Variable<String>(modifiedBy.value);
+    }
+    if (modifiedAt.present) {
+      map['modified_at'] = Variable<DateTime>(modifiedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AuditLogTableCompanion(')
+          ..write('id: $id, ')
+          ..write('entityType: $entityType, ')
+          ..write('dataElementUid: $dataElementUid, ')
+          ..write('categoryOptionComboUid: $categoryOptionComboUid, ')
+          ..write('dataSetUid: $dataSetUid, ')
+          ..write('period: $period, ')
+          ..write('orgUnitUid: $orgUnitUid, ')
+          ..write('attributeOptionComboUid: $attributeOptionComboUid, ')
+          ..write('previousValue: $previousValue, ')
+          ..write('newValue: $newValue, ')
+          ..write('modifiedBy: $modifiedBy, ')
+          ..write('modifiedAt: $modifiedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10060,6 +10710,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $CompleteDataSetRegistrationsTableTable
       completeDataSetRegistrationsTable =
       $CompleteDataSetRegistrationsTableTable(this);
+  late final $AuditLogTableTable auditLogTable = $AuditLogTableTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10092,7 +10743,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         attributeValuesTable,
         syncInfoTable,
         dataValuesTable,
-        completeDataSetRegistrationsTable
+        completeDataSetRegistrationsTable,
+        auditLogTable
       ];
 }
 
@@ -15332,6 +15984,288 @@ typedef $$CompleteDataSetRegistrationsTableTableProcessedTableManager
         ),
         CompleteDataSetRegistration,
         PrefetchHooks Function()>;
+typedef $$AuditLogTableTableCreateCompanionBuilder = AuditLogTableCompanion
+    Function({
+  Value<int> id,
+  required AuditEntityType entityType,
+  Value<String?> dataElementUid,
+  Value<String?> categoryOptionComboUid,
+  Value<String?> dataSetUid,
+  required String period,
+  required String orgUnitUid,
+  required String attributeOptionComboUid,
+  Value<String?> previousValue,
+  Value<String?> newValue,
+  Value<String?> modifiedBy,
+  required DateTime modifiedAt,
+});
+typedef $$AuditLogTableTableUpdateCompanionBuilder = AuditLogTableCompanion
+    Function({
+  Value<int> id,
+  Value<AuditEntityType> entityType,
+  Value<String?> dataElementUid,
+  Value<String?> categoryOptionComboUid,
+  Value<String?> dataSetUid,
+  Value<String> period,
+  Value<String> orgUnitUid,
+  Value<String> attributeOptionComboUid,
+  Value<String?> previousValue,
+  Value<String?> newValue,
+  Value<String?> modifiedBy,
+  Value<DateTime> modifiedAt,
+});
+
+class $$AuditLogTableTableFilterComposer
+    extends Composer<_$AppDatabase, $AuditLogTableTable> {
+  $$AuditLogTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnWithTypeConverterFilters<AuditEntityType, AuditEntityType, int>
+      get entityType => $composableBuilder(
+          column: $table.entityType,
+          builder: (column) => ColumnWithTypeConverterFilters(column));
+
+  ColumnFilters<String> get dataElementUid => $composableBuilder(
+      column: $table.dataElementUid,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get categoryOptionComboUid => $composableBuilder(
+      column: $table.categoryOptionComboUid,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get dataSetUid => $composableBuilder(
+      column: $table.dataSetUid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get period => $composableBuilder(
+      column: $table.period, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get orgUnitUid => $composableBuilder(
+      column: $table.orgUnitUid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get attributeOptionComboUid => $composableBuilder(
+      column: $table.attributeOptionComboUid,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get previousValue => $composableBuilder(
+      column: $table.previousValue, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get newValue => $composableBuilder(
+      column: $table.newValue, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get modifiedBy => $composableBuilder(
+      column: $table.modifiedBy, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get modifiedAt => $composableBuilder(
+      column: $table.modifiedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$AuditLogTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $AuditLogTableTable> {
+  $$AuditLogTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get entityType => $composableBuilder(
+      column: $table.entityType, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get dataElementUid => $composableBuilder(
+      column: $table.dataElementUid,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get categoryOptionComboUid => $composableBuilder(
+      column: $table.categoryOptionComboUid,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get dataSetUid => $composableBuilder(
+      column: $table.dataSetUid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get period => $composableBuilder(
+      column: $table.period, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get orgUnitUid => $composableBuilder(
+      column: $table.orgUnitUid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get attributeOptionComboUid => $composableBuilder(
+      column: $table.attributeOptionComboUid,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get previousValue => $composableBuilder(
+      column: $table.previousValue,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get newValue => $composableBuilder(
+      column: $table.newValue, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get modifiedBy => $composableBuilder(
+      column: $table.modifiedBy, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get modifiedAt => $composableBuilder(
+      column: $table.modifiedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$AuditLogTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AuditLogTableTable> {
+  $$AuditLogTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<AuditEntityType, int> get entityType =>
+      $composableBuilder(
+          column: $table.entityType, builder: (column) => column);
+
+  GeneratedColumn<String> get dataElementUid => $composableBuilder(
+      column: $table.dataElementUid, builder: (column) => column);
+
+  GeneratedColumn<String> get categoryOptionComboUid => $composableBuilder(
+      column: $table.categoryOptionComboUid, builder: (column) => column);
+
+  GeneratedColumn<String> get dataSetUid => $composableBuilder(
+      column: $table.dataSetUid, builder: (column) => column);
+
+  GeneratedColumn<String> get period =>
+      $composableBuilder(column: $table.period, builder: (column) => column);
+
+  GeneratedColumn<String> get orgUnitUid => $composableBuilder(
+      column: $table.orgUnitUid, builder: (column) => column);
+
+  GeneratedColumn<String> get attributeOptionComboUid => $composableBuilder(
+      column: $table.attributeOptionComboUid, builder: (column) => column);
+
+  GeneratedColumn<String> get previousValue => $composableBuilder(
+      column: $table.previousValue, builder: (column) => column);
+
+  GeneratedColumn<String> get newValue =>
+      $composableBuilder(column: $table.newValue, builder: (column) => column);
+
+  GeneratedColumn<String> get modifiedBy => $composableBuilder(
+      column: $table.modifiedBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get modifiedAt => $composableBuilder(
+      column: $table.modifiedAt, builder: (column) => column);
+}
+
+class $$AuditLogTableTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $AuditLogTableTable,
+    AuditEntry,
+    $$AuditLogTableTableFilterComposer,
+    $$AuditLogTableTableOrderingComposer,
+    $$AuditLogTableTableAnnotationComposer,
+    $$AuditLogTableTableCreateCompanionBuilder,
+    $$AuditLogTableTableUpdateCompanionBuilder,
+    (
+      AuditEntry,
+      BaseReferences<_$AppDatabase, $AuditLogTableTable, AuditEntry>
+    ),
+    AuditEntry,
+    PrefetchHooks Function()> {
+  $$AuditLogTableTableTableManager(_$AppDatabase db, $AuditLogTableTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AuditLogTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AuditLogTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AuditLogTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<AuditEntityType> entityType = const Value.absent(),
+            Value<String?> dataElementUid = const Value.absent(),
+            Value<String?> categoryOptionComboUid = const Value.absent(),
+            Value<String?> dataSetUid = const Value.absent(),
+            Value<String> period = const Value.absent(),
+            Value<String> orgUnitUid = const Value.absent(),
+            Value<String> attributeOptionComboUid = const Value.absent(),
+            Value<String?> previousValue = const Value.absent(),
+            Value<String?> newValue = const Value.absent(),
+            Value<String?> modifiedBy = const Value.absent(),
+            Value<DateTime> modifiedAt = const Value.absent(),
+          }) =>
+              AuditLogTableCompanion(
+            id: id,
+            entityType: entityType,
+            dataElementUid: dataElementUid,
+            categoryOptionComboUid: categoryOptionComboUid,
+            dataSetUid: dataSetUid,
+            period: period,
+            orgUnitUid: orgUnitUid,
+            attributeOptionComboUid: attributeOptionComboUid,
+            previousValue: previousValue,
+            newValue: newValue,
+            modifiedBy: modifiedBy,
+            modifiedAt: modifiedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required AuditEntityType entityType,
+            Value<String?> dataElementUid = const Value.absent(),
+            Value<String?> categoryOptionComboUid = const Value.absent(),
+            Value<String?> dataSetUid = const Value.absent(),
+            required String period,
+            required String orgUnitUid,
+            required String attributeOptionComboUid,
+            Value<String?> previousValue = const Value.absent(),
+            Value<String?> newValue = const Value.absent(),
+            Value<String?> modifiedBy = const Value.absent(),
+            required DateTime modifiedAt,
+          }) =>
+              AuditLogTableCompanion.insert(
+            id: id,
+            entityType: entityType,
+            dataElementUid: dataElementUid,
+            categoryOptionComboUid: categoryOptionComboUid,
+            dataSetUid: dataSetUid,
+            period: period,
+            orgUnitUid: orgUnitUid,
+            attributeOptionComboUid: attributeOptionComboUid,
+            previousValue: previousValue,
+            newValue: newValue,
+            modifiedBy: modifiedBy,
+            modifiedAt: modifiedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$AuditLogTableTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $AuditLogTableTable,
+    AuditEntry,
+    $$AuditLogTableTableFilterComposer,
+    $$AuditLogTableTableOrderingComposer,
+    $$AuditLogTableTableAnnotationComposer,
+    $$AuditLogTableTableCreateCompanionBuilder,
+    $$AuditLogTableTableUpdateCompanionBuilder,
+    (
+      AuditEntry,
+      BaseReferences<_$AppDatabase, $AuditLogTableTable, AuditEntry>
+    ),
+    AuditEntry,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -15407,4 +16341,6 @@ class $AppDatabaseManager {
       get completeDataSetRegistrationsTable =>
           $$CompleteDataSetRegistrationsTableTableTableManager(
               _db, _db.completeDataSetRegistrationsTable);
+  $$AuditLogTableTableTableManager get auditLogTable =>
+      $$AuditLogTableTableTableManager(_db, _db.auditLogTable);
 }
