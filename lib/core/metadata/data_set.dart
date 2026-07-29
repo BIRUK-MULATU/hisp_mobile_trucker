@@ -219,12 +219,27 @@ class DataSetResource extends MetadataResource<DataSet> {
   /// element's — see [effectiveComboByElement]) — the DHIS2
   /// "category combination" the classic Data Entry app prompts for
   /// alongside period, e.g. Disease Registration's Department ×
-  /// Outcome. Empty for the common case: a trivial/"default" combo
-  /// with a single option combo, needing no user choice.
+  /// Outcome. Empty for the common case: a trivial/"default" combo,
+  /// needing no user choice.
+  ///
+  /// A single COC is the normal signal for "trivial", but this
+  /// instance's duplicate-'default'-COC defect (see
+  /// [canonicalDefaultComboUid]) means a combo named 'default' can
+  /// carry MULTIPLE locally-synced COCs — that must still collapse to
+  /// no dimensions, or the capture flow wrongly prompts the user to
+  /// "pick a combination" for what is really just the default, and
+  /// whatever gets picked can resolve to a duplicate the web UI never
+  /// shows the data under. So a combo named 'default' is always
+  /// trivial, COC count aside.
   Future<List<CategoryDimension>> categoryDimensions(String dataSetId) async {
     final ds = await getById(dataSetId);
     if (ds == null) return const [];
     final comboUid = ds.categoryComboUid;
+
+    final combo = await (db.select(db.categoryCombosTable)
+          ..where((t) => t.uid.equals(comboUid)))
+        .getSingleOrNull();
+    if (combo != null && combo.name == 'default') return const [];
 
     final cocResource = CategoryOptionComboResource(db);
     final cocs = await cocResource.getByCategoryCombo(comboUid);

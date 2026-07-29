@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
+import '../network/api_client.dart';
+import '../utils/app_logger.dart';
 import 'metadata_resource.dart';
 
 @DataClassName('CategoryOptionCombo')
@@ -120,4 +122,169 @@ Future<Map<String, String>> resolveCcCpParams(
     'cc': coc.categoryComboUid,
     'cp': [for (final l in links) l.categoryOptionUid].join(';'),
   };
+}
+
+/// Sync-info key caching the resolved canonical default combo uid.
+/// Shared between DataEntryRepositoryImpl (per-dataset resolution on
+/// the UI paths) and the auto-sync push path below (dataset-agnostic
+/// repair) so both agree on the same cached verdict.
+const defaultAttributeOptionComboSyncInfoKey = 'defaultAttributeOptionCombo';
+
+/// The confirmed default categoryOptionCombo uid for this HMIS
+/// instance. The "resolve via the categoryCombo's declared list"
+/// heuristic below turned out NOT to disambiguate reliably — the
+/// server apparently lists more than one 'default'-named COC under
+/// the same categoryCombo (or a dataset's own combo can be one of the
+/// duplicates), so a live query can still land on a duplicate (e.g.
+/// ed678csgTm8) instead of the real one. This uid was confirmed
+/// directly against the server, so it is checked first and wins over
+/// any dynamic resolution or stale cached verdict.
+const canonicalDefaultComboUid = 'HllvX50cXC0';
+
+/// True when this device's local metadata carries more than one
+/// categoryOptionCombo named 'default' — the DHIS2 data-integrity
+/// defect this instance has. A cheap local check so callers only pay
+/// for a network round trip when a repair could possibly be needed.
+Future<bool> hasDuplicateDefaultCombos(AppDatabase db) async {
+  final rows = await (db.selectOnly(db.categoryOptionCombosTable,
+          distinct: true)
+        ..addColumns([db.categoryOptionCombosTable.uid])
+        ..where(db.categoryOptionCombosTable.name.equals('default')))
+      .get();
+  return rows.length > 1;
+}
+
+/// The default categoryCombo ('default') is a single system-wide row —
+/// unlike its COCs, which this instance has duplicated — so resolving
+/// it needs no dataSet in hand. GETs it with its declared
+/// categoryOptionCombos, persists both locally, and returns the uid of
+/// the (unique) COC it declares. Null when offline or the response is
+/// unusable.
+Future<String?> fetchCanonicalDefaultCombo(
+    AppDatabase db, ApiClient api) async {
+  try {
+    final res = await api.get('/api/categoryCombos.json', queryParameters: {
+      'filter': 'name:eq:default',
+      'fields': 'id,name,displayName,categoryOptionCombos[id,name]',
+    });
+    final combos = ((res.data as Map<String, dynamic>)['categoryCombos']
+            as List? ??
+        const [])
+      .cast<Map<String, dynamic>>();
+    if (combos.isEmpty) return null;
+    final combo = combos.first;
+    final cocs = (combo['categoryOptionCombos'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    if (cocs.isEmpty) return null;
+
+    await db.into(db.categoryCombosTable).insertOnConflictUpdate(
+          CategoryCombosTableCompanion.insert(
+            uid: combo['id'] as String,
+            name: combo['name'] as String,
+            displayName: (combo['displayName'] ?? combo['name']) as String,
+          ),
+        );
+    for (final coc in cocs) {
+      await db.into(db.categoryOptionCombosTable).insertOnConflictUpdate(
+            CategoryOptionCombosTableCompanion.insert(
+              uid: coc['id'] as String,
+              name: coc['name'] as String,
+              categoryComboUid: combo['id'] as String,
+            ),
+          );
+    }
+    for (final coc in cocs) {
+      if (coc['name'] == 'default') return coc['id'] as String;
+    }
+    return cocs.length == 1 ? cocs.first['id'] as String : null;
+  } catch (e) {
+    log.w('[categoryOptionCombo] canonical default combo fetch failed: $e');
+    return null;
+  }
+}
+
+/// One-time repair after the authoritative default COC is known: rows
+/// stored under one of the OTHER local COCs named 'default' (the
+/// duplicates) are rewritten to [canonical]. Their composite key is
+/// changing, so anything the server has already seen under the OLD
+/// key — 'synced' rows, not just 'error' ones — goes back to pending:
+/// the server never actually stored the value under [canonical], so
+/// only a fresh push under the corrected key makes it reach the web
+/// UI. Draft rows are left as drafts (not sent yet by design).
+/// Duplicate-keyed leftovers give way to an existing canonical row.
+/// Returns the number of dataValue + completion rows touched.
+Future<int> remapDuplicateDefaultCombos(
+    AppDatabase db, String canonical) async {
+  final dupeRows = await (db.select(db.categoryOptionCombosTable)
+        ..where(
+            (t) => t.name.equals('default') & t.uid.equals(canonical).not()))
+      .get();
+  if (dupeRows.isEmpty) return 0;
+  final dupes = [for (final d in dupeRows) d.uid];
+
+  final values = await (db.select(db.dataValuesTable)
+        ..where((t) =>
+            t.attributeOptionComboUid.isIn(dupes) |
+            t.categoryOptionComboUid.isIn(dupes)))
+      .get();
+  for (final v in values) {
+    await (db.delete(db.dataValuesTable)
+          ..where((t) =>
+              t.dataElementUid.equals(v.dataElementUid) &
+              t.period.equals(v.period) &
+              t.orgUnitUid.equals(v.orgUnitUid) &
+              t.categoryOptionComboUid.equals(v.categoryOptionComboUid) &
+              t.attributeOptionComboUid.equals(v.attributeOptionComboUid)))
+        .go();
+    final needsRepush =
+        v.syncState == SyncState.error || v.syncState == SyncState.synced;
+    await db.into(db.dataValuesTable).insert(
+          v.toCompanion(false).copyWith(
+            categoryOptionComboUid: Value(
+                dupes.contains(v.categoryOptionComboUid)
+                    ? canonical
+                    : v.categoryOptionComboUid),
+            attributeOptionComboUid: Value(
+                dupes.contains(v.attributeOptionComboUid)
+                    ? canonical
+                    : v.attributeOptionComboUid),
+            syncState: needsRepush
+                ? const Value(SyncState.pending)
+                : Value(v.syncState),
+            syncError:
+                needsRepush ? const Value(null) : Value(v.syncError),
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+  }
+
+  final regs = await (db.select(db.completeDataSetRegistrationsTable)
+        ..where((t) => t.attributeOptionComboUid.isIn(dupes)))
+      .get();
+  for (final r in regs) {
+    await (db.delete(db.completeDataSetRegistrationsTable)
+          ..where((t) =>
+              t.dataSetUid.equals(r.dataSetUid) &
+              t.period.equals(r.period) &
+              t.orgUnitUid.equals(r.orgUnitUid) &
+              t.attributeOptionComboUid.equals(r.attributeOptionComboUid)))
+        .go();
+    await db.into(db.completeDataSetRegistrationsTable).insert(
+          r.toCompanion(false).copyWith(
+            attributeOptionComboUid: Value(canonical),
+            syncState: (r.syncState == SyncState.error ||
+                    r.syncState == SyncState.synced)
+                ? const Value(SyncState.pending)
+                : Value(r.syncState),
+          ),
+          mode: InsertMode.insertOrIgnore,
+        );
+  }
+
+  if (values.isNotEmpty || regs.isNotEmpty) {
+    log.i('[categoryOptionCombo] remapped ${values.length} value(s), '
+        '${regs.length} registration(s) from duplicate default COCs '
+        'to $canonical');
+  }
+  return values.length + regs.length;
 }

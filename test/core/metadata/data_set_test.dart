@@ -218,5 +218,42 @@ void main() {
           .resolveCategoryOptionCombo(comboDs, {deptCat: ipd});
       expect(resolved, isNull);
     });
+
+    test(
+        'a combo named default needs no dimensions even with duplicate COCs '
+        'synced under it', () async {
+      // Reproduces the HMIS staging data-integrity defect: multiple
+      // categoryOptionCombos named 'default' all synced under the SAME
+      // categoryCombo (also named 'default'). Without the name check,
+      // cocs.length > 1 would wrongly make this look like a real
+      // disaggregation and prompt the user to "pick a combination".
+      const dupeComboDs = 'dupComboDs1';
+      const dupeComboUid = 'dupCombo001';
+      await db.into(db.dataSetsTable).insert(DataSetsTableCompanion.insert(
+            uid: dupeComboDs,
+            name: dupeComboDs,
+            displayName: dupeComboDs,
+            periodType: 'Monthly',
+            categoryComboUid: dupeComboUid,
+          ));
+      await db.into(db.categoryCombosTable).insert(
+            CategoryCombosTableCompanion.insert(
+              uid: dupeComboUid,
+              name: 'default',
+              displayName: 'default',
+            ),
+          );
+      await db.batch((b) {
+        b.insertAll(db.categoryOptionCombosTable, [
+          CategoryOptionCombosTableCompanion.insert(
+              uid: 'ed678csgTm8', name: 'default', categoryComboUid: dupeComboUid),
+          CategoryOptionCombosTableCompanion.insert(
+              uid: 'HllvX50cXC0', name: 'default', categoryComboUid: dupeComboUid),
+        ]);
+      });
+
+      final dims = await DataSetResource(db).categoryDimensions(dupeComboDs);
+      expect(dims, isEmpty);
+    });
   });
 }

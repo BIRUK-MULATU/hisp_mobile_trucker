@@ -6,7 +6,9 @@ import '../data/completeness.dart';
 import '../data/data_value_push.dart';
 import '../data/data_value_store.dart';
 import '../database/app_database.dart';
+import '../metadata/category_option_combo.dart';
 import '../metadata/metadata_sync_service.dart';
+import '../network/api_client.dart';
 import '../utils/app_logger.dart';
 import 'sync_manager.dart';
 
@@ -41,6 +43,14 @@ class DriftSyncManager implements SyncManager {
     _syncing.add(true);
     try {
       final db = session.service.db;
+      // A full-offline capture session (enter → complete → push, all
+      // before the form is ever reopened) can leave pending rows tagged
+      // with a duplicate 'default' COC — the UI-side repair in
+      // DataEntryRepositoryImpl only runs when a dataset's form is
+      // opened, which this blind auto-sync push never does. Fix that up
+      // first so those rows land on the server under the uid it
+      // actually recognizes.
+      await _repairDuplicateDefaultCombos(db, api);
       final pushed = await _pushDataValues(db);
       final completions = await CompletenessSync(db, api).pushPending();
       final charts = await ChartRepositoryImpl(session: session.service, api: api)
@@ -69,6 +79,32 @@ class DriftSyncManager implements SyncManager {
       await MetadataSyncService(session.service.db, api).syncMetadataDelta();
     } finally {
       _syncing.add(false);
+    }
+  }
+
+  /// Best-effort fix-up for rows queued while the device never opened
+  /// the dataset's form (so DataEntryRepositoryImpl's own resolution
+  /// never ran): if this instance's metadata still carries duplicate
+  /// 'default' COCs, resolve the canonical one and rewrite any pending
+  /// rows off the duplicates before they get pushed. The confirmed
+  /// [canonicalDefaultComboUid] wins if it's synced locally (even over
+  /// a stale cached verdict); only when it's missing does this fall
+  /// back to the cache, then a fresh fetch. A failure here must not
+  /// block the push — the rows just retry remapped next time.
+  Future<void> _repairDuplicateDefaultCombos(AppDatabase db, ApiClient api) async {
+    try {
+      if (!await hasDuplicateDefaultCombos(db)) return;
+      final known = await (db.select(db.categoryOptionCombosTable)
+            ..where((t) => t.uid.equals(canonicalDefaultComboUid)))
+          .getSingleOrNull();
+      final canonical = known?.uid ??
+          await db.getSyncInfo(defaultAttributeOptionComboSyncInfoKey) ??
+          await fetchCanonicalDefaultCombo(db, api);
+      if (canonical == null) return;
+      await db.setSyncInfo(defaultAttributeOptionComboSyncInfoKey, canonical);
+      await remapDuplicateDefaultCombos(db, canonical);
+    } catch (e) {
+      log.w('[autoSync] duplicate-default COC repair failed: $e');
     }
   }
 
