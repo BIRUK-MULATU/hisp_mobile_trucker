@@ -69,27 +69,6 @@ class AuditLogStore {
         );
   }
 
-  /// Most recent entries first, across every entity type — feeds the
-  /// Audit Log screen. [limit] keeps a long-lived install's page load
-  /// bounded; the table is append-only and unpurged.
-  Future<List<AuditEntry>> recent({int limit = 300}) {
-    return (_db.select(_db.auditLogTable)
-          ..orderBy([(t) => OrderingTerm.desc(t.modifiedAt)])
-          ..limit(limit))
-        .get();
-  }
-
-  /// Local edit history for one org unit, newest first — the offline
-  /// fallback for the Audit Log screen when the server's own trail
-  /// ([ServerAuditService]) can't be reached.
-  Future<List<AuditEntry>> forOrgUnit(String orgUnitUid, {int limit = 200}) {
-    return (_db.select(_db.auditLogTable)
-          ..where((t) => t.orgUnitUid.equals(orgUnitUid))
-          ..orderBy([(t) => OrderingTerm.desc(t.modifiedAt)])
-          ..limit(limit))
-        .get();
-  }
-
   /// Local history for one cell, newest first — the offline fallback
   /// behind the per-combo "history" sheet. Deliberately NOT filtered by
   /// attributeOptionCombo (the caller doesn't always have it to hand,
@@ -112,24 +91,4 @@ class AuditLogStore {
         .get();
   }
 
-  /// Full history for one data value cell, newest first — exact match
-  /// including attributeOptionCombo, for callers that have it.
-  Future<List<AuditEntry>> forDataValueCell({
-    required String dataElementUid,
-    required String period,
-    required String orgUnitUid,
-    required String categoryOptionComboUid,
-    required String attributeOptionComboUid,
-  }) {
-    return (_db.select(_db.auditLogTable)
-          ..where((t) =>
-              t.entityType.equals(AuditEntityType.dataValue.index) &
-              t.dataElementUid.equals(dataElementUid) &
-              t.period.equals(period) &
-              t.orgUnitUid.equals(orgUnitUid) &
-              t.categoryOptionComboUid.equals(categoryOptionComboUid) &
-              t.attributeOptionComboUid.equals(attributeOptionComboUid))
-          ..orderBy([(t) => OrderingTerm.desc(t.modifiedAt)]))
-        .get();
-  }
 }

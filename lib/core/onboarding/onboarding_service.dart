@@ -25,7 +25,6 @@ class OnboardingService {
     'data_entry_routine',
     'data_entry_disease',
     'visualization',
-    'settings',
   ];
 
   static bool hasSeenOnboarding = false;

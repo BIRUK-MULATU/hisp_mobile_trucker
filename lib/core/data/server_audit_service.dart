@@ -65,22 +65,14 @@ class ServerDataValueAudit {
 
 /// Reads DHIS2's built-in audit trail (`/api/audits/dataValue`) —
 /// server-authoritative history, as opposed to [AuditLogStore] which
-/// only ever knows about edits made on this device.
+/// only ever knows about edits made on this device. Scoped to ONE
+/// cell only (see [fetchForCell]) — the audit trail lives inside each
+/// data element's category combo, same as DHIS2's own entry apps, not
+/// as a device- or org-unit-wide log.
 class ServerAuditService {
   ServerAuditService(this._api);
 
   final ApiClient _api;
-
-  /// Every audited change DHIS2 has recorded for this org unit, newest
-  /// first. Returns null on a network/parse failure so the caller can
-  /// fall back to the local device log — an empty (non-null) list
-  /// means the request succeeded and there is simply nothing to show.
-  Future<List<ServerDataValueAudit>?> fetchForOrgUnit(
-    String orgUnitUid, {
-    int pageSize = 100,
-  }) {
-    return _fetch({'ou': orgUnitUid, 'pageSize': pageSize});
-  }
 
   /// History for ONE cell — a data element's single category option
   /// combo, at a period and org unit. This is the query DHIS2's own

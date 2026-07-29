@@ -380,7 +380,12 @@ class ChartRepositoryImpl {
           await _updateChart(
               chart.copyWith(syncState: ChartSyncState.error, syncError: why));
         } else {
-          log.e('[charts] push transport error for ${chart.id}: ${e.message}');
+          // Log the response body too, not just e.message — a 5xx
+          // often carries the server's actual stack trace/exception
+          // class in its body, which is the only way to tell "bad
+          // payload we're sending" apart from "genuine server hiccup."
+          log.e('[charts] push transport error for ${chart.id} '
+              '(status: $status): ${e.message}\nresponse body: $data');
         }
       }
     }
