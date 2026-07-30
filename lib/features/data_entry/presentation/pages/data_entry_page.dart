@@ -399,129 +399,135 @@ class _DataEntryViewState extends State<_DataEntryView> {
     final result = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(AppDimensions.radiusXXL),
         ),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppDimensions.pagePaddingH,
-          AppDimensions.spaceXXL,
-          AppDimensions.pagePaddingH,
-          AppDimensions.spaceXXL,
+      builder: (ctx) => ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.9,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Title ──────────────────────────────
-            Text(
-              hasViolations
-                  ? '${violations.length} validation '
-                      'issue${violations.length == 1 ? '' : 's'} found'
-                  : 'Everything looks good',
-              style: AppTextStyles.headingMedium.copyWith(
-                fontWeight: FontWeight.w600,
-                color: hasViolations ? AppColors.error : null,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            AppDimensions.pagePaddingH,
+            AppDimensions.spaceXXL,
+            AppDimensions.pagePaddingH,
+            AppDimensions.spaceXXL,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Title ──────────────────────────────
+              Text(
+                hasViolations
+                    ? '${violations.length} validation '
+                        'issue${violations.length == 1 ? '' : 's'} found'
+                    : 'Everything looks good',
+                style: AppTextStyles.headingMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: hasViolations ? AppColors.error : null,
+                ),
               ),
-            ),
 
-            const SizedBox(height: AppDimensions.spaceMD),
-
-            // ── Message ────────────────────────────
-            Text(
-              hasViolations
-                  ? 'The values below conflict with this data set\'s '
-                      'validation rules. Review them, or complete '
-                      'anyway if the data is correct.'
-                  : 'Complete the data set to send it to the server, or '
-                      'keep it as a draft on this device to finish later.',
-              style: AppTextStyles.bodyMedium.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.5,
-              ),
-            ),
-
-            if (hasViolations) ...[
               const SizedBox(height: AppDimensions.spaceMD),
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(ctx).size.height * 0.35,
-                ),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: violations.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(height: AppDimensions.spaceSM),
-                  itemBuilder: (_, i) =>
-                      _ValidationViolationTile(violation: violations[i]),
+
+              // ── Message ────────────────────────────
+              Text(
+                hasViolations
+                    ? 'The values below conflict with this data set\'s '
+                        'validation rules. Review them, or complete '
+                        'anyway if the data is correct.'
+                    : 'Complete the data set to send it to the server, or '
+                        'keep it as a draft on this device to finish later.',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.5,
                 ),
               ),
-            ],
 
-            const SizedBox(height: AppDimensions.spaceXL),
-            const Divider(color: AppColors.divider),
-            const SizedBox(height: AppDimensions.spaceXL),
-
-            // ── Buttons ────────────────────────────
-            Row(
-              children: [
-                // With violations: back to the form. Clean: keep as a
-                // device-only draft.
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () =>
-                        Navigator.pop(ctx, hasViolations ? null : false),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primary,
-                      side: const BorderSide(
-                        color: AppColors.primary,
-                        width: 1.5,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppDimensions.radiusFull),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: AppDimensions.spaceMD),
-                    ),
-                    child: Text(
-                      hasViolations ? 'Review data' : 'Incomplete',
-                      style: AppTextStyles.buttonMedium
-                          .copyWith(color: AppColors.primary),
-                    ),
+              if (hasViolations) ...[
+                const SizedBox(height: AppDimensions.spaceMD),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(ctx).size.height * 0.35,
                   ),
-                ),
-
-                const SizedBox(width: AppDimensions.spaceMD),
-
-                // Complete
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          hasViolations ? AppColors.error : AppColors.primary,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppDimensions.radiusFull),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: AppDimensions.spaceMD),
-                    ),
-                    child: Text(
-                      hasViolations ? 'Complete anyway' : 'Complete',
-                      style: AppTextStyles.buttonMedium
-                          .copyWith(color: Colors.white),
-                    ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: violations.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppDimensions.spaceSM),
+                    itemBuilder: (_, i) =>
+                        _ValidationViolationTile(violation: violations[i]),
                   ),
                 ),
               ],
-            ),
-          ],
+
+              const SizedBox(height: AppDimensions.spaceXL),
+              const Divider(color: AppColors.divider),
+              const SizedBox(height: AppDimensions.spaceXL),
+
+              // ── Buttons ────────────────────────────
+              Row(
+                children: [
+                  // With violations: back to the form. Clean: keep as a
+                  // device-only draft.
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () =>
+                          Navigator.pop(ctx, hasViolations ? null : false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: const BorderSide(
+                          color: AppColors.primary,
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppDimensions.radiusFull),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: AppDimensions.spaceMD),
+                      ),
+                      child: Text(
+                        hasViolations ? 'Review data' : 'Incomplete',
+                        style: AppTextStyles.buttonMedium
+                            .copyWith(color: AppColors.primary),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: AppDimensions.spaceMD),
+
+                  // Complete
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            hasViolations ? AppColors.error : AppColors.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppDimensions.radiusFull),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: AppDimensions.spaceMD),
+                      ),
+                      child: Text(
+                        hasViolations ? 'Complete anyway' : 'Complete',
+                        style: AppTextStyles.buttonMedium
+                            .copyWith(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -753,8 +759,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
         setState(() => _isCompleting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                'Failed to ${keepCompleted ? 'complete' : 'reopen'}: $e'),
+            content:
+                Text('Failed to ${keepCompleted ? 'complete' : 'reopen'}: $e'),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -913,8 +919,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                   'complete the report or keep it as a draft.',
               targetShapeBorder: const CircleBorder(),
               child: FloatingActionButton(
-                onPressed:
-                    (_isSaving || _isCompleting) ? null : _onSaveTapped,
+                onPressed: (_isSaving || _isCompleting) ? null : _onSaveTapped,
                 backgroundColor: widget.isDiseaseRegistration
                     ? AppColors.diseaseAccent
                     : AppColors.primary,
