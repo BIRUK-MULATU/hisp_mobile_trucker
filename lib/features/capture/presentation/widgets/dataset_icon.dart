@@ -48,9 +48,9 @@ class DataSetIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = DataSetIconHelper.getColor(dataSet.name);
+    final color = DataSetIconHelper.colorFor(dataSet);
     final fallback = Icon(
-      DataSetIconHelper.getIcon(dataSet.name),
+      DataSetIconHelper.iconFor(dataSet),
       color: color,
       size: size,
     );

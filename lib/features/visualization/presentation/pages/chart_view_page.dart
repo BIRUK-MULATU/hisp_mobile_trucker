@@ -27,28 +27,49 @@ class _ChartViewPageState extends State<ChartViewPage> {
 
   AnalyticsData? _data;
   String? _error;
+  bool _isFromCache = false;
+  DateTime? _cachedAt;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Reconnecting refreshes a cached chart with live data automatically
+    // — no need for the user to pull-to-refresh once back online.
+    ConnectivityService.instance.addListener(_onConnectivityChanged);
+  }
+
+  @override
+  void dispose() {
+    ConnectivityService.instance.removeListener(_onConnectivityChanged);
+    super.dispose();
+  }
+
+  void _onConnectivityChanged() {
+    if (_isFromCache && (ConnectivityService.instance.online ?? false)) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
     setState(() {
       _data = null;
       _error = null;
+      _isFromCache = false;
+      _cachedAt = null;
     });
     await ConnectivityService.instance.checkNow();
     if (!mounted) return;
-    if (!(ConnectivityService.instance.online ?? false)) {
-      setState(() =>
-          _error = 'You are offline. Charts need a connection to the server.');
-      return;
-    }
+    final knownOffline = ConnectivityService.instance.online == false;
     try {
-      final data = await _repository.runChart(widget.config);
-      if (mounted) setState(() => _data = data);
+      final result = await _repository.loadChart(widget.config,
+          skipLiveAttempt: knownOffline);
+      if (!mounted) return;
+      setState(() {
+        _data = result.data;
+        _isFromCache = result.isFromCache;
+        _cachedAt = result.cachedAt;
+      });
     } catch (e) {
       if (mounted) {
         setState(() => _error = e.toString().replaceAll('Exception: ', ''));
@@ -86,7 +107,17 @@ class _ChartViewPageState extends State<ChartViewPage> {
           ],
         ),
       ),
-      body: _error != null
+      body: Column(
+        children: [
+          if (_isFromCache) _CacheBanner(cachedAt: _cachedAt),
+          Expanded(child: _buildBody()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    return _error != null
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(AppDimensions.spaceXXL),
@@ -136,7 +167,45 @@ class _ChartViewPageState extends State<ChartViewPage> {
                       ),
                     ],
                   ),
-                ),
+                );
+  }
+}
+
+/// Tells the user they're looking at a snapshot, not live numbers —
+/// shown whenever the live query failed (offline, timeout, server
+/// error) and [ChartRepositoryImpl.loadChart] fell back to whatever
+/// was cached from the last successful view of this chart.
+class _CacheBanner extends StatelessWidget {
+  const _CacheBanner({required this.cachedAt});
+
+  final DateTime? cachedAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final when = cachedAt == null
+        ? ''
+        : ' from ${cachedAt!.toLocal().toString().substring(0, 16)}';
+    return Container(
+      width: double.infinity,
+      color: AppColors.warningLight,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.space,
+        vertical: AppDimensions.spaceSM,
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              size: AppDimensions.iconSM, color: AppColors.warning),
+          const SizedBox(width: AppDimensions.spaceXS),
+          Expanded(
+            child: Text(
+              'Offline — showing cached data$when',
+              style: AppTextStyles.labelSmall
+                  .copyWith(color: AppColors.warning),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart';
-
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/auth/session_service.dart';
 import '../../../../core/data/completeness.dart';
@@ -12,6 +10,7 @@ import '../../../../core/data/validation_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../../../core/metadata/category_combo.dart';
+import '../../../../core/metadata/category_option_combo.dart';
 import '../../../../core/metadata/data_element.dart';
 import '../../../../core/metadata/data_set.dart';
 import '../../../../core/metadata/option.dart';
@@ -126,8 +125,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
     final elementUids = await DataSetResource(_db).dataElementUids(dataSetId);
 
     // Fresh server state when reachable; purely best-effort.
@@ -171,8 +172,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
     final store = DataValueStore(_db);
     final storedBy = await SecureStorage().getUsername();
 
@@ -198,8 +201,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
     return ValidationService(_db).validateForm(
       dataSetUid: dataSetId,
       period: period,
@@ -213,8 +218,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
 
     // Completing is the sign-off: the form's drafts become sendable.
     final elementUids = await DataSetResource(_db).dataElementUids(dataSetId);
@@ -249,8 +256,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
     final reg = await CompletenessStore(_db).statusOf(
       dataSetUid: dataSetId,
       period: period,
@@ -265,8 +274,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   }) async {
-    final aoc = await _defaultAttributeOptionCombo(dataSetId);
+    final aoc =
+        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
 
     // completed=false is its own pending fact: the push turns it into
     // a DELETE against completeDataSetRegistrations. Drafts stay
@@ -308,29 +319,41 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
 
   // ── internals ──────────────────────────────────────────────────────
 
-  static const _defaultCocKey = 'defaultAttributeOptionCombo';
-
   /// The UI doesn't support attribute category combos (neither did the
   /// old remote flow, which let the server default them) — everything
   /// is stored under the instance's default attributeOptionCombo.
   ///
   /// The instance carries DUPLICATE COCs named 'default' (a known
-  /// DHIS2 data-integrity defect — staging has three), so a name
-  /// lookup can land on one the server rejects for writing (E7613).
-  /// The authoritative default is the COC the default categoryCombo
-  /// itself DECLARES, so resolution is: cached verdict → the data
-  /// set's categoryCombo from the API → local name lookup as the
+  /// DHIS2 data-integrity defect), so a name lookup can land on one
+  /// the server rejects for writing (E7613) or silently accepts into a
+  /// bucket invisible to the web UI. Even the "ask the categoryCombo
+  /// what it declares" query can land on a duplicate — the confirmed
+  /// [canonicalDefaultComboUid] is checked FIRST and wins over
+  /// everything else, including a stale cached verdict from an earlier,
+  /// wrong resolution. Only instances that genuinely lack that uid
+  /// locally fall through to: cached verdict → the data set's
+  /// categoryCombo from the API → local name lookup as the
   /// offline-only last resort.
   Future<String> _defaultAttributeOptionCombo(String dataSetId) async {
-    final cached = await _db.getSyncInfo(_defaultCocKey);
+    final known = await (_db.select(_db.categoryOptionCombosTable)
+          ..where((t) => t.uid.equals(canonicalDefaultComboUid)))
+        .getSingleOrNull();
+    if (known != null) {
+      await _db.setSyncInfo(
+          defaultAttributeOptionComboSyncInfoKey, canonicalDefaultComboUid);
+      await remapDuplicateDefaultCombos(_db, canonicalDefaultComboUid);
+      return canonicalDefaultComboUid;
+    }
+
+    final cached = await _db.getSyncInfo(defaultAttributeOptionComboSyncInfoKey);
     if (cached != null) return cached;
 
     final fetched = await _fetchDefaultComboFromDataSet(dataSetId);
     if (fetched != null) {
-      await _db.setSyncInfo(_defaultCocKey, fetched);
+      await _db.setSyncInfo(defaultAttributeOptionComboSyncInfoKey, fetched);
       // Values captured before this verdict may sit under a duplicate
       // 'default' uid — move them so they become pushable.
-      await _remapDuplicateDefaults(fetched);
+      await remapDuplicateDefaultCombos(_db, fetched);
       return fetched;
     }
 
@@ -343,82 +366,6 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     throw const CacheException(
         message: 'Metadata is not on this device yet — '
             'sync while online first.');
-  }
-
-  /// One-time repair after the authoritative default COC is known:
-  /// rows stored under one of the OTHER local COCs named 'default'
-  /// (the duplicates) are rewritten to [canonical]; rows the server
-  /// already rejected for it go back to pending so the next push
-  /// retries them. Duplicate-keyed leftovers give way to an existing
-  /// canonical row.
-  Future<void> _remapDuplicateDefaults(String canonical) async {
-    final dupeRows = await (_db.select(_db.categoryOptionCombosTable)
-          ..where(
-              (t) => t.name.equals('default') & t.uid.equals(canonical).not()))
-        .get();
-    if (dupeRows.isEmpty) return;
-    final dupes = [for (final d in dupeRows) d.uid];
-
-    final values = await (_db.select(_db.dataValuesTable)
-          ..where((t) =>
-              t.attributeOptionComboUid.isIn(dupes) |
-              t.categoryOptionComboUid.isIn(dupes)))
-        .get();
-    for (final v in values) {
-      await (_db.delete(_db.dataValuesTable)
-            ..where((t) =>
-                t.dataElementUid.equals(v.dataElementUid) &
-                t.period.equals(v.period) &
-                t.orgUnitUid.equals(v.orgUnitUid) &
-                t.categoryOptionComboUid.equals(v.categoryOptionComboUid) &
-                t.attributeOptionComboUid.equals(v.attributeOptionComboUid)))
-          .go();
-      final wasRejected = v.syncState == SyncState.error;
-      await _db.into(_db.dataValuesTable).insert(
-            v.toCompanion(false).copyWith(
-              categoryOptionComboUid: Value(
-                  dupes.contains(v.categoryOptionComboUid)
-                      ? canonical
-                      : v.categoryOptionComboUid),
-              attributeOptionComboUid: Value(
-                  dupes.contains(v.attributeOptionComboUid)
-                      ? canonical
-                      : v.attributeOptionComboUid),
-              syncState:
-                  wasRejected ? const Value(SyncState.pending) : Value(v.syncState),
-              syncError: wasRejected ? const Value(null) : Value(v.syncError),
-            ),
-            mode: InsertMode.insertOrIgnore,
-          );
-    }
-
-    final regs = await (_db.select(_db.completeDataSetRegistrationsTable)
-          ..where((t) => t.attributeOptionComboUid.isIn(dupes)))
-        .get();
-    for (final r in regs) {
-      await (_db.delete(_db.completeDataSetRegistrationsTable)
-            ..where((t) =>
-                t.dataSetUid.equals(r.dataSetUid) &
-                t.period.equals(r.period) &
-                t.orgUnitUid.equals(r.orgUnitUid) &
-                t.attributeOptionComboUid.equals(r.attributeOptionComboUid)))
-          .go();
-      await _db.into(_db.completeDataSetRegistrationsTable).insert(
-            r.toCompanion(false).copyWith(
-              attributeOptionComboUid: Value(canonical),
-              syncState: r.syncState == SyncState.error
-                  ? const Value(SyncState.pending)
-                  : Value(r.syncState),
-            ),
-            mode: InsertMode.insertOrIgnore,
-          );
-    }
-
-    if (values.isNotEmpty || regs.isNotEmpty) {
-      log.i('[dataEntry] remapped ${values.length} value(s), '
-          '${regs.length} registration(s) from duplicate default COCs '
-          'to $canonical');
-    }
   }
 
   /// GET the data set's categoryCombo (with its COCs) and persist both

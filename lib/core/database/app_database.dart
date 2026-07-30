@@ -99,6 +99,35 @@ class DataValuesTable extends Table {
       };
 }
 
+/// What kind of local write an audit row describes.
+enum AuditEntityType { dataValue, completeness }
+
+/// Immutable trail of every local change to a data value or completion
+/// registration — old value, new value, who, when. Append-only: writes
+/// go through [AuditLogStore.record]; nothing ever updates a row here.
+@DataClassName('AuditEntry')
+class AuditLogTable extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get entityType => intEnum<AuditEntityType>()();
+
+  /// Populated for dataValue entries only.
+  TextColumn get dataElementUid => text().nullable()();
+  TextColumn get categoryOptionComboUid => text().nullable()();
+
+  /// Populated for completeness entries only.
+  TextColumn get dataSetUid => text().nullable()();
+
+  TextColumn get period => text()();
+  TextColumn get orgUnitUid => text().withLength(min: 11, max: 11)();
+  TextColumn get attributeOptionComboUid =>
+      text().withLength(min: 11, max: 11)();
+
+  TextColumn get previousValue => text().nullable()();
+  TextColumn get newValue => text().nullable()();
+  TextColumn get modifiedBy => text().nullable()();
+  DateTimeColumn get modifiedAt => dateTime()();
+}
+
 @DataClassName('CompleteDataSetRegistration')
 class CompleteDataSetRegistrationsTable extends Table {
   TextColumn get dataSetUid => text().withLength(min: 11, max: 11)();
@@ -155,6 +184,7 @@ class CompleteDataSetRegistrationsTable extends Table {
   // data
   DataValuesTable,
   CompleteDataSetRegistrationsTable,
+  AuditLogTable,
 ])
 class AppDatabase extends _$AppDatabase {
   /// One database FILE per logged-in user — [userKey] is a sanitized
@@ -170,7 +200,7 @@ class AppDatabase extends _$AppDatabase {
       raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -188,7 +218,9 @@ class AppDatabase extends _$AppDatabase {
         onUpgrade: (m, from, to) async {
           // One entry per schema bump, e.g.
           //   2: (m) => m.addColumn(dataSetsTable, dataSetsTable.newCol),
-          const steps = <int, Future<void> Function(Migrator)>{};
+          final steps = <int, Future<void> Function(Migrator)>{
+            2: (m) => m.createTable(auditLogTable),
+          };
           for (var target = from + 1; target <= to; target++) {
             final step = steps[target];
             if (step == null) {

@@ -27,7 +27,7 @@ class EthiopianPeriodService {
     final result = <SelectablePeriod>[];
     for (var i = 0; i < periods.length; i++) {
       final p = periods[i];
-      final (start, end) = _gregorianBounds(p);
+      final (start, end) = _gregorianBounds(p.id);
       // generatePeriods returns newest-first; index 0 is the current
       // (or newest generated) period. periodsAhead > 0 only applies if
       // the generator includes future periods; with newest = current,
@@ -47,6 +47,27 @@ class EthiopianPeriodService {
       ));
     }
     return result;
+  }
+
+  /// Status of ONE already-known period id — used when a form is
+  /// opened directly (new entry after picking, or reopening a report
+  /// from Report Period) to decide whether editing is still allowed.
+  /// [periodsAhead] is always 0 here: a period that already has (or
+  /// is about to get) an entry is never "not yet open" in practice,
+  /// and that branch doesn't affect whether it's EXPIRED, which is
+  /// the only status this call site acts on.
+  Future<PeriodStatus> statusForPeriod({
+    required DataSet dataSet,
+    required String periodId,
+  }) async {
+    final (start, end) = _gregorianBounds(periodId);
+    return _access.statusOf(
+      periodStart: start,
+      periodEnd: end,
+      expiryDays: dataSet.expiryDays,
+      openFuturePeriods: dataSet.openFuturePeriods,
+      periodsAhead: 0,
+    );
   }
 
   /// Today's period id for a period type — the picker's default.
@@ -84,9 +105,7 @@ class EthiopianPeriodService {
   /// Ethiopian year 2018, month 11 (Hamle). Expiry math compares
   /// against the device clock, so each id converts to Gregorian
   /// instants through the calendar.
-  (DateTime, DateTime) _gregorianBounds(EthiopianPeriod p) {
-    final id = p.id;
-
+  (DateTime, DateTime) _gregorianBounds(String id) {
     // Last Gregorian day before the 1st of Ethiopian (year, month).
     DateTime dayBefore(int year, int month) => EthiopianCalendar
         .toGregorian(year, month, 1)

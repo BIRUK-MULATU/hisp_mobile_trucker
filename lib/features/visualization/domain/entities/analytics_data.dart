@@ -38,6 +38,29 @@ class AnalyticsData {
     }
     return null;
   }
+
+  /// For the offline cache (see ChartRepositoryImpl) — round-trips
+  /// through JSON exactly, so a cached chart renders identically to
+  /// the live query that produced it.
+  Map<String, dynamic> toJson() => {
+        'visualizationId': visualizationId,
+        'title': title,
+        'type': type,
+        'categories': categories,
+        'series': [for (final s in series) s.toJson()],
+      };
+
+  factory AnalyticsData.fromJson(Map<String, dynamic> json) => AnalyticsData(
+        visualizationId: (json['visualizationId'] ?? '') as String,
+        title: (json['title'] ?? '') as String,
+        type: (json['type'] ?? '') as String,
+        categories:
+            (json['categories'] as List? ?? const []).cast<String>(),
+        series: [
+          for (final s in (json['series'] as List? ?? const []))
+            AnalyticsSeries.fromJson((s as Map).cast<String, dynamic>()),
+        ],
+      );
 }
 
 class AnalyticsSeries {
@@ -45,4 +68,15 @@ class AnalyticsSeries {
   final List<double?> values;
 
   const AnalyticsSeries({required this.name, required this.values});
+
+  Map<String, dynamic> toJson() => {'name': name, 'values': values};
+
+  factory AnalyticsSeries.fromJson(Map<String, dynamic> json) =>
+      AnalyticsSeries(
+        name: (json['name'] ?? '') as String,
+        values: [
+          for (final v in (json['values'] as List? ?? const []))
+            v == null ? null : (v as num).toDouble(),
+        ],
+      );
 }

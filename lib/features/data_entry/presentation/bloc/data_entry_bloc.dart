@@ -40,6 +40,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
   String _dataSetId = '';
   String _orgUnitId = '';
   String _period = '';
+  String? _attributeOptionComboUid;
 
   DataEntryBloc({
     required GetDataElementsUseCase getDataElementsUseCase,
@@ -60,6 +61,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
     _dataSetId = event.dataSetId;
     _orgUnitId = event.orgUnitId;
     _period = event.period;
+    _attributeOptionComboUid = event.attributeOptionComboUid;
 
     emit(const DataEntryLoading());
 
@@ -71,6 +73,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
           dataSetId: event.dataSetId,
           orgUnitId: event.orgUnitId,
           period: event.period,
+          attributeOptionComboUid: event.attributeOptionComboUid,
         ),
       ]);
 
@@ -160,6 +163,7 @@ class DataEntryBloc extends Bloc<DataEntryEvent, DataEntryState> {
           dataSetId: _dataSetId,
           orgUnitId: _orgUnitId,
           period: _period,
+          attributeOptionComboUid: _attributeOptionComboUid,
         );
         emit(const DataEntrySaved());
       } catch (e) {

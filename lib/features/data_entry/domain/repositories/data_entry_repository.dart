@@ -9,11 +9,15 @@ abstract class DataEntryRepository {
     String? sectionId,
   });
 
-  /// Fetch existing data values for editing
+  /// Fetch existing data values for editing. [attributeOptionComboUid]
+  /// scopes the form to one category-combo cell (e.g. Disease
+  /// Registration's Department × Outcome) — null uses the data set's
+  /// default combo, the only kind Routine data sets have.
   Future<List<DataValueEntity>> getDataValues({
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   });
 
   /// Save all data values to DHIS2
@@ -22,6 +26,7 @@ abstract class DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   });
 
   /// Run the data set's validation rules against this form's local
@@ -31,6 +36,7 @@ abstract class DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   });
 
   /// Mark dataset as complete
@@ -38,6 +44,7 @@ abstract class DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   });
 
   /// Whether this form instance is currently marked complete —
@@ -46,6 +53,7 @@ abstract class DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   });
 
   /// Reopen a completed dataset: mark it incomplete locally and push
@@ -54,5 +62,6 @@ abstract class DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     required String period,
+    String? attributeOptionComboUid,
   });
 }

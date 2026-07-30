@@ -8,7 +8,10 @@ abstract class CaptureRepository {
   /// lazily per expand, never as a whole.
   Future<List<OrgUnitTreeNode>> getOrgUnitChildren(String parentId);
 
-  /// Datasets assigned to [orgUnitId] (and readable by the user).
+  /// Datasets assigned to [orgUnitId] (and readable by the user) —
+  /// Routine and Disease Registration together, one merged list.
+  /// Each entity flags [DataSetEntity.isDiseaseRegistration] so the UI
+  /// can style disease datasets differently within the same flow.
   Future<List<DataSetEntity>> getDataSetsForOrgUnit(String orgUnitId);
 
   /// Sections of a dataset, ordered by sortOrder. Empty when the
@@ -21,6 +24,7 @@ abstract class CaptureRepository {
 
   /// Every report the user has worked on locally — completed
   /// registrations plus incomplete (draft) forms — across ALL org
-  /// units, newest first.
+  /// units, newest first. Routine and Disease Registration together,
+  /// same merge as [getDataSetsForOrgUnit].
   Future<List<ReportInstanceEntity>> getUserReports();
 }

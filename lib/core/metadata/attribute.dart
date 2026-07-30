@@ -74,12 +74,24 @@ void writeAttributeValues(
 /// Read helper: attribute values of one host object, as
 /// attributeUid -> value. Local, like every read.
 extension AttributeValueReads on AppDatabase {
+  /// Resolve a custom attribute's uid by its human name (falls back to
+  /// displayName). Attribute uids are instance-specific — re-importing
+  /// the same named attribute into another DHIS2 instance gives it a
+  /// different uid — so classification lookups key off the name
+  /// instead of a hardcoded uid.
+  Future<String?> attributeUidByName(String name) async {
+    final row = await (select(attributesTable)
+          ..where((t) => t.name.equals(name) | t.displayName.equals(name))
+          ..limit(1))
+        .getSingleOrNull();
+    return row?.uid;
+  }
+
   Future<Map<String, String>> attributeValuesOf(
       String objectType, String objectUid) async {
     final rows = await (select(attributeValuesTable)
           ..where((t) =>
-              t.objectType.equals(objectType) &
-              t.objectUid.equals(objectUid)))
+              t.objectType.equals(objectType) & t.objectUid.equals(objectUid)))
         .get();
     return {for (final r in rows) r.attributeUid: r.value};
   }

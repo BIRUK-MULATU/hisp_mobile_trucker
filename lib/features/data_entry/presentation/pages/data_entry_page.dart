@@ -1,17 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:printing/printing.dart';
+import 'package:showcaseview/showcaseview.dart';
+import '../../../../core/auth/app_session.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
+import '../../../../core/data/period_access.dart';
 import '../../../../core/data/validation_service.dart';
+import '../../../../core/metadata/data_set.dart';
+import '../../../../core/onboarding/tour_helper.dart';
+import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
 import '../../../../shared/widgets/connectivity_indicator.dart';
+import '../../../../shared/widgets/search_field.dart';
 import '../../data/repositories/data_entry_repository_impl.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
 import '../bloc/data_entry_bloc.dart';
+import '../utils/data_entry_pdf.dart';
 import '../widgets/data_entry_table.dart';
+import '../widgets/disease_entry_list.dart';
 
 class DataEntryPage extends StatelessWidget {
   final String dataSetId;
@@ -27,6 +37,15 @@ class DataEntryPage extends StatelessWidget {
 
   final DataEntryBloc? preloadedBloc;
 
+  /// Tags this dataset as Disease Registration — themes the AppBar
+  /// and save FAB with the disease accent.
+  final bool isDiseaseRegistration;
+
+  /// Scopes this form to one category-combo cell of the data set's
+  /// OWN category combination (e.g. Department × Outcome). Null uses
+  /// the data set's default combo — every Routine data set today.
+  final String? attributeOptionComboUid;
+
   const DataEntryPage({
     super.key,
     required this.dataSetId,
@@ -38,6 +57,8 @@ class DataEntryPage extends StatelessWidget {
     this.sectionId,
     this.sectionName,
     this.preloadedBloc,
+    this.isDiseaseRegistration = false,
+    this.attributeOptionComboUid,
   });
 
   @override
@@ -52,6 +73,8 @@ class DataEntryPage extends StatelessWidget {
         periodType: periodType,
         sectionId: sectionId,
         sectionName: sectionName,
+        isDiseaseRegistration: isDiseaseRegistration,
+        attributeOptionComboUid: attributeOptionComboUid,
       );
     }
 
@@ -67,6 +90,7 @@ class DataEntryPage extends StatelessWidget {
           orgUnitId: orgUnitId,
           period: period,
           sectionId: sectionId,
+          attributeOptionComboUid: attributeOptionComboUid,
         )),
       child: _DataEntryView(
         dataSetId: dataSetId,
@@ -77,6 +101,8 @@ class DataEntryPage extends StatelessWidget {
         periodType: periodType,
         sectionId: sectionId,
         sectionName: sectionName,
+        isDiseaseRegistration: isDiseaseRegistration,
+        attributeOptionComboUid: attributeOptionComboUid,
       ),
     );
   }
@@ -91,6 +117,8 @@ class _DataEntryView extends StatefulWidget {
   final String periodType;
   final String? sectionId;
   final String? sectionName;
+  final bool isDiseaseRegistration;
+  final String? attributeOptionComboUid;
 
   const _DataEntryView({
     required this.dataSetId,
@@ -101,6 +129,8 @@ class _DataEntryView extends StatefulWidget {
     required this.periodType,
     this.sectionId,
     this.sectionName,
+    this.isDiseaseRegistration = false,
+    this.attributeOptionComboUid,
   });
 
   @override
@@ -115,11 +145,80 @@ class _DataEntryViewState extends State<_DataEntryView> {
   /// bottom sheet the save flow shows (complete vs reopen).
   bool _isCompleted = false;
 
+  /// True once this period's expiryDays deadline has passed — cells
+  /// go read-only (view only) but stay fully visible. Checked on
+  /// open so both a freshly-picked period and a reopened past report
+  /// get the same gate; entry itself never re-checks it mid-session.
+  bool _isPeriodClosed = false;
+
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  // ── App tour targets ────────────────────────────────────────
+  // Routine and Disease Registration share this page, but get their
+  // OWN tour id — Disease Registration's extra "Select for new
+  // disease" step has nothing to show a Routine user, and a user who
+  // only ever opens one of the two should still see the other's tour
+  // on their first visit to it.
+  final _printShowcaseKey = GlobalKey();
+  final _syncShowcaseKey = GlobalKey();
+  final _saveFabShowcaseKey = GlobalKey();
+  final _diseaseSearchShowcaseKey = GlobalKey();
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _loadCompletionStatus());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _loadCompletionStatus();
+      // Awaited (not fire-and-forget) so _isPeriodClosed is settled
+      // before the tour decides whether the Save FAB — hidden once
+      // the period is closed — belongs in its target list.
+      await _loadPeriodStatus();
+      await _maybeStartTour();
+    });
+  }
+
+  Future<void> _maybeStartTour({bool force = false}) async {
+    if (!mounted) return;
+    await maybeStartTour(
+      context,
+      tourId: widget.isDiseaseRegistration
+          ? 'data_entry_disease'
+          : 'data_entry_routine',
+      keys: [
+        _printShowcaseKey,
+        _syncShowcaseKey,
+        if (!_isPeriodClosed) _saveFabShowcaseKey,
+        if (widget.isDiseaseRegistration && !_isPeriodClosed)
+          _diseaseSearchShowcaseKey,
+      ],
+      force: force,
+    );
+  }
+
+  Future<void> _loadPeriodStatus() async {
+    if (!mounted) return;
+    try {
+      final db = AppSession.instance.service.db;
+      final dataSet = await DataSetResource(db).getById(widget.dataSetId);
+      if (dataSet == null) return;
+      final status = await EthiopianPeriodService(db).statusForPeriod(
+        dataSet: dataSet,
+        periodId: widget.period,
+      );
+      if (mounted) {
+        setState(() => _isPeriodClosed = status == PeriodStatus.expired);
+      }
+    } catch (_) {
+      // Metadata not on the device yet — err open, same as the rest
+      // of this page's best-effort loads.
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCompletionStatus() async {
@@ -130,6 +229,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                 dataSetId: widget.dataSetId,
                 orgUnitId: widget.orgUnitId,
                 period: widget.period,
+                attributeOptionComboUid: widget.attributeOptionComboUid,
               );
       if (mounted) setState(() => _isCompleted = completed);
     } catch (_) {
@@ -158,7 +258,51 @@ class _DataEntryViewState extends State<_DataEntryView> {
       orgUnitId: widget.orgUnitId,
       period: widget.period,
       sectionId: widget.sectionId,
+      attributeOptionComboUid: widget.attributeOptionComboUid,
     ));
+  }
+
+  // ── Print tapped — export/print whatever is currently recorded ──
+  Future<void> _onPrintTapped() async {
+    final state = context.read<DataEntryBloc>().state;
+    if (state is! DataEntryLoaded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Form is still loading — try again in a moment.'),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final recorded = recordedDataElements(
+      dataElements: state.dataElements,
+      dataValues: state.dataValues,
+    );
+    if (recorded.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nothing recorded yet — enter some values first.'),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final printedBy = await SecureStorage().getUsername();
+    final title = widget.sectionName ?? widget.dataSetName;
+    await Printing.layoutPdf(
+      name: '$title - ${widget.period}',
+      onLayout: (_) => buildDataEntryPdf(
+        title: title,
+        orgUnitName: widget.orgUnitName,
+        periodLabel: EthiopianPeriodService.formatPeriodId(widget.period),
+        isDiseaseRegistration: widget.isDiseaseRegistration,
+        dataElements: state.dataElements,
+        dataValues: state.dataValues,
+        printedBy: printedBy,
+      ),
+    );
   }
 
   // ── FAB tapped — save first ───────────────────────────────
@@ -205,6 +349,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
           dataSetId: widget.dataSetId,
           orgUnitId: widget.orgUnitId,
           period: widget.period,
+          attributeOptionComboUid: widget.attributeOptionComboUid,
         );
       }
 
@@ -245,6 +390,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                 dataSetId: widget.dataSetId,
                 orgUnitId: widget.orgUnitId,
                 period: widget.period,
+                attributeOptionComboUid: widget.attributeOptionComboUid,
               );
     } catch (_) {}
     if (!mounted) return;
@@ -390,6 +536,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
               dataSetId: widget.dataSetId,
               orgUnitId: widget.orgUnitId,
               period: widget.period,
+              attributeOptionComboUid: widget.attributeOptionComboUid,
             );
         if (mounted) {
           setState(() => _isCompleted = true);
@@ -561,6 +708,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
           dataSetId: widget.dataSetId,
           orgUnitId: widget.orgUnitId,
           period: widget.period,
+          attributeOptionComboUid: widget.attributeOptionComboUid,
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -582,6 +730,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
           dataSetId: widget.dataSetId,
           orgUnitId: widget.orgUnitId,
           period: widget.period,
+          attributeOptionComboUid: widget.attributeOptionComboUid,
         );
         // Stay on the form — reopening means the user keeps working.
         if (mounted) {
@@ -619,24 +768,54 @@ class _DataEntryViewState extends State<_DataEntryView> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: AppColors.primary,
+        backgroundColor: widget.isDiseaseRegistration
+            ? AppColors.diseaseAccent
+            : AppColors.primary,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          widget.sectionName ?? widget.dataSetName,
-          style: AppTextStyles.appBarTitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.sectionName ?? widget.dataSetName,
+              style: AppTextStyles.appBarTitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (widget.isDiseaseRegistration)
+              Text(
+                'Disease Registration',
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
+              ),
+          ],
         ),
         actions: [
           const ConnectivityIndicator(),
-          IconButton(
-            icon: const Icon(Icons.sync_rounded, color: Colors.white),
-            tooltip: 'Reload values',
-            onPressed: _onSyncTapped,
+          Showcase(
+            key: _printShowcaseKey,
+            title: 'Print / Export',
+            description: "Print or export this form as a PDF — only "
+                "what you've recorded is included.",
+            child: IconButton(
+              icon: const Icon(Icons.print_rounded, color: Colors.white),
+              tooltip: 'Print / Export PDF',
+              onPressed: _onPrintTapped,
+            ),
+          ),
+          Showcase(
+            key: _syncShowcaseKey,
+            title: 'Reload',
+            description: 'Reload this form\'s values from the server.',
+            child: IconButton(
+              icon: const Icon(Icons.sync_rounded, color: Colors.white),
+              tooltip: 'Reload values',
+              onPressed: _onSyncTapped,
+            ),
           ),
           const SizedBox(width: AppDimensions.spaceXS),
         ],
@@ -649,8 +828,29 @@ class _DataEntryViewState extends State<_DataEntryView> {
             period: widget.period,
             orgUnitName: widget.orgUnitName,
             completed: _isCompleted,
+            periodClosed: _isPeriodClosed,
           ),
           const Divider(height: 1, color: AppColors.divider),
+
+          // Disease Registration leads with "Select for new disease"
+          // (see DiseaseEntryList) instead of a plain search bar —
+          // there can be hundreds of diseases, so nothing is listed
+          // until it's recorded or explicitly picked.
+          if (!widget.isDiseaseRegistration) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.space,
+                vertical: AppDimensions.spaceSM,
+              ),
+              child: SearchField(
+                controller: _searchController,
+                hint: 'Search...',
+                value: _searchQuery,
+                onChanged: (q) => setState(() => _searchQuery = q),
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.divider),
+          ],
 
           // ── Table ─────────────────────────────────
           Expanded(
@@ -668,17 +868,30 @@ class _DataEntryViewState extends State<_DataEntryView> {
                             orgUnitId: widget.orgUnitId,
                             period: widget.period,
                             sectionId: widget.sectionId,
+                            attributeOptionComboUid:
+                                widget.attributeOptionComboUid,
                           ),
                         ),
                   );
                 }
                 if (state is DataEntryLoaded) {
-                  return DataEntryTable(
-                    dataElements: state.dataElements,
-                    dataValues: state.dataValues,
-                    orgUnitId: widget.orgUnitId,
-                    period: widget.period,
-                  );
+                  return widget.isDiseaseRegistration
+                      ? DiseaseEntryList(
+                          dataElements: state.dataElements,
+                          dataValues: state.dataValues,
+                          orgUnitId: widget.orgUnitId,
+                          period: widget.period,
+                          readOnly: _isPeriodClosed,
+                          searchShowcaseKey: _diseaseSearchShowcaseKey,
+                        )
+                      : DataEntryTable(
+                          dataElements: state.dataElements,
+                          dataValues: state.dataValues,
+                          orgUnitId: widget.orgUnitId,
+                          period: widget.period,
+                          searchQuery: _searchQuery,
+                          readOnly: _isPeriodClosed,
+                        );
                 }
                 // Initial state (load event not processed yet) —
                 // keep the spinner up instead of a blank page.
@@ -689,27 +902,40 @@ class _DataEntryViewState extends State<_DataEntryView> {
         ],
       ),
 
-      // ── Save FAB ──────────────────────────────────
-      floatingActionButton: FloatingActionButton(
-        onPressed: (_isSaving || _isCompleting) ? null : _onSaveTapped,
-        backgroundColor: AppColors.primary,
-        elevation: 4,
-        shape: const CircleBorder(),
-        child: (_isSaving || _isCompleting)
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(
-                Icons.check_rounded,
-                color: Colors.white,
-                size: AppDimensions.iconXL,
+      // ── Save FAB — hidden once the period is closed: view only,
+      // nothing left to save ─────────────────────────────
+      floatingActionButton: _isPeriodClosed
+          ? null
+          : Showcase(
+              key: _saveFabShowcaseKey,
+              title: 'Save',
+              description: "Save your entries — you'll then be asked to "
+                  'complete the report or keep it as a draft.',
+              targetShapeBorder: const CircleBorder(),
+              child: FloatingActionButton(
+                onPressed:
+                    (_isSaving || _isCompleting) ? null : _onSaveTapped,
+                backgroundColor: widget.isDiseaseRegistration
+                    ? AppColors.diseaseAccent
+                    : AppColors.primary,
+                elevation: 4,
+                shape: const CircleBorder(),
+                child: (_isSaving || _isCompleting)
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.check_rounded,
+                        color: Colors.white,
+                        size: AppDimensions.iconXL,
+                      ),
               ),
-      ),
+            ),
     );
   }
 }
@@ -719,10 +945,12 @@ class _SubHeader extends StatelessWidget {
   final String period;
   final String orgUnitName;
   final bool completed;
+  final bool periodClosed;
   const _SubHeader({
     required this.period,
     required this.orgUnitName,
     this.completed = false,
+    this.periodClosed = false,
   });
 
   @override
@@ -776,6 +1004,37 @@ class _SubHeader extends StatelessWidget {
                     'Completed',
                     style: AppTextStyles.labelMedium.copyWith(
                       color: AppColors.success,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (periodClosed) ...[
+            const SizedBox(width: AppDimensions.spaceSM),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spaceSM,
+                vertical: AppDimensions.spaceXXS,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.lock_outline_rounded,
+                    color: AppColors.warning,
+                    size: AppDimensions.iconSM,
+                  ),
+                  const SizedBox(width: AppDimensions.spaceXXS),
+                  Text(
+                    'Closed · View only',
+                    style: AppTextStyles.labelMedium.copyWith(
+                      color: AppColors.warning,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

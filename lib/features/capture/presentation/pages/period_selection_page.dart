@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/auth/app_session.dart';
+import '../../../../core/metadata/data_set.dart';
 import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
@@ -24,6 +26,10 @@ class PeriodSelectionPage extends StatefulWidget {
   final String? sectionId;
   final String? sectionName;
 
+  /// Tags this dataset as Disease Registration — themes this page
+  /// and the form after it with the disease accent.
+  final bool isDiseaseRegistration;
+
   const PeriodSelectionPage({
     super.key,
     required this.dataSetId,
@@ -33,6 +39,7 @@ class PeriodSelectionPage extends StatefulWidget {
     required this.orgUnitName,
     this.sectionId,
     this.sectionName,
+    this.isDiseaseRegistration = false,
   });
 
   @override
@@ -51,6 +58,12 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
   bool _isPrefetching = false;
   bool _isPrefetchDone = false;
 
+  /// The data set's OWN category combination (e.g. Department ×
+  /// Outcome) — empty for the common "default combo" case, which
+  /// needs no selection.
+  List<CategoryDimension> _dimensions = const [];
+  final Map<String, String> _dimensionSelections = {};
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +75,19 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
       repository: _repository,
     );
     _prefetchDataElements();
+    _loadDimensions();
+  }
+
+  Future<void> _loadDimensions() async {
+    try {
+      final db = AppSession.instance.service.db;
+      final dimensions =
+          await DataSetResource(db).categoryDimensions(widget.dataSetId);
+      if (mounted) setState(() => _dimensions = dimensions);
+    } catch (_) {
+      // Metadata not synced yet — treated the same as "no combo to
+      // pick"; the form still opens under the default combo.
+    }
   }
 
   @override
@@ -97,11 +123,34 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
   Future<void> _openForm() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    String? attributeOptionComboUid;
+    if (_dimensions.isNotEmpty) {
+      final db = AppSession.instance.service.db;
+      attributeOptionComboUid = await DataSetResource(db)
+          .resolveCategoryOptionCombo(widget.dataSetId, _dimensionSelections);
+      if (attributeOptionComboUid == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not resolve the selected combination — '
+                  'try again once metadata has synced.'),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
     _dataEntryBloc.add(DataEntryLoad(
       dataSetId: widget.dataSetId,
       orgUnitId: widget.orgUnitId,
       period: _selectedPeriodId!,
       sectionId: widget.sectionId,
+      attributeOptionComboUid: attributeOptionComboUid,
     ));
 
     final result = await Navigator.push(
@@ -119,6 +168,8 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
             sectionId: widget.sectionId,
             sectionName: widget.sectionName,
             preloadedBloc: _dataEntryBloc,
+            isDiseaseRegistration: widget.isDiseaseRegistration,
+            attributeOptionComboUid: attributeOptionComboUid,
           ),
         ),
       ),
@@ -137,17 +188,31 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: AppColors.primary,
+        backgroundColor: widget.isDiseaseRegistration
+            ? AppColors.diseaseAccent
+            : AppColors.primary,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          sectionName ?? widget.dataSetName,
-          style: AppTextStyles.appBarTitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              sectionName ?? widget.dataSetName,
+              style: AppTextStyles.appBarTitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (widget.isDiseaseRegistration)
+              Text(
+                'Disease Registration',
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
+              ),
+          ],
         ),
         actions: [
           const ConnectivityIndicator(),
@@ -209,6 +274,25 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
                   },
                 ),
 
+                // Department/Outcome only make sense once a period is
+                // picked — they stay hidden until then instead of
+                // dumping every field on the user at once.
+                if (_selectedPeriodId != null)
+                  for (final dimension in _dimensions) ...[
+                    const SizedBox(height: AppDimensions.spaceXL),
+                    _DimensionField(
+                      dimension: dimension,
+                      selected: _dimensionSelections[dimension.uid],
+                      onChanged: (value) => setState(() {
+                        if (value == null) {
+                          _dimensionSelections.remove(dimension.uid);
+                        } else {
+                          _dimensionSelections[dimension.uid] = value;
+                        }
+                      }),
+                    ),
+                  ],
+
                 const SizedBox(height: AppDimensions.spaceGiant),
 
                 // ── Open Form Button ──────────────────
@@ -218,7 +302,9 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
                   child: ElevatedButton(
                     onPressed: _openForm,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: widget.isDiseaseRegistration
+                          ? AppColors.diseaseAccent
+                          : AppColors.primary,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -238,6 +324,75 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// One dropdown for one category of the data set's own category
+/// combination (e.g. "Department") — sibling to [PeriodSelectorField],
+/// only rendered when the data set actually has a non-default combo.
+class _DimensionField extends StatelessWidget {
+  final CategoryDimension dimension;
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+
+  const _DimensionField({
+    required this.dimension,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          dimension.name,
+          style: AppTextStyles.bodyLarge.copyWith(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        const SizedBox(height: AppDimensions.spaceSM),
+        DropdownButtonFormField<String>(
+          initialValue: selected,
+          isExpanded: true,
+          icon: const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: AppColors.textSecondary,
+          ),
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: AppColors.textPrimary,
+          ),
+          decoration: const InputDecoration(
+            filled: false,
+            contentPadding: EdgeInsets.only(bottom: AppDimensions.spaceSM),
+            border: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.border),
+            ),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.primary, width: 2),
+            ),
+            errorBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.error),
+            ),
+          ),
+          items: [
+            for (final option in dimension.options)
+              DropdownMenuItem<String>(
+                value: option.uid,
+                child: Text(option.name, style: AppTextStyles.bodyMedium),
+              ),
+          ],
+          onChanged: onChanged,
+          validator: (value) =>
+              value == null ? 'Please select ${dimension.name}' : null,
+        ),
+      ],
     );
   }
 }
