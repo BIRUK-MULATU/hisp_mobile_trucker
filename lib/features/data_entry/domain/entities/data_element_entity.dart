@@ -1,3 +1,5 @@
+import '../../../../core/database/app_database.dart' show SyncState;
+
 /// Represents a DHIS2 data element (a row in the data entry form)
 class DataElementEntity {
   final String id;
@@ -63,6 +65,12 @@ class DataValueEntity {
   /// Cleared when the user edits the cell — saving re-queues it.
   String? syncError;
 
+  /// This cell's local sync status (synced/pending/draft/error) —
+  /// null when the cell has no row in the local store yet (never
+  /// entered on this device). Distinct from [syncError], which is
+  /// only the rejection text for the error case.
+  SyncState? syncState;
+
   DataValueEntity({
     required this.dataElementId,
     required this.categoryOptionComboId,
@@ -71,6 +79,7 @@ class DataValueEntity {
     this.value = '',
     this.isModified = false,
     this.syncError,
+    this.syncState,
   });
 
   String get key => '${dataElementId}_$categoryOptionComboId';

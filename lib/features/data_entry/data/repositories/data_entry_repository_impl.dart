@@ -162,6 +162,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
           period: r.period,
           value: r.value ?? '',
           syncError: r.syncState == SyncState.error ? r.syncError : null,
+          syncState: r.syncState,
         ),
     ];
   }

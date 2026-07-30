@@ -269,6 +269,10 @@ class _DataEntryTableState extends State<DataEntryTable> {
               comboName: combo.displayName,
               orgUnitId: widget.orgUnitId,
               period: widget.period,
+              localValue: existing?.value,
+              localIsModified: existing?.isModified ?? false,
+              localSyncState: existing?.syncState,
+              localSyncError: existing?.syncError,
             ),
             child: const Padding(
               padding: EdgeInsets.all(AppDimensions.spaceXS),

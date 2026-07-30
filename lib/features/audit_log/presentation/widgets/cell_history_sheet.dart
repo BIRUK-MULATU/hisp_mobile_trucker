@@ -23,6 +23,10 @@ Future<void> showCellHistorySheet(
   required String comboName,
   required String orgUnitId,
   required String period,
+  String? localValue,
+  bool localIsModified = false,
+  SyncState? localSyncState,
+  String? localSyncError,
 }) {
   return showModalBottomSheet(
     context: context,
@@ -40,11 +44,19 @@ Future<void> showCellHistorySheet(
       comboName: comboName,
       orgUnitId: orgUnitId,
       period: period,
+      localValue: localValue,
+      localIsModified: localIsModified,
+      localSyncState: localSyncState,
+      localSyncError: localSyncError,
     ),
   );
 }
 
-enum _Source { server, local }
+// Which log the change-HISTORY list below came from. The "this
+// device" status card is shown regardless of this — it's always
+// local, since it answers a different question (current state vs
+// past edits).
+enum _HistorySource { server, local }
 
 class _HistoryRow {
   const _HistoryRow({
@@ -85,6 +97,10 @@ class _CellHistorySheet extends StatefulWidget {
     required this.comboName,
     required this.orgUnitId,
     required this.period,
+    this.localValue,
+    this.localIsModified = false,
+    this.localSyncState,
+    this.localSyncError,
   });
 
   final String dataElementId;
@@ -94,6 +110,14 @@ class _CellHistorySheet extends StatefulWidget {
   final String orgUnitId;
   final String period;
 
+  /// This exact cell's value/status as held in the local store right
+  /// now — passed in from the same `dataValues` map the entry grid
+  /// itself renders from, so it can never point at a different cell.
+  final String? localValue;
+  final bool localIsModified;
+  final SyncState? localSyncState;
+  final String? localSyncError;
+
   @override
   State<_CellHistorySheet> createState() => _CellHistorySheetState();
 }
@@ -101,7 +125,7 @@ class _CellHistorySheet extends StatefulWidget {
 class _CellHistorySheetState extends State<_CellHistorySheet> {
   bool _isLoading = true;
   String? _error;
-  _Source _source = _Source.server;
+  _HistorySource _historySource = _HistorySource.server;
   List<_HistoryRow> _rows = const [];
 
   AppDatabase get _db => AppSession.instance.service.db;
@@ -139,7 +163,7 @@ class _CellHistorySheetState extends State<_CellHistorySheet> {
         if (!mounted) return;
         setState(() {
           _rows = [for (final a in scoped) _HistoryRow.fromServer(a)];
-          _source = _Source.server;
+          _historySource = _HistorySource.server;
           _isLoading = false;
         });
         return;
@@ -157,7 +181,7 @@ class _CellHistorySheetState extends State<_CellHistorySheet> {
       if (!mounted) return;
       setState(() {
         _rows = [for (final e in entries) _HistoryRow.fromLocal(e)];
-        _source = _Source.local;
+        _historySource = _HistorySource.local;
         _isLoading = false;
       });
     } catch (e) {
@@ -191,8 +215,9 @@ class _CellHistorySheetState extends State<_CellHistorySheet> {
               ),
             ),
             _buildHeader(),
-            if (!_isLoading && _error == null) _buildSourceBanner(),
+            _buildLocalStatusCard(),
             const Divider(height: 1, color: AppColors.divider),
+            if (!_isLoading && _error == null) _buildSourceBanner(),
             Flexible(child: _buildBody()),
           ],
         ),
@@ -238,7 +263,7 @@ class _CellHistorySheetState extends State<_CellHistorySheet> {
   }
 
   Widget _buildSourceBanner() {
-    final isServer = _source == _Source.server;
+    final isServer = _historySource == _HistorySource.server;
     return Container(
       width: double.infinity,
       color: isServer ? AppColors.infoLight : AppColors.warningLight,
@@ -257,8 +282,8 @@ class _CellHistorySheetState extends State<_CellHistorySheet> {
           Expanded(
             child: Text(
               isServer
-                  ? 'From the DHIS2 server'
-                  : "Offline — this device's own history",
+                  ? 'Change history below is from the DHIS2 server'
+                  : "Offline — showing this device's own edit log below",
               style: AppTextStyles.labelSmall.copyWith(
                 color: isServer ? AppColors.info : AppColors.warning,
               ),
@@ -267,6 +292,97 @@ class _CellHistorySheetState extends State<_CellHistorySheet> {
         ],
       ),
     );
+  }
+
+  /// This device's own current status for this exact cell — shown
+  /// unconditionally, independent of whether the server history
+  /// fetch above succeeded, failed, or is still loading.
+  Widget _buildLocalStatusCard() {
+    final (icon, color, label) = _localStatus();
+    final value = widget.localValue;
+    final hasValue = value != null && value.trim().isNotEmpty;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(
+        AppDimensions.space,
+        0,
+        AppDimensions.space,
+        AppDimensions.spaceSM,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spaceSM,
+        vertical: AppDimensions.spaceXS,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: AppDimensions.iconSM, color: color),
+          const SizedBox(width: AppDimensions.spaceXS),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'On this device',
+                  style: AppTextStyles.labelSmall
+                      .copyWith(color: color, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hasValue ? '"$value" · $label' : label,
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textPrimary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  (IconData, Color, String) _localStatus() {
+    if (widget.localIsModified) {
+      return (
+        Icons.edit_rounded,
+        AppColors.warning,
+        'Edited here — not saved yet',
+      );
+    }
+    switch (widget.localSyncState) {
+      case SyncState.synced:
+        return (Icons.cloud_done_rounded, AppColors.success, 'Synced');
+      case SyncState.pending:
+        return (
+          Icons.cloud_upload_rounded,
+          AppColors.warning,
+          'Saved on device — waiting to sync',
+        );
+      case SyncState.draft:
+        return (
+          Icons.drafts_rounded,
+          AppColors.textSecondary,
+          'Saved as a draft — not submitted yet',
+        );
+      case SyncState.error:
+        final why = widget.localSyncError;
+        return (
+          Icons.error_rounded,
+          AppColors.error,
+          why == null ? 'Rejected by the server' : 'Rejected: $why',
+        );
+      case null:
+        return (
+          Icons.circle_outlined,
+          AppColors.textHint,
+          'Not entered on this device',
+        );
+    }
   }
 
   Widget _buildBody() {
