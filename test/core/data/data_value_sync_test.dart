@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hisp_mobile_trucker/core/data/data_value_store.dart';
 import 'package:hisp_mobile_trucker/core/data/data_value_sync.dart';
 import 'package:hisp_mobile_trucker/core/database/app_database.dart';
+import 'package:hisp_mobile_trucker/core/metadata/category_option_combo.dart';
 import 'package:hisp_mobile_trucker/core/network/api_client.dart';
 
 /// Replays one canned dataValueSets response for every request (the
@@ -121,6 +122,66 @@ void main() {
       final row = (await db.select(db.dataValuesTable).get()).single;
       expect(row.syncState, SyncState.synced,
           reason: 'nothing left to send — the server already has it');
+    });
+  });
+
+  group('duplicate default COC on pull', () {
+    const duplicateDefaultUid = 'ed678csgTm8';
+
+    Future<void> seedCombo(String uid) => db
+        .into(db.categoryOptionCombosTable)
+        .insert(CategoryOptionCombosTableCompanion.insert(
+          uid: uid,
+          name: 'default',
+          categoryComboUid: 'catCombo001',
+        ));
+
+    test(
+        'a value pulled under a non-canonical "default" combo is still '
+        'readable through the canonical uid', () async {
+      // This device's cached metadata has BOTH combos this HMIS
+      // instance is known to carry under the name 'default' — the
+      // canonical one and (at least) one duplicate.
+      await seedCombo(canonicalDefaultComboUid);
+      await seedCombo(duplicateDefaultUid);
+
+      // The server hands back the cell keyed on the DUPLICATE uid —
+      // exactly what happens for values recorded before the duplicate
+      // was ever detected/resolved.
+      final result = await DataValueSync(db, clientWith({
+        'dataValues': [
+          {
+            'dataElement': de,
+            'period': period,
+            'orgUnit': ou,
+            'categoryOptionCombo': duplicateDefaultUid,
+            'attributeOptionCombo': duplicateDefaultUid,
+            'value': '42',
+            'lastUpdated': DateTime.now().toIso8601String(),
+          },
+        ],
+      })).syncForm(
+        dataSetUid: ds,
+        period: period,
+        orgUnitUid: ou,
+        dataElementUids: const [de],
+        attributeOptionComboUid: canonicalDefaultComboUid,
+      );
+      expect(result.pulled, true);
+
+      // The read path (DataEntryRepositoryImpl / the entry grid) always
+      // filters by the CANONICAL uid — without the remap, this would
+      // come back empty even though the pull "succeeded".
+      final rows = await store.valuesForForm(
+        period: period,
+        orgUnitUid: ou,
+        attributeOptionComboUid: canonicalDefaultComboUid,
+        dataElementUids: const [de],
+      );
+      expect(rows, hasLength(1));
+      expect(rows.single.value, '42');
+      expect(rows.single.categoryOptionComboUid, canonicalDefaultComboUid);
+      expect(rows.single.attributeOptionComboUid, canonicalDefaultComboUid);
     });
   });
 }

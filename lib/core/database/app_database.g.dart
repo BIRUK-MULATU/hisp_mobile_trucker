@@ -10026,6 +10026,14 @@ class $AuditLogTableTable extends AuditLogTable
               type: DriftSqlType.int, requiredDuringInsert: true)
           .withConverter<AuditEntityType>(
               $AuditLogTableTable.$converterentityType);
+  @override
+  late final GeneratedColumnWithTypeConverter<LocalAuditType, int> auditType =
+      GeneratedColumn<int>('audit_type', aliasedName, false,
+              type: DriftSqlType.int,
+              requiredDuringInsert: false,
+              defaultValue: const Constant(1))
+          .withConverter<LocalAuditType>(
+              $AuditLogTableTable.$converterauditType);
   static const VerificationMeta _dataElementUidMeta =
       const VerificationMeta('dataElementUid');
   @override
@@ -10095,6 +10103,7 @@ class $AuditLogTableTable extends AuditLogTable
   List<GeneratedColumn> get $columns => [
         id,
         entityType,
+        auditType,
         dataElementUid,
         categoryOptionComboUid,
         dataSetUid,
@@ -10198,6 +10207,9 @@ class $AuditLogTableTable extends AuditLogTable
       entityType: $AuditLogTableTable.$converterentityType.fromSql(
           attachedDatabase.typeMapping
               .read(DriftSqlType.int, data['${effectivePrefix}entity_type'])!),
+      auditType: $AuditLogTableTable.$converterauditType.fromSql(
+          attachedDatabase.typeMapping
+              .read(DriftSqlType.int, data['${effectivePrefix}audit_type'])!),
       dataElementUid: attachedDatabase.typeMapping.read(
           DriftSqlType.string, data['${effectivePrefix}data_element_uid']),
       categoryOptionComboUid: attachedDatabase.typeMapping.read(
@@ -10230,11 +10242,14 @@ class $AuditLogTableTable extends AuditLogTable
 
   static JsonTypeConverter2<AuditEntityType, int, int> $converterentityType =
       const EnumIndexConverter<AuditEntityType>(AuditEntityType.values);
+  static JsonTypeConverter2<LocalAuditType, int, int> $converterauditType =
+      const EnumIndexConverter<LocalAuditType>(LocalAuditType.values);
 }
 
 class AuditEntry extends DataClass implements Insertable<AuditEntry> {
   final int id;
   final AuditEntityType entityType;
+  final LocalAuditType auditType;
 
   /// Populated for dataValue entries only.
   final String? dataElementUid;
@@ -10252,6 +10267,7 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
   const AuditEntry(
       {required this.id,
       required this.entityType,
+      required this.auditType,
       this.dataElementUid,
       this.categoryOptionComboUid,
       this.dataSetUid,
@@ -10269,6 +10285,10 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
     {
       map['entity_type'] = Variable<int>(
           $AuditLogTableTable.$converterentityType.toSql(entityType));
+    }
+    {
+      map['audit_type'] = Variable<int>(
+          $AuditLogTableTable.$converterauditType.toSql(auditType));
     }
     if (!nullToAbsent || dataElementUid != null) {
       map['data_element_uid'] = Variable<String>(dataElementUid);
@@ -10301,6 +10321,7 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
     return AuditLogTableCompanion(
       id: Value(id),
       entityType: Value(entityType),
+      auditType: Value(auditType),
       dataElementUid: dataElementUid == null && nullToAbsent
           ? const Value.absent()
           : Value(dataElementUid),
@@ -10333,6 +10354,8 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
       id: serializer.fromJson<int>(json['id']),
       entityType: $AuditLogTableTable.$converterentityType
           .fromJson(serializer.fromJson<int>(json['entityType'])),
+      auditType: $AuditLogTableTable.$converterauditType
+          .fromJson(serializer.fromJson<int>(json['auditType'])),
       dataElementUid: serializer.fromJson<String?>(json['dataElementUid']),
       categoryOptionComboUid:
           serializer.fromJson<String?>(json['categoryOptionComboUid']),
@@ -10354,6 +10377,8 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
       'id': serializer.toJson<int>(id),
       'entityType': serializer.toJson<int>(
           $AuditLogTableTable.$converterentityType.toJson(entityType)),
+      'auditType': serializer.toJson<int>(
+          $AuditLogTableTable.$converterauditType.toJson(auditType)),
       'dataElementUid': serializer.toJson<String?>(dataElementUid),
       'categoryOptionComboUid':
           serializer.toJson<String?>(categoryOptionComboUid),
@@ -10372,6 +10397,7 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
   AuditEntry copyWith(
           {int? id,
           AuditEntityType? entityType,
+          LocalAuditType? auditType,
           Value<String?> dataElementUid = const Value.absent(),
           Value<String?> categoryOptionComboUid = const Value.absent(),
           Value<String?> dataSetUid = const Value.absent(),
@@ -10385,6 +10411,7 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
       AuditEntry(
         id: id ?? this.id,
         entityType: entityType ?? this.entityType,
+        auditType: auditType ?? this.auditType,
         dataElementUid:
             dataElementUid.present ? dataElementUid.value : this.dataElementUid,
         categoryOptionComboUid: categoryOptionComboUid.present
@@ -10406,6 +10433,7 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
       id: data.id.present ? data.id.value : this.id,
       entityType:
           data.entityType.present ? data.entityType.value : this.entityType,
+      auditType: data.auditType.present ? data.auditType.value : this.auditType,
       dataElementUid: data.dataElementUid.present
           ? data.dataElementUid.value
           : this.dataElementUid,
@@ -10436,6 +10464,7 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
     return (StringBuffer('AuditEntry(')
           ..write('id: $id, ')
           ..write('entityType: $entityType, ')
+          ..write('auditType: $auditType, ')
           ..write('dataElementUid: $dataElementUid, ')
           ..write('categoryOptionComboUid: $categoryOptionComboUid, ')
           ..write('dataSetUid: $dataSetUid, ')
@@ -10454,6 +10483,7 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
   int get hashCode => Object.hash(
       id,
       entityType,
+      auditType,
       dataElementUid,
       categoryOptionComboUid,
       dataSetUid,
@@ -10470,6 +10500,7 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
       (other is AuditEntry &&
           other.id == this.id &&
           other.entityType == this.entityType &&
+          other.auditType == this.auditType &&
           other.dataElementUid == this.dataElementUid &&
           other.categoryOptionComboUid == this.categoryOptionComboUid &&
           other.dataSetUid == this.dataSetUid &&
@@ -10485,6 +10516,7 @@ class AuditEntry extends DataClass implements Insertable<AuditEntry> {
 class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
   final Value<int> id;
   final Value<AuditEntityType> entityType;
+  final Value<LocalAuditType> auditType;
   final Value<String?> dataElementUid;
   final Value<String?> categoryOptionComboUid;
   final Value<String?> dataSetUid;
@@ -10498,6 +10530,7 @@ class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
   const AuditLogTableCompanion({
     this.id = const Value.absent(),
     this.entityType = const Value.absent(),
+    this.auditType = const Value.absent(),
     this.dataElementUid = const Value.absent(),
     this.categoryOptionComboUid = const Value.absent(),
     this.dataSetUid = const Value.absent(),
@@ -10512,6 +10545,7 @@ class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
   AuditLogTableCompanion.insert({
     this.id = const Value.absent(),
     required AuditEntityType entityType,
+    this.auditType = const Value.absent(),
     this.dataElementUid = const Value.absent(),
     this.categoryOptionComboUid = const Value.absent(),
     this.dataSetUid = const Value.absent(),
@@ -10530,6 +10564,7 @@ class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
   static Insertable<AuditEntry> custom({
     Expression<int>? id,
     Expression<int>? entityType,
+    Expression<int>? auditType,
     Expression<String>? dataElementUid,
     Expression<String>? categoryOptionComboUid,
     Expression<String>? dataSetUid,
@@ -10544,6 +10579,7 @@ class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (entityType != null) 'entity_type': entityType,
+      if (auditType != null) 'audit_type': auditType,
       if (dataElementUid != null) 'data_element_uid': dataElementUid,
       if (categoryOptionComboUid != null)
         'category_option_combo_uid': categoryOptionComboUid,
@@ -10562,6 +10598,7 @@ class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
   AuditLogTableCompanion copyWith(
       {Value<int>? id,
       Value<AuditEntityType>? entityType,
+      Value<LocalAuditType>? auditType,
       Value<String?>? dataElementUid,
       Value<String?>? categoryOptionComboUid,
       Value<String?>? dataSetUid,
@@ -10575,6 +10612,7 @@ class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
     return AuditLogTableCompanion(
       id: id ?? this.id,
       entityType: entityType ?? this.entityType,
+      auditType: auditType ?? this.auditType,
       dataElementUid: dataElementUid ?? this.dataElementUid,
       categoryOptionComboUid:
           categoryOptionComboUid ?? this.categoryOptionComboUid,
@@ -10599,6 +10637,10 @@ class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
     if (entityType.present) {
       map['entity_type'] = Variable<int>(
           $AuditLogTableTable.$converterentityType.toSql(entityType.value));
+    }
+    if (auditType.present) {
+      map['audit_type'] = Variable<int>(
+          $AuditLogTableTable.$converterauditType.toSql(auditType.value));
     }
     if (dataElementUid.present) {
       map['data_element_uid'] = Variable<String>(dataElementUid.value);
@@ -10640,6 +10682,7 @@ class AuditLogTableCompanion extends UpdateCompanion<AuditEntry> {
     return (StringBuffer('AuditLogTableCompanion(')
           ..write('id: $id, ')
           ..write('entityType: $entityType, ')
+          ..write('auditType: $auditType, ')
           ..write('dataElementUid: $dataElementUid, ')
           ..write('categoryOptionComboUid: $categoryOptionComboUid, ')
           ..write('dataSetUid: $dataSetUid, ')
@@ -15988,6 +16031,7 @@ typedef $$AuditLogTableTableCreateCompanionBuilder = AuditLogTableCompanion
     Function({
   Value<int> id,
   required AuditEntityType entityType,
+  Value<LocalAuditType> auditType,
   Value<String?> dataElementUid,
   Value<String?> categoryOptionComboUid,
   Value<String?> dataSetUid,
@@ -16003,6 +16047,7 @@ typedef $$AuditLogTableTableUpdateCompanionBuilder = AuditLogTableCompanion
     Function({
   Value<int> id,
   Value<AuditEntityType> entityType,
+  Value<LocalAuditType> auditType,
   Value<String?> dataElementUid,
   Value<String?> categoryOptionComboUid,
   Value<String?> dataSetUid,
@@ -16030,6 +16075,11 @@ class $$AuditLogTableTableFilterComposer
   ColumnWithTypeConverterFilters<AuditEntityType, AuditEntityType, int>
       get entityType => $composableBuilder(
           column: $table.entityType,
+          builder: (column) => ColumnWithTypeConverterFilters(column));
+
+  ColumnWithTypeConverterFilters<LocalAuditType, LocalAuditType, int>
+      get auditType => $composableBuilder(
+          column: $table.auditType,
           builder: (column) => ColumnWithTypeConverterFilters(column));
 
   ColumnFilters<String> get dataElementUid => $composableBuilder(
@@ -16081,6 +16131,9 @@ class $$AuditLogTableTableOrderingComposer
   ColumnOrderings<int> get entityType => $composableBuilder(
       column: $table.entityType, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get auditType => $composableBuilder(
+      column: $table.auditType, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get dataElementUid => $composableBuilder(
       column: $table.dataElementUid,
       builder: (column) => ColumnOrderings(column));
@@ -16131,6 +16184,9 @@ class $$AuditLogTableTableAnnotationComposer
   GeneratedColumnWithTypeConverter<AuditEntityType, int> get entityType =>
       $composableBuilder(
           column: $table.entityType, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<LocalAuditType, int> get auditType =>
+      $composableBuilder(column: $table.auditType, builder: (column) => column);
 
   GeneratedColumn<String> get dataElementUid => $composableBuilder(
       column: $table.dataElementUid, builder: (column) => column);
@@ -16191,6 +16247,7 @@ class $$AuditLogTableTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<int> id = const Value.absent(),
             Value<AuditEntityType> entityType = const Value.absent(),
+            Value<LocalAuditType> auditType = const Value.absent(),
             Value<String?> dataElementUid = const Value.absent(),
             Value<String?> categoryOptionComboUid = const Value.absent(),
             Value<String?> dataSetUid = const Value.absent(),
@@ -16205,6 +16262,7 @@ class $$AuditLogTableTableTableManager extends RootTableManager<
               AuditLogTableCompanion(
             id: id,
             entityType: entityType,
+            auditType: auditType,
             dataElementUid: dataElementUid,
             categoryOptionComboUid: categoryOptionComboUid,
             dataSetUid: dataSetUid,
@@ -16219,6 +16277,7 @@ class $$AuditLogTableTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
             required AuditEntityType entityType,
+            Value<LocalAuditType> auditType = const Value.absent(),
             Value<String?> dataElementUid = const Value.absent(),
             Value<String?> categoryOptionComboUid = const Value.absent(),
             Value<String?> dataSetUid = const Value.absent(),
@@ -16233,6 +16292,7 @@ class $$AuditLogTableTableTableManager extends RootTableManager<
               AuditLogTableCompanion.insert(
             id: id,
             entityType: entityType,
+            auditType: auditType,
             dataElementUid: dataElementUid,
             categoryOptionComboUid: categoryOptionComboUid,
             dataSetUid: dataSetUid,

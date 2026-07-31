@@ -29,6 +29,7 @@ class AuditLogStore {
     await _db.into(_db.auditLogTable).insert(
           AuditLogTableCompanion.insert(
             entityType: AuditEntityType.dataValue,
+            auditType: Value(_auditType(previousValue, newValue)),
             dataElementUid: Value(dataElementUid),
             categoryOptionComboUid: Value(categoryOptionComboUid),
             period: period,
@@ -40,6 +41,14 @@ class AuditLogStore {
             modifiedAt: modifiedAt,
           ),
         );
+  }
+
+  /// Same CREATE/no prior value, DELETE/no new value, else UPDATE rule
+  /// the server itself uses for `auditType`.
+  static LocalAuditType _auditType(String? previousValue, String? newValue) {
+    if (previousValue == null) return LocalAuditType.create;
+    if (newValue == null) return LocalAuditType.delete;
+    return LocalAuditType.update;
   }
 
   /// No-op when [previousCompleted] already matches [completed].
@@ -54,9 +63,19 @@ class AuditLogStore {
     required DateTime modifiedAt,
   }) async {
     if (previousCompleted == completed) return;
+    // Completing for the first time reads as CREATE, uncompleting as
+    // DELETE (the registration is effectively removed), anything else
+    // (re-completing after having been marked incomplete before) as
+    // UPDATE — same shape as the dataValue rule above.
+    final auditType = !completed
+        ? LocalAuditType.delete
+        : (previousCompleted == null
+            ? LocalAuditType.create
+            : LocalAuditType.update);
     await _db.into(_db.auditLogTable).insert(
           AuditLogTableCompanion.insert(
             entityType: AuditEntityType.completeness,
+            auditType: Value(auditType),
             dataSetUid: Value(dataSetUid),
             period: period,
             orgUnitUid: orgUnitUid,

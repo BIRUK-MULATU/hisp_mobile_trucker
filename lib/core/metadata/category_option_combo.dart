@@ -203,6 +203,21 @@ Future<String?> fetchCanonicalDefaultCombo(
   }
 }
 
+/// The local COC uids named 'default' OTHER than [canonicalDefaultComboUid]
+/// — exactly the uids a value must be remapped away from. Empty when
+/// this instance's cached metadata has no duplicates (or none synced
+/// locally yet). Shared by [remapDuplicateDefaultCombos] (existing rows)
+/// and [DataValueSync]'s pull path (fresh rows arriving FROM the
+/// server under a duplicate uid, which would otherwise silently
+/// re-introduce the same defect on every sync).
+Future<Set<String>> duplicateDefaultComboUids(AppDatabase db) async {
+  final rows = await (db.select(db.categoryOptionCombosTable)
+        ..where(
+            (t) => t.name.equals('default') & t.uid.equals(canonicalDefaultComboUid).not()))
+      .get();
+  return {for (final r in rows) r.uid};
+}
+
 /// One-time repair after the authoritative default COC is known: rows
 /// stored under one of the OTHER local COCs named 'default' (the
 /// duplicates) are rewritten to [canonical]. Their composite key is

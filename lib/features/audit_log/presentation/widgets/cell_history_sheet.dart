@@ -81,9 +81,16 @@ class _HistoryRow {
   }
 
   factory _HistoryRow.fromLocal(AuditEntry e) {
-    final from = e.previousValue ?? '(empty)';
-    final to = e.newValue ?? '(empty)';
-    final text = e.previousValue == null ? 'Set to "$to"' : '"$from" → "$to"';
+    // DELETE's "value" is what got deleted (previousValue), same as the
+    // server's own auditType rows — everything else is the new value.
+    final value =
+        e.auditType == LocalAuditType.delete ? e.previousValue : e.newValue;
+    final display = value ?? '(empty)';
+    final text = switch (e.auditType) {
+      LocalAuditType.delete => 'Deleted (was "$display")',
+      LocalAuditType.create => 'Set to "$display"',
+      LocalAuditType.update => 'Changed to "$display"',
+    };
     return _HistoryRow(
         changeText: text, modifiedBy: e.modifiedBy, modifiedAt: e.modifiedAt);
   }

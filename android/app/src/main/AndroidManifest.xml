@@ -1,6 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- Foreground service protecting an in-flight offline-data push
+         from being killed once the app is backgrounded — see
+         SyncForegroundService.kt / SyncCoordinator. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Lets the user exempt the app from OEM battery-optimization
+         killing (BatteryOptimization.requestExemption) — a normal,
+         install-time permission; the actual exemption still requires
+         explicit user consent via the system dialog it triggers. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <application
         android:label="hisp_mobile_trucker"
         android:name="${applicationName}"
@@ -32,6 +43,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <service
+            android:name=".SyncForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
     <!-- Required to query activities that can process text, see:

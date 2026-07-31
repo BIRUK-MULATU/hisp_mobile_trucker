@@ -16,6 +16,12 @@ abstract class SyncManager {
 
   /// True while a push/pull is running; lets the UI show progress.
   Stream<bool> get isSyncing;
+
+  /// True when there's queued local work waiting to reach the server.
+  /// Local-only (no network) — cheap enough to call before every
+  /// [pushPending] attempt to decide whether it's worth paying for a
+  /// foreground service / notification at all.
+  Future<bool> hasPendingWork();
 }
 
 /// No-op engine used until the SQLite implementation is ready. Keeps
@@ -31,4 +37,7 @@ class NoopSyncManager implements SyncManager {
 
   @override
   Stream<bool> get isSyncing => const Stream.empty();
+
+  @override
+  Future<bool> hasPendingWork() async => false;
 }

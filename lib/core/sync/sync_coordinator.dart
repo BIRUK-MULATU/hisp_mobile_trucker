@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../auth/app_session.dart';
 import '../network/network_info.dart';
+import 'sync_foreground_service.dart';
 import 'sync_manager.dart';
 
 /// Pushes queued offline writes whenever the app "comes online" —
@@ -64,7 +65,17 @@ class SyncCoordinator {
   Future<void> _pushIfOnline() async {
     try {
       if (!await _networkInfo.isConnected) return;
-      await _syncManager.pushPending();
+      // Nothing queued — skip the foreground service entirely so its
+      // notification never flashes for a no-op push (this heartbeat
+      // fires every 5 minutes regardless of whether there's anything
+      // to do).
+      if (!await _syncManager.hasPendingWork()) return;
+      await SyncForegroundService.start();
+      try {
+        await _syncManager.pushPending();
+      } finally {
+        await SyncForegroundService.stop();
+      }
     } catch (e) {
       // Never crash the app because a background sync failed —
       // pending rows stay queued for the next attempt.
