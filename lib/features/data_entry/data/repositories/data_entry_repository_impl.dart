@@ -414,6 +414,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     } catch (e) {
       log.w('[dataEntry] default combo fetch failed: $e');
       return null;
+
     }
   }
 }
