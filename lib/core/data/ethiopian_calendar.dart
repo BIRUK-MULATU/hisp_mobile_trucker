@@ -8,9 +8,9 @@ class EthiopianCalendar {
   ];
 
   static const List<String> monthNamesEnglish = [
-    'Meskerem', 'Tikimit', 'Hidar', 'Tahsas',
-    'Tir', 'Yekatit', 'Megabit', 'Miyazia',
-    'Ginbot', 'Sene', 'Hamle', 'Nehase', 'Pagume',
+    'Meskerem', 'Tikemt', 'Hidar', 'Tahesas',
+    'Tir', 'Yekatit', 'Megabit', 'Miazia',
+    'Genbot', 'Sene', 'Hamle', 'Nehase', 'Pagume',
   ];
 
   static const List<String> quarterNamesAmharic = [
@@ -412,7 +412,7 @@ class EthiopianCalendar {
     return periods;
   }
 
-  // ── Format period ID for display ──────────────────────────
+  // ── Format period ID for display (English month names) ────
   static String formatPeriodId(String periodId) {
     try {
       // QuarterlyNov: 2018NovQ1 — EFY quarter (Hamle-anchored).
@@ -423,8 +423,8 @@ class EthiopianCalendar {
         final q = int.parse(novQ.group(2)!);
         const spans = [(10, 0, true), (1, 3, false), (4, 6, false), (7, 9, false)];
         final (s, e, wraps) = spans[q - 1];
-        return '${monthNamesAmharic[s]} ${wraps ? y - 1 : y} - '
-            '${monthNamesAmharic[e]} $y';
+        return '${monthNamesEnglish[s]} ${wraps ? y - 1 : y} - '
+            '${monthNamesEnglish[e]} $y';
       }
 
       // SixMonthlyNov: 2018NovS1 — EFY half.
@@ -432,15 +432,15 @@ class EthiopianCalendar {
       if (novS != null) {
         final y = int.parse(novS.group(1)!);
         return novS.group(2) == '1'
-            ? 'ሐምሌ ${y - 1} - ታህሳስ $y'
-            : 'ጥር $y - ሰኔ $y';
+            ? 'Hamle ${y - 1} - Tahesas $y'
+            : 'Tir $y - Sene $y';
       }
 
       // BiWeekly: 2018BiW1 — 14-day blocks from Meskerem 1.
       final biW = RegExp(r'^(\d{4})BiW(\d{1,2})$').firstMatch(periodId);
       if (biW != null) {
         final n = int.parse(biW.group(2)!);
-        return 'ሳምንት ${n * 2 - 1}-${n * 2} ${biW.group(1)}';
+        return 'Week ${n * 2 - 1}-${n * 2} ${biW.group(1)}';
       }
 
       // Daily: EC yyyyMMdd.
@@ -450,7 +450,7 @@ class EthiopianCalendar {
         final m = int.parse(daily.group(2)!);
         if (m >= 1 && m <= 13) {
           return '${int.parse(daily.group(3)!)} '
-              '${monthNamesAmharic[m - 1]} ${daily.group(1)}';
+              '${monthNamesEnglish[m - 1]} ${daily.group(1)}';
         }
       }
 
@@ -471,7 +471,7 @@ class EthiopianCalendar {
         final year = int.parse(periodId.substring(0, 4));
         final month = int.parse(periodId.substring(7, 9));
         if (month >= 1 && month <= 13) {
-          return '${monthNamesAmharic[month - 1]} $year';
+          return '${monthNamesEnglish[month - 1]} $year';
         }
       }
 
@@ -479,7 +479,7 @@ class EthiopianCalendar {
       if (RegExp(r'^\d{4}EthQ\d$').hasMatch(periodId)) {
         final year = int.parse(periodId.substring(0, 4));
         final quarter = int.parse(periodId.substring(8));
-        return '${quarterNamesAmharic[quarter - 1]} $year';
+        return 'Q$quarter $year';
       }
 
       // Legacy Ethiopian SixMonthly (pre-fix local data): 2016EthS1
@@ -487,14 +487,14 @@ class EthiopianCalendar {
         final year = int.parse(periodId.substring(0, 4));
         final half = int.parse(periodId.substring(8));
         return half == 1
-            ? 'መስከረም - የካቲት $year'
-            : 'መጋቢት - ነሐሴ $year';
+            ? 'Meskerem - Yekatit $year'
+            : 'Megabit - Nehase $year';
       }
 
       // Legacy Ethiopian Yearly (pre-fix local data): 2016Eth
       if (RegExp(r'^\d{4}Eth$').hasMatch(periodId)) {
         final year = int.parse(periodId.substring(0, 4));
-        return 'ዓ.ም $year';
+        return 'Year $year';
       }
 
       // Monthly: yyyyMM (Ethiopian year/month, DHIS2 ISO format)
@@ -502,7 +502,7 @@ class EthiopianCalendar {
         final year = int.parse(periodId.substring(0, 4));
         final month = int.parse(periodId.substring(4, 6));
         if (month >= 1 && month <= 13) {
-          return '${monthNamesAmharic[month - 1]} $year';
+          return '${monthNamesEnglish[month - 1]} $year';
         }
       }
 
@@ -510,7 +510,7 @@ class EthiopianCalendar {
       if (RegExp(r'^\d{4}Q\d$').hasMatch(periodId)) {
         final year = int.parse(periodId.substring(0, 4));
         final quarter = int.parse(periodId.substring(5));
-        return '${quarterNamesAmharic[quarter - 1]} $year';
+        return 'Q$quarter $year';
       }
 
       // SixMonthly: yyyySn
@@ -518,14 +518,14 @@ class EthiopianCalendar {
         final year = int.parse(periodId.substring(0, 4));
         final half = int.parse(periodId.substring(5));
         return half == 1
-            ? 'መስከረም - የካቲት $year'
-            : 'መጋቢት - ነሐሴ $year';
+            ? 'Meskerem - Yekatit $year'
+            : 'Megabit - Nehase $year';
       }
 
       // Yearly: yyyy
       if (RegExp(r'^\d{4}$').hasMatch(periodId)) {
         final year = int.parse(periodId.substring(0, 4));
-        return 'ዓ.ም $year';
+        return 'Year $year';
       }
 
       return periodId;
@@ -542,8 +542,8 @@ class EthiopianCalendar {
       'April': 4, 'Apr': 4, 'Oct': 10,
     };
     final startMonth = monthMap[suffix] ?? 11;
-    return '${monthNamesAmharic[startMonth - 1]} ${year - 1} - '
-        '${monthNamesAmharic[startMonth - 2]} $year';
+    return '${monthNamesEnglish[startMonth - 1]} ${year - 1} - '
+        '${monthNamesEnglish[startMonth - 2]} $year';
   }
 
   // ── Internal conversions ──────────────────────────────────

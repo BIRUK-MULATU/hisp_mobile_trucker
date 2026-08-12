@@ -58,6 +58,13 @@ class _FakeDataEntryRepository implements DataEntryRepository {
       const [];
 
   @override
+  Future<List<ValidationViolation>> validateLiveValues({
+    required String dataSetId,
+    required List<DataValueEntity> dataValues,
+  }) async =>
+      const [];
+
+  @override
   Future<bool> isCompleted({
     required String dataSetId,
     required String orgUnitId,
@@ -151,8 +158,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('shows the dataset name and both sync chips',
-        (tester) async {
+    testWidgets('shows the dataset name and both sync chips', (tester) async {
       const dataSet = DataSetEntity(
         id: 'ds1',
         name: 'Malaria Monthly Report',
@@ -246,6 +252,40 @@ void main() {
     });
 
     testWidgets(
+        'an element on the real "default" combo shows its field beside '
+        'the name, not behind an accordion labeled "default"',
+        (tester) async {
+      const element = DataElementEntity(
+        id: 'de3',
+        name: 'Stock-outs',
+        categoryComboId: 'ccDefault',
+        categoryOptionCombos: [
+          CategoryOptionCombo(id: 'default', name: 'default'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: [element],
+              dataValues: {},
+              orgUnitId: 'ou1',
+              period: '202607',
+            ),
+          ),
+        ),
+      );
+
+      // No "default" text anywhere, and no chevron to tap — the
+      // field sits right on the header row from the start.
+      expect(find.text('default'), findsNothing);
+      expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsNothing);
+      expect(find.byIcon(Icons.keyboard_arrow_up_rounded), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
+    });
+
+    testWidgets(
         'showElementTotal sums the combos entered so far, live, at the '
         'end of the section', (tester) async {
       const element = DataElementEntity(
@@ -304,7 +344,10 @@ void main() {
           value: '3',
         ),
       }));
-      expect(find.text('8'), findsOneWidget);
+      // "8" now appears twice by design: the always-visible header
+      // badge (so a disaggregated element's total reads without
+      // expanding it) and the expanded section's own Total row.
+      expect(find.text('8'), findsNWidgets(2));
     });
 
     testWidgets('readOnly makes every combo cell view-only, not editable',

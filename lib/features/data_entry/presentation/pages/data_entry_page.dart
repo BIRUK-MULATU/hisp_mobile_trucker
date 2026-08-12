@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
@@ -16,6 +19,7 @@ import '../../../../shared/widgets/app_loader.dart';
 import '../../../../shared/widgets/connectivity_indicator.dart';
 import '../../../../shared/widgets/search_field.dart';
 import '../../data/repositories/data_entry_repository_impl.dart';
+import '../../domain/entities/data_element_entity.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
 import '../bloc/data_entry_bloc.dart';
@@ -154,6 +158,93 @@ class _DataEntryViewState extends State<_DataEntryView> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // ── Live validation ──────────────────────────────────────────
+  // Runs the data set's validation rules against whatever is
+  // currently typed — debounced so every keystroke doesn't trigger a
+  // rule pass — instead of only checking after Save → Complete.
+  List<ValidationViolation> _liveViolations = const [];
+  bool _violationsExpanded = false;
+  Timer? _validationDebounce;
+
+  void _scheduleLiveValidation(DataEntryLoaded state) {
+    _validationDebounce?.cancel();
+    _validationDebounce = Timer(const Duration(milliseconds: 500), () {
+      _runLiveValidation(state);
+    });
+  }
+
+  Future<void> _runLiveValidation(DataEntryLoaded state) async {
+    // Informative only, same contract as the complete-time check — a
+    // failure to validate must never interrupt data entry.
+    try {
+      final violations =
+          await context.read<DataEntryBloc>().repository.validateLiveValues(
+                dataSetId: widget.dataSetId,
+                dataValues: state.dataValues.values.toList(),
+              );
+      if (mounted) setState(() => _liveViolations = violations);
+    } catch (_) {}
+  }
+
+  Widget _buildValidationBanner() {
+    final high = _liveViolations.any((v) => v.importance == 'HIGH');
+    final color = high ? AppColors.error : AppColors.warning;
+    return Column(
+      children: [
+        InkWell(
+          onTap: () =>
+              setState(() => _violationsExpanded = !_violationsExpanded),
+          child: Container(
+            width: double.infinity,
+            color: color.withValues(alpha: 0.08),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppDimensions.space,
+              vertical: AppDimensions.spaceSM,
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.rule_rounded,
+                    color: color, size: AppDimensions.iconMD),
+                const SizedBox(width: AppDimensions.spaceSM),
+                Expanded(
+                  child: Text(
+                    '${_liveViolations.length} validation '
+                    '${_liveViolations.length == 1 ? 'issue' : 'issues'} — '
+                    'tap to ${_violationsExpanded ? 'hide' : 'review'}',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Icon(
+                  _violationsExpanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: color,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_violationsExpanded)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 240),
+            child: ListView.separated(
+              shrinkWrap: true,
+              padding: const EdgeInsets.all(AppDimensions.spaceSM),
+              itemCount: _liveViolations.length,
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: AppDimensions.spaceSM),
+              itemBuilder: (_, i) =>
+                  _ValidationViolationTile(violation: _liveViolations[i]),
+            ),
+          ),
+        const Divider(height: 1, color: AppColors.divider),
+      ],
+    );
+  }
+
   // ── App tour targets ────────────────────────────────────────
   // Routine and Disease Registration share this page, but get their
   // OWN tour id — Disease Registration's extra "Select for new
@@ -217,6 +308,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
 
   @override
   void dispose() {
+    _validationDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -262,8 +354,9 @@ class _DataEntryViewState extends State<_DataEntryView> {
     ));
   }
 
-  // ── Print tapped — export/print whatever is currently recorded ──
-  Future<void> _onPrintTapped() async {
+  // Shared by Print and Download: the loaded form's state, or null
+  // (after a warning snackbar) when the form isn't ready yet.
+  DataEntryLoaded? _formLoadedOrWarn() {
     final state = context.read<DataEntryBloc>().state;
     if (state is! DataEntryLoaded) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -273,8 +366,116 @@ class _DataEntryViewState extends State<_DataEntryView> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-      return;
+      return null;
     }
+    return state;
+  }
+
+  // Asks whether the export should list every element in the form
+  // (blanks included — e.g. to print and fill in by hand, or Disease
+  // Registration's hundreds-of-diseases picker list) or only what's
+  // actually been recorded. null = dismissed without choosing.
+  Future<bool?> _askIncludeAllElements() {
+    return showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppDimensions.radiusXXL),
+        ),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppDimensions.pagePaddingH,
+          AppDimensions.spaceXXL,
+          AppDimensions.pagePaddingH,
+          AppDimensions.spaceXXL,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'What should the PDF include?',
+              style: AppTextStyles.headingMedium
+                  .copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: AppDimensions.spaceMD),
+            Text(
+              'List every data element in the form — blank ones included '
+              '— or only the ones you\'ve actually recorded.',
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: AppDimensions.spaceXL),
+            const Divider(color: AppColors.divider),
+            const SizedBox(height: AppDimensions.spaceXL),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(
+                        color: AppColors.primary,
+                        width: 1.5,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppDimensions.radiusFull),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spaceMD),
+                    ),
+                    child: Text(
+                      'Only recorded',
+                      style: AppTextStyles.buttonMedium
+                          .copyWith(color: AppColors.primary),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppDimensions.spaceMD),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppDimensions.radiusFull),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spaceMD),
+                    ),
+                    child: Text(
+                      'All elements',
+                      style: AppTextStyles.buttonMedium
+                          .copyWith(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Resolves the user's include-all/only-recorded choice into the
+  // actual element list to export, warning and returning null if
+  // "only recorded" turns out to be empty.
+  Future<List<DataElementEntity>?> _resolveExportElements(
+      DataEntryLoaded state) async {
+    final includeAll = await _askIncludeAllElements();
+    if (includeAll == null || !mounted) return null;
+    if (includeAll) return state.dataElements;
+
     final recorded = recordedDataElements(
       dataElements: state.dataElements,
       dataValues: state.dataValues,
@@ -287,22 +488,62 @@ class _DataEntryViewState extends State<_DataEntryView> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-      return;
+      return null;
     }
+    return recorded;
+  }
+
+  Future<Uint8List> _buildFormPdf(
+      DataEntryLoaded state, List<DataElementEntity> elements) async {
     final printedBy = await SecureStorage().getUsername();
+    return buildDataEntryPdf(
+      title: widget.sectionName ?? widget.dataSetName,
+      orgUnitName: widget.orgUnitName,
+      periodLabel: EthiopianPeriodService.formatPeriodId(widget.period),
+      isDiseaseRegistration: widget.isDiseaseRegistration,
+      dataElements: elements,
+      dataValues: state.dataValues,
+      printedBy: printedBy,
+    );
+  }
+
+  // ── Print tapped — export/print the form ──────────────────────
+  Future<void> _onPrintTapped() async {
+    final state = _formLoadedOrWarn();
+    if (state == null) return;
+    final elements = await _resolveExportElements(state);
+    if (elements == null) return;
     final title = widget.sectionName ?? widget.dataSetName;
     await Printing.layoutPdf(
       name: '$title - ${widget.period}',
-      onLayout: (_) => buildDataEntryPdf(
-        title: title,
-        orgUnitName: widget.orgUnitName,
-        periodLabel: EthiopianPeriodService.formatPeriodId(widget.period),
-        isDiseaseRegistration: widget.isDiseaseRegistration,
-        dataElements: state.dataElements,
-        dataValues: state.dataValues,
-        printedBy: printedBy,
-      ),
+      onLayout: (_) => _buildFormPdf(state, elements),
     );
+  }
+
+  // ── Download tapped — same PDF, saved straight to the device
+  // instead of going through the print/preview flow. Uses the
+  // system share sheet (already how this app depends on `printing`)
+  // so "Save to Files"/Drive works without a storage permission.
+  Future<void> _onDownloadTapped() async {
+    final state = _formLoadedOrWarn();
+    if (state == null) return;
+    final elements = await _resolveExportElements(state);
+    if (elements == null) return;
+    final bytes = await _buildFormPdf(state, elements);
+    final title = widget.sectionName ?? widget.dataSetName;
+    final saved = await Printing.sharePdf(
+      bytes: bytes,
+      filename: '$title - ${widget.period}.pdf',
+    );
+    if (saved && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('PDF ready — choose where to save it.'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   // ── FAB tapped — save first ───────────────────────────────
@@ -598,7 +839,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
   Future<void> _showReopenDialog() async {
     if (!mounted) return;
 
-    // null = dismissed (stay), true = keep completed, false = un-complete.
+    // null = dismissed (stay), true = keep completed, false = mark incomplete.
     final keepCompleted = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.white,
@@ -631,7 +872,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
             // ── Message ────────────────────────────
             Text(
               'Keep it completed to send your saved changes with the '
-              'report as it is, or un-complete it to reopen the report '
+              'report as it is, or mark it incomplete to reopen the report '
               'and continue editing on this device.',
               style: AppTextStyles.bodyMedium.copyWith(
                 color: AppColors.textSecondary,
@@ -646,7 +887,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
             // ── Buttons ────────────────────────────
             Row(
               children: [
-                // Un-complete — reopens the report
+                // Incomplete — reopens the report (same term DHIS2's
+                // own web app uses for undoing completion)
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(ctx, false),
@@ -664,7 +906,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                           vertical: AppDimensions.spaceMD),
                     ),
                     child: Text(
-                      'Un-complete',
+                      'Incomplete',
                       style: AppTextStyles.buttonMedium
                           .copyWith(color: AppColors.error),
                     ),
@@ -813,6 +1055,11 @@ class _DataEntryViewState extends State<_DataEntryView> {
               onPressed: _onPrintTapped,
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.download_rounded, color: Colors.white),
+            tooltip: 'Download PDF',
+            onPressed: _onDownloadTapped,
+          ),
           Showcase(
             key: _syncShowcaseKey,
             title: 'Reload',
@@ -826,86 +1073,97 @@ class _DataEntryViewState extends State<_DataEntryView> {
           const SizedBox(width: AppDimensions.spaceXS),
         ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Sub header ────────────────────────────
-          _SubHeader(
-            period: widget.period,
-            orgUnitName: widget.orgUnitName,
-            completed: _isCompleted,
-            periodClosed: _isPeriodClosed,
-          ),
-          const Divider(height: 1, color: AppColors.divider),
-
-          // Disease Registration leads with "Select for new disease"
-          // (see DiseaseEntryList) instead of a plain search bar —
-          // there can be hundreds of diseases, so nothing is listed
-          // until it's recorded or explicitly picked.
-          if (!widget.isDiseaseRegistration) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppDimensions.space,
-                vertical: AppDimensions.spaceSM,
-              ),
-              child: SearchField(
-                controller: _searchController,
-                hint: 'Search...',
-                value: _searchQuery,
-                onChanged: (q) => setState(() => _searchQuery = q),
-              ),
+      body: BlocListener<DataEntryBloc, DataEntryState>(
+        listener: (context, state) {
+          if (state is DataEntryLoaded) _scheduleLiveValidation(state);
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Sub header ────────────────────────────
+            _SubHeader(
+              period: widget.period,
+              orgUnitName: widget.orgUnitName,
+              completed: _isCompleted,
+              periodClosed: _isPeriodClosed,
             ),
             const Divider(height: 1, color: AppColors.divider),
-          ],
 
-          // ── Table ─────────────────────────────────
-          Expanded(
-            child: BlocBuilder<DataEntryBloc, DataEntryState>(
-              builder: (context, state) {
-                if (state is DataEntryLoading) {
-                  return const AppLoader(message: 'Loading form...');
-                }
-                if (state is DataEntryError) {
-                  return _ErrorView(
-                    message: state.message,
-                    onRetry: () => context.read<DataEntryBloc>().add(
-                          DataEntryLoad(
-                            dataSetId: widget.dataSetId,
+            // ── Live validation banner ─────────────────
+            // Same rule engine the complete-time check uses, run
+            // against whatever is currently typed — so a conflict
+            // shows up while filling the form, not only after Save.
+            if (_liveViolations.isNotEmpty) _buildValidationBanner(),
+
+            // Disease Registration leads with "Select for new disease"
+            // (see DiseaseEntryList) instead of a plain search bar —
+            // there can be hundreds of diseases, so nothing is listed
+            // until it's recorded or explicitly picked.
+            if (!widget.isDiseaseRegistration) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppDimensions.space,
+                  vertical: AppDimensions.spaceSM,
+                ),
+                child: SearchField(
+                  controller: _searchController,
+                  hint: 'Search...',
+                  value: _searchQuery,
+                  onChanged: (q) => setState(() => _searchQuery = q),
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.divider),
+            ],
+
+            // ── Table ─────────────────────────────────
+            Expanded(
+              child: BlocBuilder<DataEntryBloc, DataEntryState>(
+                builder: (context, state) {
+                  if (state is DataEntryLoading) {
+                    return const AppLoader(message: 'Loading form...');
+                  }
+                  if (state is DataEntryError) {
+                    return _ErrorView(
+                      message: state.message,
+                      onRetry: () => context.read<DataEntryBloc>().add(
+                            DataEntryLoad(
+                              dataSetId: widget.dataSetId,
+                              orgUnitId: widget.orgUnitId,
+                              period: widget.period,
+                              sectionId: widget.sectionId,
+                              attributeOptionComboUid:
+                                  widget.attributeOptionComboUid,
+                            ),
+                          ),
+                    );
+                  }
+                  if (state is DataEntryLoaded) {
+                    return widget.isDiseaseRegistration
+                        ? DiseaseEntryList(
+                            dataElements: state.dataElements,
+                            dataValues: state.dataValues,
                             orgUnitId: widget.orgUnitId,
                             period: widget.period,
-                            sectionId: widget.sectionId,
-                            attributeOptionComboUid:
-                                widget.attributeOptionComboUid,
-                          ),
-                        ),
-                  );
-                }
-                if (state is DataEntryLoaded) {
-                  return widget.isDiseaseRegistration
-                      ? DiseaseEntryList(
-                          dataElements: state.dataElements,
-                          dataValues: state.dataValues,
-                          orgUnitId: widget.orgUnitId,
-                          period: widget.period,
-                          readOnly: _isPeriodClosed,
-                          searchShowcaseKey: _diseaseSearchShowcaseKey,
-                        )
-                      : DataEntryTable(
-                          dataElements: state.dataElements,
-                          dataValues: state.dataValues,
-                          orgUnitId: widget.orgUnitId,
-                          period: widget.period,
-                          searchQuery: _searchQuery,
-                          readOnly: _isPeriodClosed,
-                        );
-                }
-                // Initial state (load event not processed yet) —
-                // keep the spinner up instead of a blank page.
-                return const AppLoader(message: 'Loading form...');
-              },
+                            readOnly: _isPeriodClosed,
+                            searchShowcaseKey: _diseaseSearchShowcaseKey,
+                          )
+                        : DataEntryTable(
+                            dataElements: state.dataElements,
+                            dataValues: state.dataValues,
+                            orgUnitId: widget.orgUnitId,
+                            period: widget.period,
+                            searchQuery: _searchQuery,
+                            readOnly: _isPeriodClosed,
+                          );
+                  }
+                  // Initial state (load event not processed yet) —
+                  // keep the spinner up instead of a blank page.
+                  return const AppLoader(message: 'Loading form...');
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
 
       // ── Save FAB — hidden once the period is closed: view only,

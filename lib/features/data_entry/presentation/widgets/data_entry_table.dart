@@ -155,9 +155,51 @@ class _DataEntryTableState extends State<DataEntryTable> {
     );
   }
 
+  // Sum of every combo currently entered for this element — shared by
+  // the always-visible header badge and the expanded footer row.
+  static (double total, bool anyValue) _comboTotal(
+    Map<String, DataValueEntity> dataValues,
+    DataElementEntity element,
+    List<CategoryOptionCombo> combos,
+  ) {
+    var total = 0.0;
+    var anyValue = false;
+    for (final combo in combos) {
+      final raw = dataValues['${element.id}_${combo.id}']?.value;
+      final n = double.tryParse((raw ?? '').trim());
+      if (n != null) {
+        total += n;
+        anyValue = true;
+      }
+    }
+    return (total, anyValue);
+  }
+
+  static String _formatTotal(double total) => total == total.roundToDouble()
+      ? total.toInt().toString()
+      : total.toString();
+
   Widget _buildSection(DataElementEntity element) {
-    final expanded = _expandedIds.contains(element.id);
     final combos = _combosFor(element);
+
+    // No real disaggregation: just the data set's own single
+    // "default" category option combo, which has nothing meaningful
+    // to name. Skip the accordion — and the literal "default" label
+    // — entirely and put the input field directly beside the element
+    // name. A genuine single-option CUSTOM combo (real name, just
+    // happens to have one choice) still gets the normal accordion,
+    // since that name IS meaningful.
+    if (combos.length == 1 && combos.first.name == 'default') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildFlatRow(element, combos.first),
+          const Divider(height: 1, color: AppColors.divider),
+        ],
+      );
+    }
+
+    final expanded = _expandedIds.contains(element.id);
 
     // Filled / total summary so a collapsed section still tells the
     // user whether anything inside it is left to enter.
@@ -169,6 +211,15 @@ class _DataEntryTableState extends State<DataEntryTable> {
     final hasError = widget.dataValues.values.any((v) =>
         v.dataElementId == element.id &&
         v.syncError != null);
+
+    // Disaggregated elements (more than the one default combo) are
+    // exactly the ones a validation rule sums across — surface that
+    // sum right beside the element name so it's visible without
+    // expanding the section.
+    final isDisaggregated = combos.length > 1;
+    final (total, anyValue) = isDisaggregated
+        ? _comboTotal(widget.dataValues, element, combos)
+        : (0.0, false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,6 +259,27 @@ class _DataEntryTableState extends State<DataEntryTable> {
                       color: AppColors.error, size: AppDimensions.iconSM),
                   const SizedBox(width: AppDimensions.spaceXS),
                 ],
+                if (isDisaggregated) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDimensions.spaceSM,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(AppDimensions.radiusSM),
+                    ),
+                    child: Text(
+                      anyValue ? _formatTotal(total) : '—',
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppDimensions.spaceSM),
+                ],
                 Text(
                   '$filled/${combos.length}',
                   style: AppTextStyles.caption.copyWith(
@@ -237,6 +309,95 @@ class _DataEntryTableState extends State<DataEntryTable> {
 
         const Divider(height: 1, color: AppColors.divider),
       ],
+    );
+  }
+
+  // Single-combo element: name + input on one row, no accordion and
+  // no "default" combo label — there's only ever one field, so
+  // nothing to expand into.
+  Widget _buildFlatRow(DataElementEntity element, CategoryOptionCombo combo) {
+    final key = '${element.id}_${combo.id}';
+    final existing = widget.dataValues[key];
+    final hasError = existing?.syncError != null;
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spaceSM,
+        vertical: AppDimensions.spaceSM,
+      ),
+      decoration: const BoxDecoration(
+        border: Border(
+          left: BorderSide(color: AppColors.primary, width: 2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              element.displayName,
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          if (hasError) ...[
+            const Icon(Icons.error_outline_rounded,
+                color: AppColors.error, size: AppDimensions.iconSM),
+            const SizedBox(width: AppDimensions.spaceXS),
+          ],
+          InkWell(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+            onTap: () => showCellHistorySheet(
+              context,
+              dataElementId: element.id,
+              dataElementName: element.displayName,
+              comboId: combo.id,
+              comboName: combo.displayName,
+              orgUnitId: widget.orgUnitId,
+              period: widget.period,
+              localValue: existing?.value,
+              localIsModified: existing?.isModified ?? false,
+              localSyncState: existing?.syncState,
+              localSyncError: existing?.syncError,
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(AppDimensions.spaceXS),
+              child: Icon(Icons.history_rounded,
+                  size: AppDimensions.iconSM, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spaceXS),
+          SizedBox(
+            width: 140,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: DataEntryCell(
+                key: ValueKey(key),
+                dataElementId: element.id,
+                categoryOptionComboId: combo.id,
+                initialValue: existing?.value ?? '',
+                valueType: element.valueType,
+                options: element.options,
+                errorText: existing?.syncError,
+                isReadOnly: widget.readOnly,
+                onChanged: (value) {
+                  context.read<DataEntryBloc>().add(
+                        DataEntryValueChanged(
+                          dataElementId: element.id,
+                          categoryOptionComboId: combo.id,
+                          value: value,
+                        ),
+                      );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -311,26 +472,13 @@ class _DataEntryTableState extends State<DataEntryTable> {
     );
   }
 
-  // Sum of every combo currently entered for this element — updates
-  // live as the user types, since it reads straight from
+  // Updates live as the user types, since it reads straight from
   // widget.dataValues (refreshed on every DataEntryValueChanged).
   Widget _buildTotalRow(
       DataElementEntity element, List<CategoryOptionCombo> combos) {
-    var total = 0.0;
-    var anyValue = false;
-    for (final combo in combos) {
-      final raw = widget.dataValues['${element.id}_${combo.id}']?.value;
-      final n = double.tryParse((raw ?? '').trim());
-      if (n != null) {
-        total += n;
-        anyValue = true;
-      }
-    }
-    final display = !anyValue
-        ? '—'
-        : (total == total.roundToDouble()
-            ? total.toInt().toString()
-            : total.toString());
+    final (total, anyValue) =
+        _comboTotal(widget.dataValues, element, combos);
+    final display = anyValue ? _formatTotal(total) : '—';
 
     return Padding(
       padding: const EdgeInsets.only(

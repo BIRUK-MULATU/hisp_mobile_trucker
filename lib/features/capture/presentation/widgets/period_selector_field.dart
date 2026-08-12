@@ -65,7 +65,7 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
       count: 24,
     );
     var choices = [
-      for (final p in plain) _Choice(p.id, p.labelAmharic, true, null),
+      for (final p in plain) _Choice(p.id, p.labelEnglish, true, null),
     ];
     var tampered = false;
 
@@ -82,7 +82,7 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
             for (var i = 0; i < periods.length; i++)
               _Choice(
                 periods[i].id,
-                periods[i].labelAmharic,
+                periods[i].labelEnglish,
                 // Tampered clock: only the newest open period stays
                 // enterable — backdating claims are suspect.
                 periods[i].status == PeriodStatus.open && (!tampered || i == 0),
@@ -123,7 +123,7 @@ class _PeriodSelectorFieldState extends State<PeriodSelectorField> {
 
         const SizedBox(height: AppDimensions.spaceSM),
 
-        // ── Dropdown with Amharic months ───────────
+        // ── Dropdown with English month names ──────
         DropdownButtonFormField<String>(
           key: ValueKey(widget.selectedPeriod ?? 'none'),
           initialValue: widget.selectedPeriod,

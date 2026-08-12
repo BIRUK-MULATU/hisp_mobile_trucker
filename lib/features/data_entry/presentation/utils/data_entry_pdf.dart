@@ -38,11 +38,14 @@ List<DataElementEntity> recordedDataElements({
   ];
 }
 
-/// Builds a printable snapshot of a data entry form: every recorded
-/// data element and its category option combos, laid out as one small
-/// table per element. Entirely local — the PDF is built from whatever
-/// is already loaded on screen, so it works offline exactly like the
-/// rest of data entry.
+/// Builds a printable snapshot of a data entry form: [dataElements]
+/// and its category option combos, laid out as one small table per
+/// element, in whatever order the caller passes them — combos with
+/// no recorded value print as "—", never omitted. Callers decide
+/// which elements to include (e.g. every element in the form vs only
+/// [recordedDataElements]); this function prints exactly that list.
+/// Entirely local — the PDF is built from whatever is already loaded
+/// on screen, so it works offline exactly like the rest of data entry.
 Future<Uint8List> buildDataEntryPdf({
   required String title,
   required String orgUnitName,
@@ -56,8 +59,7 @@ Future<Uint8List> buildDataEntryPdf({
     theme: pw.ThemeData.withFont(fontFallback: [await _ethiopicFallbackFont()]),
   );
   final generatedAt = DateFormat('d MMM y, HH:mm').format(DateTime.now());
-  final elements =
-      recordedDataElements(dataElements: dataElements, dataValues: dataValues);
+  final elements = dataElements;
 
   doc.addPage(
     pw.MultiPage(
@@ -75,7 +77,8 @@ Future<Uint8List> buildDataEntryPdf({
                     const pw.TextStyle(fontSize: 10, color: PdfColors.red700)),
           pw.SizedBox(height: 4),
           pw.Text('$orgUnitName  ·  $periodLabel',
-              style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
+              style:
+                  const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
           pw.SizedBox(height: 8),
           pw.Divider(color: PdfColors.grey400),
         ],
@@ -89,11 +92,12 @@ Future<Uint8List> buildDataEntryPdf({
               pw.Text(
                 'Generated $generatedAt'
                 '${printedBy != null && printedBy.isNotEmpty ? ' by $printedBy' : ''}',
-                style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+                style:
+                    const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
               ),
               pw.Text('Page ${context.pageNumber} / ${context.pagesCount}',
-                  style:
-                      const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                  style: const pw.TextStyle(
+                      fontSize: 8, color: PdfColors.grey600)),
             ],
           ),
         ],
@@ -103,7 +107,7 @@ Future<Uint8List> buildDataEntryPdf({
           pw.Padding(
             padding: const pw.EdgeInsets.only(top: 40),
             child: pw.Center(
-              child: pw.Text('Nothing recorded yet.',
+              child: pw.Text('Nothing to show.',
                   style: const pw.TextStyle(
                       fontSize: 12, color: PdfColors.grey600)),
             ),

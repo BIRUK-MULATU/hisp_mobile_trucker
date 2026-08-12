@@ -219,5 +219,73 @@ void main() {
 
       expect(await run(), isEmpty);
     });
+
+    group('validateValues (in-memory, live)', () {
+      Future<List<ValidationViolation>> runLive(
+        Iterable<({String dataElementUid, String comboUid, String value})>
+            values,
+      ) =>
+          ValidationService(db)
+              .validateValues(dataSetUid: ds, values: values);
+
+      test('violated rule is reported from in-memory values, no save '
+          'needed', () async {
+        await seedRule(
+            uid: 'valRule0001',
+            operator: 'less_than_or_equal_to',
+            left: '#{$de1.$coc}',
+            right: '#{$de2.$coc}');
+
+        final v = await runLive([
+          (dataElementUid: de1, comboUid: coc, value: '12'),
+          (dataElementUid: de2, comboUid: coc, value: '10'),
+        ]);
+        expect(v, hasLength(1));
+        expect(v.first.leftValue, 12);
+        expect(v.first.rightValue, 10);
+      });
+
+      test('satisfied rule reports nothing', () async {
+        await seedRule(
+            uid: 'valRule0001',
+            operator: 'less_than_or_equal_to',
+            left: '#{$de1.$coc}',
+            right: '#{$de2.$coc}');
+
+        final v = await runLive([
+          (dataElementUid: de1, comboUid: coc, value: '8'),
+          (dataElementUid: de2, comboUid: coc, value: '10'),
+        ]);
+        expect(v, isEmpty);
+      });
+
+      test('updates live as a value changes, without touching the '
+          'database', () async {
+        await seedRule(
+            uid: 'valRule0001',
+            operator: 'equal_to',
+            left: '#{$de1.$coc}',
+            right: '#{$de2.$coc}');
+
+        expect(
+          await runLive([
+            (dataElementUid: de1, comboUid: coc, value: '10'),
+            (dataElementUid: de2, comboUid: coc, value: '10'),
+          ]),
+          isEmpty,
+        );
+
+        // Same "session", the user edits de1 — no save happened, this
+        // is exactly the Bloc's in-memory state after a keystroke.
+        final v = await runLive([
+          (dataElementUid: de1, comboUid: coc, value: '11'),
+          (dataElementUid: de2, comboUid: coc, value: '10'),
+        ]);
+        expect(v, hasLength(1));
+
+        // The database was never written to by validateValues.
+        expect(await db.select(db.dataValuesTable).get(), isEmpty);
+      });
+    });
   });
 }
