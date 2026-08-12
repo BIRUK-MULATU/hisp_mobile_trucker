@@ -23,6 +23,12 @@ class DataElementEntity {
   /// data element.
   final List<String> controlledElementIds;
 
+  /// Resolved KPI/indicator label (see ElementLabelService) — null for
+  /// every element with no "Label Data Element Groups" tag, or whose
+  /// code doesn't resolve. Elements sharing the same label are
+  /// grouped in the form under it as one heading.
+  final String? label;
+
   const DataElementEntity({
     required this.id,
     required this.name,
@@ -32,6 +38,7 @@ class DataElementEntity {
     this.categoryOptionCombos = const [],
     this.options = const [],
     this.controlledElementIds = const [],
+    this.label,
   });
 
   String get displayName => shortName ?? name;

@@ -118,11 +118,35 @@ class _DataEntryTableState extends State<DataEntryTable> {
       );
     }
 
+    // Labeled data elements (see ElementLabelService) are pulled
+    // together under one heading — several elements can share a
+    // label (e.g. an aggregated/non-aggregated pair), so the first
+    // occurrence of a label emits the heading AND every element that
+    // shares it; later occurrences are skipped (already placed).
+    // Unlabeled elements render exactly where they already are.
+    final rows = <Object>[];
+    final emittedLabels = <String>{};
+    for (final e in visibleElements) {
+      final label = e.label;
+      if (label == null) {
+        rows.add(e);
+        continue;
+      }
+      if (!emittedLabels.add(label)) continue; // already placed
+      rows.add(label);
+      rows.addAll(visibleElements.where((e2) => e2.label == label));
+    }
+
     // Sections are built lazily — large datasets would otherwise
     // inflate thousands of text fields at once.
     final list = ListView.builder(
-      itemCount: visibleElements.length,
-      itemBuilder: (context, index) => _buildSection(visibleElements[index]),
+      itemCount: rows.length,
+      itemBuilder: (context, index) {
+        final row = rows[index];
+        return row is String
+            ? _buildLabelHeading(row)
+            : _buildSection(row as DataElementEntity);
+      },
     );
 
     // Server-rejected values must be impossible to miss — red cells
@@ -162,6 +186,37 @@ class _DataEntryTableState extends State<DataEntryTable> {
         ),
         Expanded(child: list),
       ],
+    );
+  }
+
+  // A shared KPI/indicator heading above a cluster of labeled
+  // elements (see ElementLabelService) — distinct from an element's
+  // own header so it doesn't read as another data element row.
+  Widget _buildLabelHeading(String label) {
+    return Container(
+      width: double.infinity,
+      color: AppColors.primary.withValues(alpha: 0.06),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.space,
+        vertical: AppDimensions.spaceSM,
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.label_rounded,
+              color: AppColors.primary, size: AppDimensions.iconSM),
+          const SizedBox(width: AppDimensions.spaceXS),
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

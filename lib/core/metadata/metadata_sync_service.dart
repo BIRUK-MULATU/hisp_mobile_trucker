@@ -181,7 +181,17 @@ class MetadataSyncService {
     r['categoryCombos'] = await CategoryComboResource(_db).syncDelta(_api);
     r['categoryOptionCombos'] =
         await CategoryOptionComboResource(_db).syncDelta(_api);
-    r['optionSets'] = await OptionSetResource(_db).syncDelta(_api);
+    // Always fully re-synced, not delta: small resource (a few dozen
+    // objects) whose OWN lastUpdated doesn't change just because this
+    // app starts depending on a new field of it (e.g. the "Label
+    // Option Set" attribute flag — see ElementLabelService). A plain
+    // delta would leave that attribute permanently unfetched on any
+    // device that completed its first full sync before this
+    // dependency existed. Trade-off: server-deleted option sets
+    // aren't pruned locally here (syncAll doesn't delete) — accepted,
+    // since an orphaned option set renders nowhere.
+    r['optionSets'] =
+        (updated: await OptionSetResource(_db).syncAll(_api), deleted: 0);
     r['options'] = await OptionResource(_db).syncDelta(_api);
     r['attributes'] = await AttributeResource(_db).syncDelta(_api);
     r['dataElements'] = await DataElementResource(_db).syncDelta(_api);

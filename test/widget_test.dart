@@ -553,6 +553,80 @@ void main() {
     });
   });
 
+  group('DataEntryTable — labeled data elements', () {
+    const prlafpLabel =
+        'Premature Removal of Long term family planning methods (PRLAFP)';
+
+    testWidgets(
+        'a labeled element gets its resolved label as a heading above it',
+        (tester) async {
+      const labeled = DataElementEntity(
+        id: 'de1',
+        name: 'MAT_LAFP Removal within 6 Months of Insertion',
+        label: prlafpLabel,
+        categoryOptionCombos: [CategoryOptionCombo(id: 'c1', name: 'default')],
+      );
+      const plain = DataElementEntity(
+        id: 'de2',
+        name: 'Stock-outs',
+        categoryOptionCombos: [CategoryOptionCombo(id: 'c2', name: 'default')],
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: [labeled, plain],
+              dataValues: {},
+              orgUnitId: 'ou1',
+              period: '202607',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text(prlafpLabel), findsOneWidget);
+      expect(find.text('MAT_LAFP Removal within 6 Months of Insertion'),
+          findsOneWidget);
+      // The unlabeled element gets no heading of its own.
+      expect(find.text('Stock-outs'), findsOneWidget);
+    });
+
+    testWidgets('elements sharing one label are grouped under a SINGLE heading',
+        (tester) async {
+      const a = DataElementEntity(
+        id: 'de1',
+        name: 'Patient Neutral response',
+        label: 'Satisfaction survey',
+        categoryOptionCombos: [CategoryOptionCombo(id: 'c1', name: 'default')],
+      );
+      const b = DataElementEntity(
+        id: 'de2',
+        name: 'Staff Neutral response',
+        label: 'Satisfaction survey',
+        categoryOptionCombos: [CategoryOptionCombo(id: 'c2', name: 'default')],
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: [a, b],
+              dataValues: {},
+              orgUnitId: 'ou1',
+              period: '202607',
+            ),
+          ),
+        ),
+      );
+
+      // One heading, both elements listed underneath it.
+      expect(find.text('Satisfaction survey'), findsOneWidget);
+      expect(find.text('Patient Neutral response'), findsOneWidget);
+      expect(find.text('Staff Neutral response'), findsOneWidget);
+    });
+  });
+
   group('HomeAppBar', () {
     testWidgets('shows the filter button only when showFilterButton is set',
         (tester) async {

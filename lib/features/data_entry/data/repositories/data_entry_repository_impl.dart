@@ -7,6 +7,7 @@ import '../../../../core/data/controller_element_service.dart';
 import '../../../../core/data/data_value_push.dart';
 import '../../../../core/data/data_value_store.dart';
 import '../../../../core/data/data_value_sync.dart';
+import '../../../../core/data/element_label_service.dart';
 import '../../../../core/data/validation_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/exceptions.dart';
@@ -74,6 +75,9 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     // ones whose Boolean value shows/hides the rest of their group.
     final controllerGates =
         await ControllerElementService(_db).controllersFor(uids);
+    // "Labeled" data elements (see ElementLabelService) — grouped in
+    // the form under a shared KPI/indicator heading.
+    final elementLabels = await ElementLabelService(_db).labelsFor(uids);
 
     final result = <entity.DataElementEntity>[];
     for (final uid in uids) {
@@ -116,6 +120,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
         ],
         options: options,
         controlledElementIds: controllerGates[uid] ?? const [],
+        label: elementLabels[uid],
       ));
     }
     if (result.isEmpty) {
