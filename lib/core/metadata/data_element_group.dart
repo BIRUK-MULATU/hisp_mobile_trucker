@@ -22,9 +22,14 @@ class DataElementGroupResource extends MetadataResource<DataElementGroup> {
   String get resource => 'dataElementGroups';
 
   @override
-  List<String> get fields =>
-      ['id', 'name', 'displayName', 'dataElements[id]', 'lastUpdated',
-        attributeValuesField];
+  List<String> get fields => [
+        'id',
+        'name',
+        'displayName',
+        'dataElements[id]',
+        'lastUpdated',
+        attributeValuesField
+      ];
 
   @override
   TableInfo<Table, DataElementGroup> get table => db.dataElementGroupsTable;
@@ -33,7 +38,8 @@ class DataElementGroupResource extends MetadataResource<DataElementGroup> {
   Column<String> get uidColumn => db.dataElementGroupsTable.uid;
 
   @override
-  Column<DateTime> get lastUpdatedColumn => db.dataElementGroupsTable.lastUpdated;
+  Column<DateTime> get lastUpdatedColumn =>
+      db.dataElementGroupsTable.lastUpdated;
 
   @override
   Insertable<DataElementGroup> companionFromJson(Map<String, dynamic> json) {
@@ -84,5 +90,14 @@ class DataElementGroupResource extends MetadataResource<DataElementGroup> {
           ..where((t) => t.dataElementGroupUid.equals(groupUid)))
         .get();
     return [for (final r in rows) r.dataElementUid];
+  }
+
+  /// Reverse of [dataElementUids]: which group(s) a data element
+  /// belongs to.
+  Future<List<String>> groupUidsFor(String dataElementUid) async {
+    final rows = await (db.select(db.dataElementGroupMembersTable)
+          ..where((t) => t.dataElementUid.equals(dataElementUid)))
+        .get();
+    return [for (final r in rows) r.dataElementGroupUid];
   }
 }

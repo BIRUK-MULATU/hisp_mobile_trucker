@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hisp_mobile_trucker/features/data_entry/domain/entities/data_element_entity.dart';
 import 'package:hisp_mobile_trucker/features/data_entry/domain/repositories/data_entry_repository.dart';
+import 'package:hisp_mobile_trucker/features/data_entry/domain/usecases/get_data_elements_usecase.dart';
 import 'package:hisp_mobile_trucker/features/data_entry/domain/usecases/save_data_values_usecase.dart';
+import 'package:hisp_mobile_trucker/features/data_entry/presentation/bloc/data_entry_bloc.dart';
 import 'package:hisp_mobile_trucker/features/data_entry/presentation/widgets/data_entry_table.dart';
 import 'package:hisp_mobile_trucker/features/capture/domain/entities/dataset_entity.dart';
 import 'package:hisp_mobile_trucker/features/capture/presentation/widgets/dataset_card.dart';
@@ -12,7 +15,18 @@ import 'package:hisp_mobile_trucker/core/network/connectivity_service.dart';
 import 'package:hisp_mobile_trucker/features/home/presentation/widgets/home_app_bar.dart';
 
 class _FakeDataEntryRepository implements DataEntryRepository {
+  _FakeDataEntryRepository({
+    this.elementsToLoad = const [],
+    this.valuesToLoad = const [],
+  });
+
   List<DataValueEntity>? savedValues;
+
+  /// What [getDataElements]/[getDataValues] hand back on a
+  /// DataEntryLoad — only set by tests that actually load a form
+  /// (e.g. to drive a real DataEntryBloc behind DataEntryTable).
+  final List<DataElementEntity> elementsToLoad;
+  final List<DataValueEntity> valuesToLoad;
 
   @override
   Future<void> saveDataValues({
@@ -27,8 +41,8 @@ class _FakeDataEntryRepository implements DataEntryRepository {
 
   @override
   Future<List<DataElementEntity>> getDataElements(
-          {required String dataSetId, String? sectionId}) =>
-      throw UnimplementedError();
+          {required String dataSetId, String? sectionId}) async =>
+      elementsToLoad;
 
   @override
   Future<List<DataValueEntity>> getDataValues({
@@ -36,8 +50,8 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String orgUnitId,
     required String period,
     String? attributeOptionComboUid,
-  }) =>
-      throw UnimplementedError();
+  }) async =>
+      valuesToLoad;
 
   @override
   Future<void> completeDataSet({
@@ -253,8 +267,7 @@ void main() {
 
     testWidgets(
         'an element on the real "default" combo shows its field beside '
-        'the name, not behind an accordion labeled "default"',
-        (tester) async {
+        'the name, not behind an accordion labeled "default"', (tester) async {
       const element = DataElementEntity(
         id: 'de3',
         name: 'Stock-outs',
@@ -387,6 +400,156 @@ void main() {
       // ...but the field itself refuses edits.
       final field = tester.widget<TextField>(find.byType(TextField));
       expect(field.readOnly, isTrue);
+    });
+  });
+
+  group('DataEntryTable — controller data elements', () {
+    const controller = DataElementEntity(
+      id: 'controllerDe1',
+      name: 'Delivery services provided',
+      valueType: 'BOOLEAN',
+      categoryOptionCombos: [
+        CategoryOptionCombo(id: 'ctlCombo001', name: 'default')
+      ],
+      controlledElementIds: ['gatedDe00001'],
+    );
+    const gated = DataElementEntity(
+      id: 'gatedDe00001',
+      name: 'Normal deliveries',
+      categoryOptionCombos: [
+        CategoryOptionCombo(id: 'gtdCombo001', name: 'default')
+      ],
+    );
+
+    // Mirrors how DataEntryPage really wires DataEntryTable to the
+    // Bloc: the table only ever displays state.dataValues/dataElements
+    // and dispatches DataEntryValueChanged — a real Bloc + BlocBuilder
+    // is what proves the confirm/clear round-trip actually lands.
+    Widget harness({required List<DataValueEntity> initialValues}) {
+      final repo = _FakeDataEntryRepository(
+        elementsToLoad: const [controller, gated],
+        valuesToLoad: initialValues,
+      );
+      final bloc = DataEntryBloc(
+        getDataElementsUseCase: GetDataElementsUseCase(repo),
+        saveDataValuesUseCase: SaveDataValuesUseCase(repo),
+        repository: repo,
+      )..add(const DataEntryLoad(
+          dataSetId: 'ds1', orgUnitId: 'ou1', period: '202607'));
+      return MaterialApp(
+        home: Scaffold(
+          body: BlocProvider.value(
+            value: bloc,
+            child: BlocBuilder<DataEntryBloc, DataEntryState>(
+              builder: (context, state) {
+                if (state is! DataEntryLoaded) return const SizedBox();
+                return DataEntryTable(
+                  dataElements: state.dataElements,
+                  dataValues: state.dataValues,
+                  orgUnitId: 'ou1',
+                  period: '202607',
+                );
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets(
+        'a closed controller hides what it controls; answering Yes '
+        'reveals them', (tester) async {
+      await tester.pumpWidget(harness(initialValues: const []));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delivery services provided'), findsOneWidget);
+      expect(find.text('Normal deliveries'), findsNothing);
+
+      await tester.tap(find.text('—')); // unanswered -> Yes
+      await tester.pumpAndSettle();
+
+      expect(find.text('Normal deliveries'), findsOneWidget);
+    });
+
+    testWidgets(
+        'closing an open controller that has entered data asks first — '
+        'cancelling leaves the data and the section alone', (tester) async {
+      await tester.pumpWidget(harness(initialValues: [
+        DataValueEntity(
+          dataElementId: controller.id,
+          categoryOptionComboId: 'ctlCombo001',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: 'true',
+        ),
+        DataValueEntity(
+          dataElementId: gated.id,
+          categoryOptionComboId: 'gtdCombo001',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: '12',
+        ),
+      ]));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Normal deliveries'), findsOneWidget);
+      expect(find.text('12'), findsOneWidget);
+
+      await tester.tap(find.text('Yes')); // true -> false
+      await tester.pumpAndSettle();
+      expect(find.text('Clear entered data?'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Nothing moved: still open, still "Yes", data untouched.
+      expect(find.text('Yes'), findsOneWidget);
+      expect(find.text('Normal deliveries'), findsOneWidget);
+      expect(find.text('12'), findsOneWidget);
+    });
+
+    testWidgets(
+        'confirming the close clears the controlled values and hides '
+        'the section again', (tester) async {
+      await tester.pumpWidget(harness(initialValues: [
+        DataValueEntity(
+          dataElementId: controller.id,
+          categoryOptionComboId: 'ctlCombo001',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: 'true',
+        ),
+        DataValueEntity(
+          dataElementId: gated.id,
+          categoryOptionComboId: 'gtdCombo001',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: '12',
+        ),
+      ]));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Yes')); // true -> false
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Clear and close'));
+      await tester.pumpAndSettle();
+
+      // The controller itself now reads No, and the section it used
+      // to show is gone entirely.
+      expect(find.text('No'), findsOneWidget);
+      expect(find.text('Normal deliveries'), findsNothing);
+
+      // Reopening confirms the data was actually cleared, not just
+      // hidden: no confirmation this time (nothing left to lose) and
+      // the field comes back empty.
+      await tester.tap(find.text('No')); // false -> unanswered
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('—')); // unanswered -> true
+      await tester.pumpAndSettle();
+
+      expect(find.text('Clear entered data?'), findsNothing);
+      expect(find.text('Normal deliveries'), findsOneWidget);
+      expect(find.text('12'), findsNothing);
     });
   });
 

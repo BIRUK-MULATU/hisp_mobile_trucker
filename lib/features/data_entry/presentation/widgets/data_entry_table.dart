@@ -93,13 +93,23 @@ class _DataEntryTableState extends State<DataEntryTable> {
       );
     }
 
+    // Controller data elements (see ControllerElementService): every
+    // element a CLOSED controller gates is left out of the form
+    // entirely — "closed until we say yes".
+    final hiddenIds = <String>{};
+    for (final e in widget.dataElements) {
+      if (e.isController && !_controllerIsOpen(e)) {
+        hiddenIds.addAll(e.controlledElementIds);
+      }
+    }
+
     final query = widget.searchQuery?.trim().toLowerCase() ?? '';
-    final visibleElements = query.isEmpty
-        ? widget.dataElements
-        : [
-            for (final e in widget.dataElements)
-              if (e.displayName.toLowerCase().contains(query)) e,
-          ];
+    final visibleElements = [
+      for (final e in widget.dataElements)
+        if (!hiddenIds.contains(e.id) &&
+            (query.isEmpty || e.displayName.toLowerCase().contains(query)))
+          e,
+    ];
     if (visibleElements.isEmpty) {
       return Center(
         child: Text('No results for "${widget.searchQuery}"',
@@ -143,8 +153,8 @@ class _DataEntryTableState extends State<DataEntryTable> {
                   '$rejectedCount value${rejectedCount == 1 ? '' : 's'} '
                   'rejected by the server — long-press the red cells for '
                   'details, then correct and save to resend.',
-                  style: AppTextStyles.bodySmall
-                      .copyWith(color: AppColors.error),
+                  style:
+                      AppTextStyles.bodySmall.copyWith(color: AppColors.error),
                 ),
               ),
             ],
@@ -179,6 +189,72 @@ class _DataEntryTableState extends State<DataEntryTable> {
       ? total.toInt().toString()
       : total.toString();
 
+  // A controller "opens" its group exactly when its own value is the
+  // literal string "true" — 'false' and '' (never answered / cycled
+  // back) both keep it closed.
+  bool _controllerIsOpen(DataElementEntity controller) {
+    for (final combo in controller.categoryOptionCombos) {
+      final raw = widget.dataValues['${controller.id}_${combo.id}']?.value;
+      if (raw?.trim().toLowerCase() == 'true') return true;
+    }
+    return false;
+  }
+
+  // Gate passed to a controller's DataEntryCell: opening is never
+  // destructive, so it's allowed straight through. Closing an
+  // ALREADY-open controller first confirms — only if there's actually
+  // entered data under it to lose — then clears every combo of every
+  // element it controls, reusing the exact same DataEntryValueChanged
+  // event the per-cell "Clear value" action already uses (an empty
+  // value is how the sync pipeline deletes a data value).
+  Future<bool> _confirmControllerChange(
+      DataElementEntity controller, String next) async {
+    if (next == 'true' || !_controllerIsOpen(controller)) return true;
+
+    final toClear = [
+      for (final v in widget.dataValues.values)
+        if (controller.controlledElementIds.contains(v.dataElementId) &&
+            v.value.trim().isNotEmpty)
+          v,
+    ];
+    if (toClear.isEmpty) return true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Clear entered data?'),
+        content: Text(
+          'Switching "${controller.displayName}" to No will erase the '
+          '${toClear.length} value${toClear.length == 1 ? '' : 's'} '
+          'already entered under it, and hide those fields again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Clear and close'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return false;
+
+    final bloc = context.read<DataEntryBloc>();
+    for (final v in toClear) {
+      bloc.add(DataEntryValueChanged(
+        dataElementId: v.dataElementId,
+        categoryOptionComboId: v.categoryOptionComboId,
+        value: '',
+      ));
+    }
+    return true;
+  }
+
   Widget _buildSection(DataElementEntity element) {
     final combos = _combosFor(element);
 
@@ -208,9 +284,8 @@ class _DataEntryTableState extends State<DataEntryTable> {
       final value = widget.dataValues['${element.id}_${combo.id}'];
       if (value != null && value.value.isNotEmpty) filled++;
     }
-    final hasError = widget.dataValues.values.any((v) =>
-        v.dataElementId == element.id &&
-        v.syncError != null);
+    final hasError = widget.dataValues.values
+        .any((v) => v.dataElementId == element.id && v.syncError != null);
 
     // Disaggregated elements (more than the one default combo) are
     // exactly the ones a validation rule sums across — surface that
@@ -235,9 +310,8 @@ class _DataEntryTableState extends State<DataEntryTable> {
               vertical: AppDimensions.spaceSM,
             ),
             decoration: BoxDecoration(
-              color: expanded
-                  ? AppColors.primary.withValues(alpha: 0.04)
-                  : null,
+              color:
+                  expanded ? AppColors.primary.withValues(alpha: 0.04) : null,
               border: const Border(
                 left: BorderSide(color: AppColors.primary, width: 2),
               ),
@@ -267,7 +341,8 @@ class _DataEntryTableState extends State<DataEntryTable> {
                     ),
                     decoration: BoxDecoration(
                       color: AppColors.primary.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(AppDimensions.radiusSM),
+                      borderRadius:
+                          BorderRadius.circular(AppDimensions.radiusSM),
                     ),
                     child: Text(
                       anyValue ? _formatTotal(total) : '—',
@@ -384,6 +459,9 @@ class _DataEntryTableState extends State<DataEntryTable> {
                 options: element.options,
                 errorText: existing?.syncError,
                 isReadOnly: widget.readOnly,
+                confirmChange: element.isController
+                    ? (next) => _confirmControllerChange(element, next)
+                    : null,
                 onChanged: (value) {
                   context.read<DataEntryBloc>().add(
                         DataEntryValueChanged(
@@ -455,6 +533,9 @@ class _DataEntryTableState extends State<DataEntryTable> {
                 options: element.options,
                 errorText: existing?.syncError,
                 isReadOnly: widget.readOnly,
+                confirmChange: element.isController
+                    ? (next) => _confirmControllerChange(element, next)
+                    : null,
                 onChanged: (value) {
                   context.read<DataEntryBloc>().add(
                         DataEntryValueChanged(
@@ -476,8 +557,7 @@ class _DataEntryTableState extends State<DataEntryTable> {
   // widget.dataValues (refreshed on every DataEntryValueChanged).
   Widget _buildTotalRow(
       DataElementEntity element, List<CategoryOptionCombo> combos) {
-    final (total, anyValue) =
-        _comboTotal(widget.dataValues, element, combos);
+    final (total, anyValue) = _comboTotal(widget.dataValues, element, combos);
     final display = anyValue ? _formatTotal(total) : '—';
 
     return Padding(

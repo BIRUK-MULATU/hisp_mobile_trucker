@@ -14,6 +14,15 @@ class DataElementEntity {
   /// cell renders a picker instead of free input.
   final List<OptionEntity> options;
 
+  /// Non-empty ONLY for a "controller" data element — DHIS2's
+  /// "Controller Data Element Attribute" == "true", identified via
+  /// its data element group membership. These are the ids of every
+  /// OTHER data element in that same group: shown in the form only
+  /// while this (Boolean) element's value is "true", and cleared the
+  /// moment it's switched away from "true". Empty for every ordinary
+  /// data element.
+  final List<String> controlledElementIds;
+
   const DataElementEntity({
     required this.id,
     required this.name,
@@ -22,9 +31,12 @@ class DataElementEntity {
     this.categoryComboId,
     this.categoryOptionCombos = const [],
     this.options = const [],
+    this.controlledElementIds = const [],
   });
 
   String get displayName => shortName ?? name;
+
+  bool get isController => controlledElementIds.isNotEmpty;
 }
 
 /// One choice of a data element's option set. [code] is what gets

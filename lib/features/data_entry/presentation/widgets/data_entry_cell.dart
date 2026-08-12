@@ -22,6 +22,13 @@ class DataEntryCell extends StatefulWidget {
   /// Long-pressing the cell shows the message.
   final String? errorText;
 
+  /// Gate checked ONLY on a tap-driven change (boolean/option/checkbox
+  /// cells — free-typed text never calls this, there's no single
+  /// discrete "change" to gate). Returning false leaves the cell
+  /// exactly as it was: [onChanged] is never called and the displayed
+  /// value doesn't move. Null skips the gate entirely, the default.
+  final Future<bool> Function(String newValue)? confirmChange;
+
   const DataEntryCell({
     super.key,
     required this.dataElementId,
@@ -32,6 +39,7 @@ class DataEntryCell extends StatefulWidget {
     this.isReadOnly = false,
     this.options = const [],
     this.errorText,
+    this.confirmChange,
   });
 
   @override
@@ -149,6 +157,14 @@ class _DataEntryCellState extends State<DataEntryCell> {
     widget.onChanged(value);
   }
 
+  Future<void> _applyChange(String value) async {
+    if (widget.confirmChange != null) {
+      final ok = await widget.confirmChange!(value);
+      if (!ok || !mounted) return;
+    }
+    _setValue(value);
+  }
+
   // YES/NO element — free text would be rejected by the server
   // with E7619 (value_not_bool); only true/false/empty may be sent.
   // A tap cycles — → Yes → No → —. Deliberately NOT a dropdown:
@@ -176,7 +192,7 @@ class _DataEntryCellState extends State<DataEntryCell> {
                   : value == 'true'
                       ? 'false'
                       : '';
-              _setValue(next);
+              _applyChange(next);
             },
       child: Container(
         height: 40,
@@ -237,9 +253,8 @@ class _DataEntryCellState extends State<DataEntryCell> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: AppTextStyles.bodyMedium.copyWith(
-            color: code.isEmpty
-                ? AppColors.textSecondary
-                : AppColors.textPrimary,
+            color:
+                code.isEmpty ? AppColors.textSecondary : AppColors.textPrimary,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -260,15 +275,13 @@ class _DataEntryCellState extends State<DataEntryCell> {
       builder: (ctx) => SafeArea(
         child: ListView(
           shrinkWrap: true,
-          padding:
-              const EdgeInsets.symmetric(vertical: AppDimensions.spaceSM),
+          padding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceSM),
           children: [
             for (final o in widget.options)
               ListTile(
                 title: Text(o.name, style: AppTextStyles.bodyMedium),
                 trailing: o.code == current
-                    ? const Icon(Icons.check_rounded,
-                        color: AppColors.primary)
+                    ? const Icon(Icons.check_rounded, color: AppColors.primary)
                     : null,
                 onTap: () => Navigator.pop(ctx, o.code),
               ),
@@ -278,8 +291,8 @@ class _DataEntryCellState extends State<DataEntryCell> {
                     const Icon(Icons.clear_rounded, color: AppColors.error),
                 title: Text(
                   'Clear value',
-                  style: AppTextStyles.bodyMedium
-                      .copyWith(color: AppColors.error),
+                  style:
+                      AppTextStyles.bodyMedium.copyWith(color: AppColors.error),
                 ),
                 onTap: () => Navigator.pop(ctx, ''),
               ),

@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/auth/session_service.dart';
 import '../../../../core/data/completeness.dart';
+import '../../../../core/data/controller_element_service.dart';
 import '../../../../core/data/data_value_push.dart';
 import '../../../../core/data/data_value_store.dart';
 import '../../../../core/data/data_value_sync.dart';
@@ -69,6 +70,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     // Same for option sets: many elements share one set.
     final optionResource = OptionResource(_db);
     final optionsBySet = <String, List<entity.OptionEntity>>{};
+    // "Controller" data elements (see ControllerElementService) — the
+    // ones whose Boolean value shows/hides the rest of their group.
+    final controllerGates =
+        await ControllerElementService(_db).controllersFor(uids);
 
     final result = <entity.DataElementEntity>[];
     for (final uid in uids) {
@@ -110,6 +115,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
             entity.CategoryOptionCombo(id: coc.uid, name: coc.name),
         ],
         options: options,
+        controlledElementIds: controllerGates[uid] ?? const [],
       ));
     }
     if (result.isEmpty) {
