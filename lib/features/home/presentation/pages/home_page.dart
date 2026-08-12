@@ -3,6 +3,7 @@ import 'package:showcaseview/showcaseview.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/onboarding/onboarding_service.dart';
 import '../../../../core/onboarding/tour_helper.dart';
+import '../../../../core/sync/battery_optimization.dart';
 import '../../../../core/sync/manual_sync.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_constants.dart';
@@ -53,7 +54,13 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeStartTour());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _maybeStartTour();
+      // Sequenced after the tour (not run alongside it) so the
+      // showcase overlay and this dialog never fight for the screen on
+      // a brand-new user's very first Home visit.
+      await _maybeShowBatteryPrompt();
+    });
   }
 
   Future<void> _maybeStartTour({bool force = false}) async {
@@ -69,6 +76,50 @@ class _HomePageState extends State<HomePage> {
       ],
       force: force,
     );
+  }
+
+  /// One-time nudge (Android only, ever) to exempt the app from OEM
+  /// battery-optimization killing — without it, several manufacturers'
+  /// battery managers kill the sync foreground service anyway despite
+  /// Android's standard guarantees, silently breaking auto-sync on
+  /// reconnect for exactly the field devices that need it most.
+  Future<void> _maybeShowBatteryPrompt() async {
+    if (await BatteryOptimization.hasPrompted()) return;
+    if (await BatteryOptimization.isIgnoringOptimizations()) {
+      await BatteryOptimization.markPrompted();
+      return;
+    }
+    await BatteryOptimization.markPrompted();
+    if (!mounted) return;
+    final allow = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.spaceLG),
+        ),
+        title: const Text('Keep offline sync reliable',
+            style: AppTextStyles.headingSmall),
+        content: const Text(
+          'To make sure data you capture offline reaches the server as '
+          'soon as you\'re back online — even if the app is in the '
+          'background — allow HISP Tracker to run without battery '
+          'restrictions.',
+          style: AppTextStyles.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not now'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
+    );
+    if (allow == true) await BatteryOptimization.requestExemption();
   }
 
   /// "App Tour" drawer item — resets every screen's tour flag, then

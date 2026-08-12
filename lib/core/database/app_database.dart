@@ -102,13 +102,28 @@ class DataValuesTable extends Table {
 /// What kind of local write an audit row describes.
 enum AuditEntityType { dataValue, completeness }
 
+/// Mirrors DHIS2's own audit `auditType` (CREATE/UPDATE/DELETE) so a
+/// local row and a [ServerDataValueAudit] row read the same way.
+/// Ordering matters — stored by index, only append.
+enum LocalAuditType { create, update, delete }
+
 /// Immutable trail of every local change to a data value or completion
 /// registration — old value, new value, who, when. Append-only: writes
 /// go through [AuditLogStore.record]; nothing ever updates a row here.
+///
+/// Field-for-field this mirrors the server's own `/api/audits/dataValue`
+/// shape (dataValueAuditId → [id], dataElementId → [dataElementUid],
+/// periodId → [period], organisationUnitId → [orgUnitUid],
+/// categoryOptionComboId → [categoryOptionComboUid],
+/// attributeOptionComboId → [attributeOptionComboUid], value → see
+/// [AuditLogStore] callers, created → [modifiedAt], modifiedBy,
+/// auditType), so the two sources can be rendered identically.
 @DataClassName('AuditEntry')
 class AuditLogTable extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get entityType => intEnum<AuditEntityType>()();
+  IntColumn get auditType =>
+      intEnum<LocalAuditType>().withDefault(const Constant(1))();
 
   /// Populated for dataValue entries only.
   TextColumn get dataElementUid => text().nullable()();
@@ -200,7 +215,7 @@ class AppDatabase extends _$AppDatabase {
       raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -220,6 +235,35 @@ class AppDatabase extends _$AppDatabase {
           //   2: (m) => m.addColumn(dataSetsTable, dataSetsTable.newCol),
           final steps = <int, Future<void> Function(Migrator)>{
             2: (m) => m.createTable(auditLogTable),
+            // Explicit CREATE/UPDATE/DELETE per row, matching the
+            // server's own auditType — previously only inferable from
+            // previousValue/newValue nullness. Backfill existing rows
+            // from that same nullness so history written before this
+            // migration still classifies correctly.
+            //
+            // Column-existence checked first and NOT assumed idempotent
+            // by luck: a device that crashed (or raced two connections)
+            // mid-migration can be left with the column already added
+            // but user_version still at 2, so the next open retries this
+            // exact step — a plain addColumn would then throw "duplicate
+            // column name" forever, wedging that device's login on every
+            // future attempt.
+            3: (m) async {
+              final columns = await customSelect(
+                "SELECT name FROM pragma_table_info('audit_log_table')",
+              ).get();
+              final hasAuditType =
+                  columns.any((r) => r.read<String>('name') == 'audit_type');
+              if (!hasAuditType) {
+                await m.addColumn(auditLogTable, auditLogTable.auditType);
+              }
+              await customStatement(
+                'UPDATE audit_log_table SET audit_type = CASE '
+                'WHEN previous_value IS NULL THEN 0 '
+                'WHEN new_value IS NULL THEN 2 '
+                'ELSE 1 END',
+              );
+            },
           };
           for (var target = from + 1; target <= to; target++) {
             final step = steps[target];

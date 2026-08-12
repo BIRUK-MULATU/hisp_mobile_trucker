@@ -162,6 +162,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
           period: r.period,
           value: r.value ?? '',
           syncError: r.syncState == SyncState.error ? r.syncError : null,
+          syncState: r.syncState,
         ),
     ];
   }
@@ -413,6 +414,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     } catch (e) {
       log.w('[dataEntry] default combo fetch failed: $e');
       return null;
+
     }
   }
 }

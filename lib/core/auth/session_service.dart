@@ -74,9 +74,40 @@ class SessionService {
 
   bool get isLoggedIn => _db != null;
 
+  /// Guards [_doLogin] against re-entrancy: two overlapping calls (a
+  /// double-tap, the password field's onEditingComplete firing
+  /// alongside a button tap before the UI disables itself — flutter_bloc
+  /// runs same-type event handlers concurrently unless told not to)
+  /// would otherwise both reach `_db = AppDatabase.forUser(username)`
+  /// and open two live connections to the same SQLite file. Two
+  /// connections racing the SAME schema migration is exactly what
+  /// corrupts a field device's database, so every caller while one
+  /// login is in flight is handed the SAME future instead of starting
+  /// its own.
+  Future<LoginResult>? _loginInFlight;
+
+  Future<LoginResult> login({
+    required String serverUrl,
+    required String username,
+    required String password,
+    required bool online,
+  }) {
+    final inFlight = _loginInFlight;
+    if (inFlight != null) return inFlight;
+    final attempt = _doLogin(
+      serverUrl: serverUrl,
+      username: username,
+      password: password,
+      online: online,
+    );
+    _loginInFlight = attempt;
+    attempt.whenComplete(() => _loginInFlight = null);
+    return attempt;
+  }
+
   /// The full decision tree. [online] is whatever your connectivity
   /// check reports at the moment of login.
-  Future<LoginResult> login({
+  Future<LoginResult> _doLogin({
     required String serverUrl,
     required String username,
     required String password,

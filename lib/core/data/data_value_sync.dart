@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
+import '../metadata/category_option_combo.dart';
 import '../network/api_client.dart';
 import '../utils/app_logger.dart';
 import 'data_value_push.dart';
@@ -109,6 +110,29 @@ class DataValueSync {
     } on DioException catch (e) {
       log.e('[dataValues] pull error: ${e.message}');
       return null;
+    }
+
+    // This instance has more than one categoryOptionCombo literally
+    // named 'default', each with its own uid (see
+    // canonicalDefaultComboUid's doc comment) — some data values were
+    // recorded server-side under a non-canonical one. Left as-is, they
+    // land in local storage under that uid while every read
+    // (DataValueStore.valuesForForm) filters by the canonical uid,
+    // making freshly-pulled, real server data silently invisible in
+    // the UI. remapDuplicateDefaultCombos already fixes this for rows
+    // ALREADY on the device before a push; this is the same fix for
+    // rows arriving FROM the server on every pull, so it can't keep
+    // reintroducing the mismatch sync after sync.
+    final duplicates = await duplicateDefaultComboUids(_db);
+    if (duplicates.isNotEmpty) {
+      for (final v in values) {
+        if (duplicates.contains(v['categoryOptionCombo'])) {
+          v['categoryOptionCombo'] = canonicalDefaultComboUid;
+        }
+        if (duplicates.contains(v['attributeOptionCombo'])) {
+          v['attributeOptionCombo'] = canonicalDefaultComboUid;
+        }
+      }
     }
 
     final tampered = await _clock.isClockTampered();
