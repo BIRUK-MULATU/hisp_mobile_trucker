@@ -14,6 +14,12 @@ class DataEntryCell extends StatefulWidget {
   final ValueChanged<String> onChanged;
   final bool isReadOnly;
 
+  /// DHIS2's own "greyed field" — this exact (element, combo) cell is
+  /// not a valid combination and is ALWAYS disabled, regardless of
+  /// [isReadOnly]/period state. Renders as a plain dimmed placeholder,
+  /// never a real input of any value type.
+  final bool isGreyed;
+
   /// Non-empty = option-set element: the cell becomes a picker and
   /// only the options' codes may be stored (server rule E7621).
   final List<OptionEntity> options;
@@ -37,6 +43,7 @@ class DataEntryCell extends StatefulWidget {
     this.valueType = 'NUMBER',
     required this.onChanged,
     this.isReadOnly = false,
+    this.isGreyed = false,
     this.options = const [],
     this.errorText,
     this.confirmChange,
@@ -303,8 +310,31 @@ class _DataEntryCellState extends State<DataEntryCell> {
     if (picked != null && mounted) _setValue(picked);
   }
 
+  // Not applicable — the server rejects it (E7616 category_option_combo_
+  // not_accessible-style errors) if it's ever sent, so it's never a
+  // real input of any value type, just a fixed dimmed placeholder.
+  Widget _buildGreyedCell() {
+    return Tooltip(
+      message: "This combination isn't applicable and can't be entered.",
+      triggerMode: TooltipTriggerMode.longPress,
+      child: Container(
+        height: 40,
+        decoration: BoxDecoration(
+          color: AppColors.divider,
+          border: Border.all(color: AppColors.divider, width: 1.5),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          '—',
+          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textHint),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.isGreyed) return _buildGreyedCell();
     if (widget.options.isNotEmpty) {
       return _withErrorHint(_buildOptionCell());
     }

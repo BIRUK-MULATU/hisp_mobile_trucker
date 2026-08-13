@@ -83,6 +83,15 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     // anchored to whichever element they reference appears first.
     final displayIndicators =
         await IndicatorDisplayService(_db).displayIndicatorsFor(uids);
+    // DHIS2's own "greyed fields" — (element, combo) cells the data
+    // set's section(s) mark as not applicable, always disabled.
+    final greyRows = sectionId == null
+        ? await SectionResource(_db).greyFieldsForDataSet(dataSetId)
+        : await SectionResource(_db).greyFieldsOf(sectionId);
+    final greyedCells = {
+      for (final r in greyRows)
+        '${r.dataElementUid}_${r.categoryOptionComboUid}',
+    };
 
     final result = <entity.DataElementEntity>[];
     for (final uid in uids) {
@@ -121,7 +130,11 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
         categoryComboId: comboUid,
         categoryOptionCombos: [
           for (final coc in cocs)
-            entity.CategoryOptionCombo(id: coc.uid, name: coc.name),
+            entity.CategoryOptionCombo(
+              id: coc.uid,
+              name: coc.name,
+              isGreyed: greyedCells.contains('${row.uid}_${coc.uid}'),
+            ),
         ],
         options: options,
         controlledElementIds: controllerGates[uid] ?? const [],

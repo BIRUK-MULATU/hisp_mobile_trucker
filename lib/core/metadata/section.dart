@@ -24,7 +24,11 @@ class SectionResource extends MetadataResource<Section> {
 
   @override
   List<String> get fields => [
-        'id', 'name', 'displayName', 'sortOrder', 'lastUpdated',
+        'id',
+        'name',
+        'displayName',
+        'sortOrder',
+        'lastUpdated',
         'dataSet[id]',
         'dataElements[id]',
         'indicators[id]',
@@ -145,6 +149,29 @@ class SectionResource extends MetadataResource<Section> {
       greyFieldsOf(String sectionUid) async {
     final rows = await (db.select(db.sectionGreyFieldsTable)
           ..where((t) => t.sectionUid.equals(sectionUid)))
+        .get();
+    return [
+      for (final r in rows)
+        (
+          dataElementUid: r.dataElementUid,
+          categoryOptionComboUid: r.categoryOptionComboUid,
+        ),
+    ];
+  }
+
+  /// Same as [greyFieldsOf], but the UNION across every section of a
+  /// data set — used when a form covers the whole data set rather
+  /// than one section (no sectionId given).
+  Future<List<({String dataElementUid, String categoryOptionComboUid})>>
+      greyFieldsForDataSet(String dataSetUid) async {
+    final sectionUids = await (db.selectOnly(db.sectionsTable)
+          ..addColumns([db.sectionsTable.uid])
+          ..where(db.sectionsTable.dataSetUid.equals(dataSetUid)))
+        .map((r) => r.read(db.sectionsTable.uid)!)
+        .get();
+    if (sectionUids.isEmpty) return const [];
+    final rows = await (db.select(db.sectionGreyFieldsTable)
+          ..where((t) => t.sectionUid.isIn(sectionUids)))
         .get();
     return [
       for (final r in rows)

@@ -438,9 +438,12 @@ class _DataEntryTableState extends State<DataEntryTable> {
     final expanded = _expandedIds.contains(element.id);
 
     // Filled / total summary so a collapsed section still tells the
-    // user whether anything inside it is left to enter.
+    // user whether anything inside it is left to enter — greyed
+    // combos are never enterable, so they don't belong in the count
+    // ("3/4" would be permanently unreachable if the 4th is greyed).
+    final enterableCombos = combos.where((c) => !c.isGreyed).toList();
     var filled = 0;
-    for (final combo in combos) {
+    for (final combo in enterableCombos) {
       final value = widget.dataValues['${element.id}_${combo.id}'];
       if (value != null && value.value.isNotEmpty) filled++;
     }
@@ -517,9 +520,9 @@ class _DataEntryTableState extends State<DataEntryTable> {
                   const SizedBox(width: AppDimensions.spaceSM),
                 ],
                 Text(
-                  '$filled/${combos.length}',
+                  '$filled/${enterableCombos.length}',
                   style: AppTextStyles.caption.copyWith(
-                    color: filled == combos.length
+                    color: filled == enterableCombos.length
                         ? AppColors.primary
                         : AppColors.textSecondary,
                     fontSize: 11,
@@ -620,6 +623,7 @@ class _DataEntryTableState extends State<DataEntryTable> {
                 options: element.options,
                 errorText: existing?.syncError,
                 isReadOnly: widget.readOnly,
+                isGreyed: combo.isGreyed,
                 confirmChange: element.isController
                     ? (next) => _confirmControllerChange(element, next)
                     : null,
@@ -694,6 +698,7 @@ class _DataEntryTableState extends State<DataEntryTable> {
                 options: element.options,
                 errorText: existing?.syncError,
                 isReadOnly: widget.readOnly,
+                isGreyed: combo.isGreyed,
                 confirmChange: element.isController
                     ? (next) => _confirmControllerChange(element, next)
                     : null,

@@ -71,10 +71,19 @@ class CategoryOptionCombo {
   final String name;
   final String? shortName;
 
+  /// True when this exact (data element, combo) cell is one of the
+  /// data set's own DHIS2 "greyed fields" — a combination that
+  /// doesn't logically apply (e.g. a disease diagnosis greyed out for
+  /// a category option it can't occur in). Always disabled, never
+  /// enterable — distinct from [DataEntryCell.isReadOnly], which is
+  /// just "closed period, temporarily view-only".
+  final bool isGreyed;
+
   const CategoryOptionCombo({
     required this.id,
     required this.name,
     this.shortName,
+    this.isGreyed = false,
   });
 
   String get displayName => shortName ?? name;

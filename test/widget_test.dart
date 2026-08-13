@@ -742,6 +742,79 @@ void main() {
     });
   });
 
+  group('DataEntryTable — greyed fields', () {
+    testWidgets(
+        'a greyed combo renders disabled with no editable field, and is '
+        'excluded from the filled/total count', (tester) async {
+      const element = DataElementEntity(
+        id: 'de1',
+        name: 'Disease diagnosis',
+        categoryOptionCombos: [
+          CategoryOptionCombo(id: 'c1', name: 'Male'),
+          CategoryOptionCombo(id: 'c2', name: 'Female', isGreyed: true),
+        ],
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: [element],
+              dataValues: {},
+              orgUnitId: 'ou1',
+              period: '202607',
+            ),
+          ),
+        ),
+      );
+
+      // Only the non-greyed combo gets a real, editable field.
+      expect(find.byType(TextField), findsOneWidget);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.readOnly, isFalse);
+
+      // "—" appears twice: the header's disaggregation-total badge
+      // (nothing entered yet) and the greyed combo's own placeholder.
+      expect(find.text('—'), findsNWidgets(2));
+
+      // "0/1", not "0/2" — the greyed cell was never enterable to
+      // begin with.
+      expect(find.text('0/1'), findsOneWidget);
+    });
+
+    testWidgets('a greyed cell ignores taps — it never becomes editable',
+        (tester) async {
+      const boolElement = DataElementEntity(
+        id: 'de1',
+        name: 'Some Boolean KPI',
+        valueType: 'BOOLEAN',
+        categoryOptionCombos: [
+          CategoryOptionCombo(id: 'c1', name: 'default', isGreyed: true),
+        ],
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: [boolElement],
+              dataValues: {},
+              orgUnitId: 'ou1',
+              period: '202607',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('—'), findsOneWidget);
+      // Never renders the Yes/No boolean cell, tap or not.
+      await tester.tap(find.text('—'));
+      await tester.pump();
+      expect(find.text('Yes'), findsNothing);
+      expect(find.text('—'), findsOneWidget);
+    });
+  });
+
   group('HomeAppBar', () {
     testWidgets('shows the filter button only when showFilterButton is set',
         (tester) async {
