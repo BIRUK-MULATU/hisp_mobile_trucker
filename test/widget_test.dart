@@ -364,6 +364,53 @@ void main() {
       expect(find.text('8'), findsNWidgets(2));
     });
 
+    testWidgets(
+        'showHeaderSumBadge: false (Disease Registration) hides the '
+        'header badge but keeps the footer Total row', (tester) async {
+      const element = DataElementEntity(
+        id: 'de1',
+        name: 'Malaria cases',
+        categoryOptionCombos: [
+          CategoryOptionCombo(id: 'c1', name: 'Male'),
+          CategoryOptionCombo(id: 'c2', name: 'Female'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: const [element],
+              dataValues: {
+                'de1_c1': DataValueEntity(
+                  dataElementId: 'de1',
+                  categoryOptionComboId: 'c1',
+                  orgUnitId: 'ou1',
+                  period: '202607',
+                  value: '5',
+                ),
+                'de1_c2': DataValueEntity(
+                  dataElementId: 'de1',
+                  categoryOptionComboId: 'c2',
+                  orgUnitId: 'ou1',
+                  period: '202607',
+                  value: '3',
+                ),
+              },
+              orgUnitId: 'ou1',
+              period: '202607',
+              showElementTotal: true,
+              showHeaderSumBadge: false,
+            ),
+          ),
+        ),
+      );
+
+      // Just the footer Total row's "8" now — no header badge.
+      expect(find.text('Total'), findsOneWidget);
+      expect(find.text('8'), findsOneWidget);
+    });
+
     testWidgets('readOnly makes every combo cell view-only, not editable',
         (tester) async {
       const element = DataElementEntity(

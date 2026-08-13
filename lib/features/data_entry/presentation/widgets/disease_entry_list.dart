@@ -142,8 +142,11 @@ class _DiseaseEntryListState extends State<DiseaseEntryList> {
         // freshly-added, still-empty disease ───────────────
         if (!widget.readOnly) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppDimensions.space,
-                AppDimensions.spaceSM, AppDimensions.space, AppDimensions.spaceSM),
+            padding: const EdgeInsets.fromLTRB(
+                AppDimensions.space,
+                AppDimensions.spaceSM,
+                AppDimensions.space,
+                AppDimensions.spaceSM),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -180,8 +183,7 @@ class _DiseaseEntryListState extends State<DiseaseEntryList> {
                     ),
                     child: newSuggestions.isEmpty
                         ? Padding(
-                            padding:
-                                const EdgeInsets.all(AppDimensions.space),
+                            padding: const EdgeInsets.all(AppDimensions.space),
                             child: Text(
                               notRecorded.isEmpty
                                   ? 'Every disease has already been added'
@@ -250,6 +252,7 @@ class _DiseaseEntryListState extends State<DiseaseEntryList> {
                     orgUnitId: widget.orgUnitId,
                     period: widget.period,
                     showElementTotal: true,
+                    showHeaderSumBadge: false,
                     readOnly: widget.readOnly,
                   ),
           ),

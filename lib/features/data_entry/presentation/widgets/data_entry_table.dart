@@ -33,6 +33,12 @@ class DataEntryTable extends StatefulWidget {
   /// Disease Registration only; Routine leaves this off.
   final bool showElementTotal;
 
+  /// The small sum badge beside a disaggregated element's name in its
+  /// (collapsed or expanded) header. Routine keeps it; Disease
+  /// Registration turns it off — with potentially hundreds of
+  /// diseases listed, a number beside every name read as clutter.
+  final bool showHeaderSumBadge;
+
   /// True once the period's expiry deadline has passed — every cell
   /// becomes view-only (still fully visible, just not editable).
   final bool readOnly;
@@ -45,6 +51,7 @@ class DataEntryTable extends StatefulWidget {
     required this.period,
     this.searchQuery,
     this.showElementTotal = false,
+    this.showHeaderSumBadge = true,
     this.readOnly = false,
   });
 
@@ -455,7 +462,8 @@ class _DataEntryTableState extends State<DataEntryTable> {
     // sum right beside the element name so it's visible without
     // expanding the section.
     final isDisaggregated = combos.length > 1;
-    final (total, anyValue) = isDisaggregated
+    final showSumBadge = isDisaggregated && widget.showHeaderSumBadge;
+    final (total, anyValue) = showSumBadge
         ? _comboTotal(widget.dataValues, element, combos)
         : (0.0, false);
 
@@ -497,7 +505,7 @@ class _DataEntryTableState extends State<DataEntryTable> {
                       color: AppColors.error, size: AppDimensions.iconSM),
                   const SizedBox(width: AppDimensions.spaceXS),
                 ],
-                if (isDisaggregated) ...[
+                if (showSumBadge) ...[
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppDimensions.spaceSM,
