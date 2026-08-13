@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/data/indicator_display_service.dart'
+    show DisplayIndicator;
+import '../../../../core/data/validation_service.dart'
+    show ExpressionEvaluator, UnsupportedExpression;
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -220,6 +224,98 @@ class _DataEntryTableState extends State<DataEntryTable> {
     );
   }
 
+  // Element-total operand (no coc) or one specific combo's value —
+  // same lookup shape ExpressionEvaluator/ValidationService use, just
+  // read from the in-memory form instead of the database, so a
+  // displayable indicator updates on every keystroke, in any section.
+  double? _indicatorLookup(String dataElementId, String? comboId) {
+    if (comboId != null) {
+      final raw = widget.dataValues['${dataElementId}_$comboId']?.value;
+      return double.tryParse((raw ?? '').trim());
+    }
+    double? total;
+    for (final v in widget.dataValues.values) {
+      if (v.dataElementId != dataElementId) continue;
+      final n = double.tryParse(v.value.trim());
+      if (n != null) total = (total ?? 0) + n;
+    }
+    return total;
+  }
+
+  // Read-only calculated indicator row — null (render nothing) when
+  // its formula uses syntax the offline engine can't evaluate (e.g.
+  // N{otherIndicator}), same "skip, never guess" rule validation
+  // rules follow.
+  Widget? _buildIndicatorRow(DisplayIndicator indicator) {
+    final double value;
+    try {
+      final numerator =
+          ExpressionEvaluator(indicator.numerator, _indicatorLookup).evaluate();
+      final denominator =
+          ExpressionEvaluator(indicator.denominator, _indicatorLookup)
+              .evaluate();
+      if (denominator == 0) {
+        return _indicatorRowContainer(indicator.name, '—');
+      }
+      value = numerator / denominator * indicator.factor;
+    } on UnsupportedExpression {
+      return null;
+    }
+    final display = value == value.roundToDouble()
+        ? value.toInt().toString()
+        : value.toStringAsFixed(1);
+    return _indicatorRowContainer(indicator.name, display);
+  }
+
+  Widget _indicatorRowContainer(String name, String value) {
+    return Container(
+      width: double.infinity,
+      color: AppColors.textSecondary.withValues(alpha: 0.08),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spaceSM,
+        vertical: AppDimensions.spaceSM,
+      ),
+      child: Row(
+        children: [
+          const Tooltip(
+            message: 'Automatically calculated — not entered directly',
+            child: Icon(Icons.calculate_outlined,
+                color: AppColors.textSecondary, size: AppDimensions.iconSM),
+          ),
+          const SizedBox(width: AppDimensions.spaceXS),
+          Expanded(
+            child: Text(
+              name,
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppDimensions.spaceSM,
+              vertical: 2,
+            ),
+            decoration: BoxDecoration(
+              color: AppColors.textSecondary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusSM),
+            ),
+            child: Text(
+              value,
+              style: AppTextStyles.caption.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Sum of every combo currently entered for this element — shared by
   // the always-visible header badge and the expanded footer row.
   static (double total, bool anyValue) _comboTotal(
@@ -313,6 +409,14 @@ class _DataEntryTableState extends State<DataEntryTable> {
   Widget _buildSection(DataElementEntity element) {
     final combos = _combosFor(element);
 
+    // Read-only calculated indicators anchored to this element (see
+    // IndicatorDisplayService) — rendered directly above it, before
+    // anything the user actually enters.
+    final indicatorRows = [
+      for (final ind in element.displayIndicators)
+        if (_buildIndicatorRow(ind) case final w?) w,
+    ];
+
     // No real disaggregation: just the data set's own single
     // "default" category option combo, which has nothing meaningful
     // to name. Skip the accordion — and the literal "default" label
@@ -324,6 +428,7 @@ class _DataEntryTableState extends State<DataEntryTable> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ...indicatorRows,
           _buildFlatRow(element, combos.first),
           const Divider(height: 1, color: AppColors.divider),
         ],
@@ -354,6 +459,7 @@ class _DataEntryTableState extends State<DataEntryTable> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        ...indicatorRows,
         // ── Element header (tap to collapse/expand) ──────────
         InkWell(
           onTap: () => _toggle(element.id),

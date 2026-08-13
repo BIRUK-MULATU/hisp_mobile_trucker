@@ -10,6 +10,7 @@ import 'package:hisp_mobile_trucker/features/data_entry/presentation/bloc/data_e
 import 'package:hisp_mobile_trucker/features/data_entry/presentation/widgets/data_entry_table.dart';
 import 'package:hisp_mobile_trucker/features/capture/domain/entities/dataset_entity.dart';
 import 'package:hisp_mobile_trucker/features/capture/presentation/widgets/dataset_card.dart';
+import 'package:hisp_mobile_trucker/core/data/indicator_display_service.dart';
 import 'package:hisp_mobile_trucker/core/data/validation_service.dart';
 import 'package:hisp_mobile_trucker/core/network/connectivity_service.dart';
 import 'package:hisp_mobile_trucker/features/home/presentation/widgets/home_app_bar.dart';
@@ -624,6 +625,120 @@ void main() {
       expect(find.text('Satisfaction survey'), findsOneWidget);
       expect(find.text('Patient Neutral response'), findsOneWidget);
       expect(find.text('Staff Neutral response'), findsOneWidget);
+    });
+  });
+
+  group('DataEntryTable — displayable indicators', () {
+    const carAgeIndicator = DisplayIndicator(
+      name: 'MAT_New and Repeat Contraceptive Acceptors by Age',
+      numerator: '#{newAccept01} + #{repeatAcc01}',
+      denominator: '1',
+      factor: 1,
+    );
+    const newAcceptors = DataElementEntity(
+      id: 'newAccept01',
+      name: 'MAT_Contraceptive New Acceptors By Age',
+      displayIndicators: [carAgeIndicator],
+      categoryOptionCombos: [CategoryOptionCombo(id: 'c1', name: 'default')],
+    );
+    const repeatAcceptors = DataElementEntity(
+      id: 'repeatAcc01',
+      name: 'MAT_Contraceptive Repeat Acceptors By Age',
+      categoryOptionCombos: [CategoryOptionCombo(id: 'c2', name: 'default')],
+    );
+
+    testWidgets(
+        'renders the calculated value above its anchor element, and it '
+        'updates live as the referenced values change', (tester) async {
+      Widget buildWith(Map<String, DataValueEntity> dataValues) => MaterialApp(
+            home: Scaffold(
+              body: DataEntryTable(
+                dataElements: const [newAcceptors, repeatAcceptors],
+                dataValues: dataValues,
+                orgUnitId: 'ou1',
+                period: '202607',
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(buildWith({
+        'newAccept01_c1': DataValueEntity(
+          dataElementId: 'newAccept01',
+          categoryOptionComboId: 'c1',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: '30',
+        ),
+        'repeatAcc01_c2': DataValueEntity(
+          dataElementId: 'repeatAcc01',
+          categoryOptionComboId: 'c2',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: '15',
+        ),
+      }));
+
+      expect(find.text('MAT_New and Repeat Contraceptive Acceptors by Age'),
+          findsOneWidget);
+      expect(find.text('45'), findsOneWidget);
+      // Not an input — no field carries this indicator's own value.
+      expect(find.widgetWithText(TextField, '45'), findsNothing);
+
+      // The parent rebuilds with fresh dataValues on every edit, same
+      // as the real Bloc-driven form — the indicator must follow.
+      await tester.pumpWidget(buildWith({
+        'newAccept01_c1': DataValueEntity(
+          dataElementId: 'newAccept01',
+          categoryOptionComboId: 'c1',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: '30',
+        ),
+        'repeatAcc01_c2': DataValueEntity(
+          dataElementId: 'repeatAcc01',
+          categoryOptionComboId: 'c2',
+          orgUnitId: 'ou1',
+          period: '202607',
+          value: '25',
+        ),
+      }));
+
+      expect(find.text('55'), findsOneWidget);
+      expect(find.text('45'), findsNothing);
+    });
+
+    testWidgets(
+        'an indicator referencing another indicator (N{...}, '
+        'unsupported offline) renders nothing rather than a wrong value',
+        (tester) async {
+      const unsupported = DisplayIndicator(
+        name: 'Depends on another indicator',
+        numerator: 'N{someIndicat}',
+        denominator: '1',
+        factor: 1,
+      );
+      const element = DataElementEntity(
+        id: 'de1',
+        name: 'Plain element',
+        displayIndicators: [unsupported],
+        categoryOptionCombos: [CategoryOptionCombo(id: 'c1', name: 'default')],
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: [element],
+              dataValues: {},
+              orgUnitId: 'ou1',
+              period: '202607',
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Depends on another indicator'), findsNothing);
+      expect(find.text('Plain element'), findsOneWidget);
     });
   });
 

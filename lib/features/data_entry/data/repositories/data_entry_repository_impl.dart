@@ -8,6 +8,7 @@ import '../../../../core/data/data_value_push.dart';
 import '../../../../core/data/data_value_store.dart';
 import '../../../../core/data/data_value_sync.dart';
 import '../../../../core/data/element_label_service.dart';
+import '../../../../core/data/indicator_display_service.dart';
 import '../../../../core/data/validation_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/exceptions.dart';
@@ -78,6 +79,10 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     // "Labeled" data elements (see ElementLabelService) — grouped in
     // the form under a shared KPI/indicator heading.
     final elementLabels = await ElementLabelService(_db).labelsFor(uids);
+    // Read-only calculated indicators (see IndicatorDisplayService) —
+    // anchored to whichever element they reference appears first.
+    final displayIndicators =
+        await IndicatorDisplayService(_db).displayIndicatorsFor(uids);
 
     final result = <entity.DataElementEntity>[];
     for (final uid in uids) {
@@ -121,6 +126,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
         options: options,
         controlledElementIds: controllerGates[uid] ?? const [],
         label: elementLabels[uid],
+        displayIndicators: displayIndicators[uid] ?? const [],
       ));
     }
     if (result.isEmpty) {

@@ -1,3 +1,5 @@
+import '../../../../core/data/indicator_display_service.dart'
+    show DisplayIndicator;
 import '../../../../core/database/app_database.dart' show SyncState;
 
 /// Represents a DHIS2 data element (a row in the data entry form)
@@ -29,6 +31,12 @@ class DataElementEntity {
   /// grouped in the form under it as one heading.
   final String? label;
 
+  /// Indicators (see IndicatorDisplayService) anchored to this
+  /// element — i.e. this is the first element, in form order, that
+  /// each one's numerator/denominator references. Rendered read-only,
+  /// directly above this element, computed live — never entered.
+  final List<DisplayIndicator> displayIndicators;
+
   const DataElementEntity({
     required this.id,
     required this.name,
@@ -39,6 +47,7 @@ class DataElementEntity {
     this.options = const [],
     this.controlledElementIds = const [],
     this.label,
+    this.displayIndicators = const [],
   });
 
   String get displayName => shortName ?? name;
