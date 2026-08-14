@@ -1,6 +1,6 @@
 {
-    "name": "hisp_mobile_trucker",
-    "short_name": "hisp_mobile_trucker",
+    "name": "ETH Routine",
+    "short_name": "ETH Routine",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

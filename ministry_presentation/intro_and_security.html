@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HISP Mobile Tracker — Intro &amp; Security</title>
+<style>
+  :root{
+    --bg:#0b1220;
+    --bg2:#0f1b30;
+    --card:#111d33;
+    --card-border:#1f2f4d;
+    --accent:#3ea6ff;
+    --accent2:#5be8c4;
+    --text:#e7edf6;
+    --muted:#8ba0c0;
+    --danger:#ff9f6e;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:radial-gradient(1200px 800px at 10% -10%, var(--bg2), var(--bg));
+    color:var(--text);
+    font-family:"Segoe UI", Roboto, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    overflow:hidden;
+  }
+  .deck{
+    position:relative;
+    width:100vw;height:100vh;
+  }
+  .slide{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    padding:6vh 8vw;
+    opacity:0;
+    transform:translateX(40px);
+    pointer-events:none;
+    transition:opacity .5s ease, transform .5s ease;
+  }
+  .slide.active{
+    opacity:1;
+    transform:translateX(0);
+    pointer-events:auto;
+  }
+
+  /* ---------- nav ---------- */
+  .nav-zone{
+    position:fixed;top:0;bottom:0;width:12%;
+    z-index:20;cursor:pointer;
+  }
+  .nav-zone.left{left:0;}
+  .nav-zone.right{right:0;}
+  .dots{
+    position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
+    display:flex;gap:10px;z-index:30;
+  }
+  .dot{
+    width:10px;height:10px;border-radius:50%;
+    background:var(--card-border);
+    border:1px solid var(--accent);
+    cursor:pointer;transition:.25s;
+  }
+  .dot.active{background:var(--accent);box-shadow:0 0 12px var(--accent);}
+  .hint{
+    position:fixed;bottom:28px;right:32px;
+    color:var(--muted);font-size:12px;letter-spacing:.03em;
+    z-index:30;
+  }
+
+  /* ---------- slide 1 : intro ---------- */
+  .eyebrow{
+    color:var(--accent2);
+    font-size:14px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    margin-bottom:14px;
+  }
+  h1.title{
+    font-size:clamp(38px,5.5vw,64px);
+    margin:0 0 8px 0;
+    line-height:1.05;
+    background:linear-gradient(90deg,#ffffff, #9fd3ff 60%, var(--accent));
+    -webkit-background-clip:text;
+    background-clip:text;
+    color:transparent;
+  }
+  .tagline{
+    font-size:clamp(16px,2vw,22px);
+    color:var(--muted);
+    max-width:720px;
+    margin-bottom:36px;
+  }
+  .meta-row{
+    display:flex;gap:28px;color:var(--muted);font-size:14px;margin-bottom:44px;
+  }
+  .meta-row span b{color:var(--text);font-weight:600;}
+  .agenda{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:16px 28px;
+    max-width:900px;
+  }
+  .agenda-item{
+    display:flex;align-items:flex-start;gap:14px;
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:12px;
+    padding:16px 18px;
+    transition:transform .2s, border-color .2s;
+  }
+  .agenda-item:hover{transform:translateY(-3px);border-color:var(--accent);}
+  .agenda-num{
+    flex:0 0 auto;
+    width:30px;height:30px;border-radius:8px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#06131f;font-weight:700;font-size:14px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .agenda-text b{display:block;font-size:15px;margin-bottom:2px;}
+  .agenda-text span{font-size:13px;color:var(--muted);}
+
+  /* ---------- slide 2 : security ---------- */
+  h2.title2{
+    font-size:clamp(30px,4vw,46px);
+    margin:0 0 6px 0;
+  }
+  .subtitle2{
+    color:var(--muted);
+    font-size:15px;
+    margin-bottom:30px;
+  }
+  .flow{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:22px;
+    margin-bottom:22px;
+  }
+  .flow-card{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:14px;
+    padding:20px 22px;
+  }
+  .flow-card h3{
+    margin:0 0 4px 0;font-size:16px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .badge{
+    font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    padding:3px 8px;border-radius:999px;
+    background:rgba(62,166,255,.15);color:var(--accent);
+    border:1px solid rgba(62,166,255,.35);
+  }
+  .flow-card.offline .badge{
+    background:rgba(91,232,196,.12);color:var(--accent2);
+    border-color:rgba(91,232,196,.35);
+  }
+  .steps{list-style:none;margin:12px 0 0 0;padding:0;}
+  .steps li{
+    display:flex;gap:10px;align-items:flex-start;
+    font-size:13.5px;color:var(--text);
+    padding:7px 0;border-top:1px dashed var(--card-border);
+  }
+  .steps li:first-child{border-top:none;}
+  .steps li .step-i{color:var(--muted);flex:0 0 16px;}
+
+  .formula{
+    background:#081120;
+    border:1px solid var(--card-border);
+    border-left:3px solid var(--accent2);
+    border-radius:10px;
+    padding:14px 18px;
+    font-family:"SF Mono", Consolas, monospace;
+    font-size:13.5px;
+    color:var(--accent2);
+    margin-bottom:22px;
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+  .formula span{color:var(--muted);}
+
+  .points{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:12px;
+  }
+  .point{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:10px;
+    padding:12px 14px;
+    cursor:pointer;
+    transition:.2s;
+  }
+  .point:hover{border-color:var(--accent);}
+  .point b{font-size:13px;display:block;margin-bottom:4px;}
+  .point p{
+    margin:0;font-size:12px;color:var(--muted);line-height:1.4;
+    max-height:0;overflow:hidden;transition:max-height .3s ease;
+  }
+  .point.open p{max-height:120px;margin-top:6px;}
+  .point .toggle{font-size:11px;color:var(--accent2);}
+
+  .demo-cta{
+    margin-top:26px;
+    display:flex;align-items:center;gap:10px;
+    color:var(--muted);font-size:13px;
+  }
+  .demo-cta b{color:var(--accent2);}
+  .arrow{color:var(--accent2);}
+</style>
+</head>
+<body>
+<div class="deck">
+
+  <!-- SLIDE 1 — INTRO -->
+  <section class="slide active" id="slide-0">
+    <div class="eyebrow">HISP Mobile Tracker</div>
+    <h1 class="title">Offline-First Data Capture<br>for Ethiopia's Health System</h1>
+    <p class="tagline">
+      A field-ready mobile app for DHIS2 tracker &amp; aggregate data entry —
+      built to keep working when the network doesn't.
+    </p>
+    <div class="meta-row">
+      <span>Presented by <b>Biruk Mulatu</b></span>
+      <span>Stakeholder Briefing · <b id="today-date"></b></span>
+    </div>
+    <div class="agenda">
+      <div class="agenda-item">
+        <div class="agenda-num">1</div>
+        <div class="agenda-text"><b>What is HISP Mobile Tracker</b><span>Purpose, users, and the problem it solves in the field</span></div>
+      </div>
+      <div class="agenda-item">
+        <div class="agenda-num">2</div>
+        <div class="agenda-text"><b>Offline-first architecture</b><span>Local database, sync engine, conflict resolution</span></div>
+      </div>
+      <div class="agenda-item">
+        <div class="agenda-num">3</div>
+        <div class="agenda-text"><b>Security: credential protection</b><span>How passwords are handled online and offline</span></div>
+      </div>
+      <div class="agenda-item">
+        <div class="agenda-num">4</div>
+        <div class="agenda-text"><b>Live demo</b><span>Capture, sync, and offline login on a real device</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLIDE 2 — SECURITY -->
+  <section class="slide" id="slide-1">
+    <h2 class="title2">How Passwords Are Protected</h2>
+    <p class="subtitle2">The device never stores a recoverable password — online or offline.</p>
+
+    <div class="flow">
+      <div class="flow-card online">
+        <h3>Online Login <span class="badge">Server reachable</span></h3>
+        <ul class="steps">
+          <li><span class="step-i">1</span> Username + password entered on device</li>
+          <li><span class="step-i">2</span> Sent as HTTPS Basic Auth to the DHIS2 server (TLS-encrypted in transit)</li>
+          <li><span class="step-i">3</span> Server validates credentials — password never touches local storage</li>
+        </ul>
+      </div>
+      <div class="flow-card offline">
+        <h3>Offline Login <span class="badge">No network</span></h3>
+        <ul class="steps">
+          <li><span class="step-i">1</span> On successful online login, a one-way verifier is generated</li>
+          <li><span class="step-i">2</span> Verifier + random salt saved in Android Keystore / iOS Keychain</li>
+          <li><span class="step-i">3</span> Later offline attempts recompute &amp; compare — password itself is never stored</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="formula">
+      verifier <span>=</span> SHA256( <span>salt</span> : <span>serverUrl</span> : <span>username</span> : <span>password</span> )
+    </div>
+
+    <div class="points">
+      <div class="point" onclick="this.classList.toggle('open')">
+        <b>Never recoverable <span class="toggle">+</span></b>
+        <p>The verifier is one-way. There is no operation that turns it back into the password — by design, not by policy.</p>
+      </div>
+      <div class="point" onclick="this.classList.toggle('open')">
+        <b>Random per-user salt <span class="toggle">+</span></b>
+        <p>Generated with a cryptographically secure RNG for every user, preventing precomputed lookup-table attacks.</p>
+      </div>
+      <div class="point" onclick="this.classList.toggle('open')">
+        <b>Bound to the server URL <span class="toggle">+</span></b>
+        <p>A verifier created for one DHIS2 instance can't be replayed to validate a login against a different server.</p>
+      </div>
+      <div class="point" onclick="this.classList.toggle('open')">
+        <b>Hardware-encrypted at rest <span class="toggle">+</span></b>
+        <p>Stored via Android Keystore / iOS Keychain (encrypted shared preferences) — not a plain file on disk.</p>
+      </div>
+    </div>
+
+    <div class="demo-cta"><span class="arrow">&#8594;</span> Next: <b>live demo</b> on device</div>
+  </section>
+
+  <div class="nav-zone left" onclick="go(-1)"></div>
+  <div class="nav-zone right" onclick="go(1)"></div>
+  <div class="dots">
+    <div class="dot active" onclick="jump(0)"></div>
+    <div class="dot" onclick="jump(1)"></div>
+  </div>
+  <div class="hint">&#8592; &#8594; or click edges to navigate</div>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const dots = document.querySelectorAll('.dot');
+  let i = 0;
+
+  function render(){
+    slides.forEach((s,idx)=>s.classList.toggle('active', idx===i));
+    dots.forEach((d,idx)=>d.classList.toggle('active', idx===i));
+  }
+  function go(delta){
+    i = Math.min(slides.length-1, Math.max(0, i+delta));
+    render();
+  }
+  function jump(idx){ i = idx; render(); }
+
+  document.addEventListener('keydown', (e)=>{
+    if(e.key === 'ArrowRight' || e.key === ' ') go(1);
+    if(e.key === 'ArrowLeft') go(-1);
+  });
+
+  document.getElementById('today-date').textContent =
+    new Date().toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+</script>
+</body>
+</html>

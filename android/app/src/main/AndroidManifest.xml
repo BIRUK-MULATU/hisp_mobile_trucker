@@ -13,7 +13,7 @@
          explicit user consent via the system dialog it triggers. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <application
-        android:label="hisp_mobile_trucker"
+        android:label="ETH Routine"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
