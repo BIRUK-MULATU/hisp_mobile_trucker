@@ -105,8 +105,7 @@ class ExpressionEvaluator {
     final v = _expr();
     _skipWs();
     if (_pos != expression.length) {
-      throw UnsupportedExpression(
-          'trailing "${expression.substring(_pos)}"');
+      throw UnsupportedExpression('trailing "${expression.substring(_pos)}"');
     }
     return v;
   }
@@ -230,15 +229,6 @@ class ValidationService {
     required String orgUnitUid,
     required String attributeOptionComboUid,
   }) async {
-    final ds = await (_db.select(_db.dataSetsTable)
-          ..where((t) => t.uid.equals(dataSetUid)))
-        .getSingleOrNull();
-    final elementRows = await (_db.select(_db.dataSetElementsTable)
-          ..where((t) => t.dataSetUid.equals(dataSetUid)))
-        .get();
-    final formElements = {for (final r in elementRows) r.dataElementUid};
-    if (formElements.isEmpty) return const [];
-
     // ALL local values of this period/orgUnit/aoc — a rule may relate
     // a form element to one outside the data set; local data for it
     // still counts (missing-value strategies handle true gaps).
@@ -256,6 +246,45 @@ class ValidationService {
       byOperand['${r.dataElementUid}.${r.categoryOptionComboUid}'] = v;
       totals[r.dataElementUid] = (totals[r.dataElementUid] ?? 0) + v;
     }
+    return _violationsFor(
+        dataSetUid: dataSetUid, byOperand: byOperand, totals: totals);
+  }
+
+  /// Same rule evaluation as [validateForm], but against values held
+  /// in memory (e.g. the data-entry Bloc's current state) instead of
+  /// the local database — lets validation run live as the user types,
+  /// before anything has been saved.
+  Future<List<ValidationViolation>> validateValues({
+    required String dataSetUid,
+    required Iterable<({String dataElementUid, String comboUid, String value})>
+        values,
+  }) async {
+    final byOperand = <String, double>{};
+    final totals = <String, double>{};
+    for (final r in values) {
+      final v = _numeric(r.value);
+      if (v == null) continue;
+      byOperand['${r.dataElementUid}.${r.comboUid}'] = v;
+      totals[r.dataElementUid] = (totals[r.dataElementUid] ?? 0) + v;
+    }
+    return _violationsFor(
+        dataSetUid: dataSetUid, byOperand: byOperand, totals: totals);
+  }
+
+  Future<List<ValidationViolation>> _violationsFor({
+    required String dataSetUid,
+    required Map<String, double> byOperand,
+    required Map<String, double> totals,
+  }) async {
+    final ds = await (_db.select(_db.dataSetsTable)
+          ..where((t) => t.uid.equals(dataSetUid)))
+        .getSingleOrNull();
+    final elementRows = await (_db.select(_db.dataSetElementsTable)
+          ..where((t) => t.dataSetUid.equals(dataSetUid)))
+        .get();
+    final formElements = {for (final r in elementRows) r.dataElementUid};
+    if (formElements.isEmpty) return const [];
+
     double? lookup(String de, String? coc) =>
         coc == null ? totals[de] : byOperand['$de.$coc'];
 
@@ -303,7 +332,7 @@ class ValidationService {
         skipped++;
       }
     }
-    log.i('[validation] $dataSetUid/$period/$orgUnitUid: '
+    log.i('[validation] $dataSetUid: '
         '${violations.length} violation(s), $skipped rule(s) skipped');
     return violations;
   }

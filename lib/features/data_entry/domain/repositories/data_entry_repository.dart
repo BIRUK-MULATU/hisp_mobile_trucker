@@ -39,6 +39,15 @@ abstract class DataEntryRepository {
     String? attributeOptionComboUid,
   });
 
+  /// Same rule check as [validateDataSet], but evaluated against
+  /// values already held in memory (e.g. the data-entry Bloc's
+  /// current state) instead of the local database — lets validation
+  /// run live as the user types, before anything has been saved.
+  Future<List<ValidationViolation>> validateLiveValues({
+    required String dataSetId,
+    required List<DataValueEntity> dataValues,
+  });
+
   /// Mark dataset as complete
   Future<void> completeDataSet({
     required String dataSetId,

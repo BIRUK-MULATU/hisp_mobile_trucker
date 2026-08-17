@@ -1,3 +1,5 @@
+import '../../../../core/data/indicator_display_service.dart'
+    show DisplayIndicator;
 import '../../../../core/database/app_database.dart' show SyncState;
 
 /// Represents a DHIS2 data element (a row in the data entry form)
@@ -14,6 +16,27 @@ class DataElementEntity {
   /// cell renders a picker instead of free input.
   final List<OptionEntity> options;
 
+  /// Non-empty ONLY for a "controller" data element — DHIS2's
+  /// "Controller Data Element Attribute" == "true", identified via
+  /// its data element group membership. These are the ids of every
+  /// OTHER data element in that same group: shown in the form only
+  /// while this (Boolean) element's value is "true", and cleared the
+  /// moment it's switched away from "true". Empty for every ordinary
+  /// data element.
+  final List<String> controlledElementIds;
+
+  /// Resolved KPI/indicator label (see ElementLabelService) — null for
+  /// every element with no "Label Data Element Groups" tag, or whose
+  /// code doesn't resolve. Elements sharing the same label are
+  /// grouped in the form under it as one heading.
+  final String? label;
+
+  /// Indicators (see IndicatorDisplayService) anchored to this
+  /// element — i.e. this is the first element, in form order, that
+  /// each one's numerator/denominator references. Rendered read-only,
+  /// directly above this element, computed live — never entered.
+  final List<DisplayIndicator> displayIndicators;
+
   const DataElementEntity({
     required this.id,
     required this.name,
@@ -22,9 +45,14 @@ class DataElementEntity {
     this.categoryComboId,
     this.categoryOptionCombos = const [],
     this.options = const [],
+    this.controlledElementIds = const [],
+    this.label,
+    this.displayIndicators = const [],
   });
 
   String get displayName => shortName ?? name;
+
+  bool get isController => controlledElementIds.isNotEmpty;
 }
 
 /// One choice of a data element's option set. [code] is what gets
@@ -43,10 +71,19 @@ class CategoryOptionCombo {
   final String name;
   final String? shortName;
 
+  /// True when this exact (data element, combo) cell is one of the
+  /// data set's own DHIS2 "greyed fields" — a combination that
+  /// doesn't logically apply (e.g. a disease diagnosis greyed out for
+  /// a category option it can't occur in). Always disabled, never
+  /// enterable — distinct from [DataEntryCell.isReadOnly], which is
+  /// just "closed period, temporarily view-only".
+  final bool isGreyed;
+
   const CategoryOptionCombo({
     required this.id,
     required this.name,
     this.shortName,
+    this.isGreyed = false,
   });
 
   String get displayName => shortName ?? name;

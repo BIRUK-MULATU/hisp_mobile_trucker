@@ -258,12 +258,17 @@ class DataSetResource extends MetadataResource<DataSet> {
       if (category == null) continue; // category synced without its row
       final optionUids = await categoryResource.categoryOptionUids(catUid);
       final options = await optionResource.getByIds(optionUids);
+      // getByIds is a plain `WHERE uid IN (...)` with no ORDER BY, so
+      // it doesn't preserve optionUids' sortOrder — re-index against
+      // it here so e.g. "OPD" before "IPD" survives to the UI.
+      final optionByUid = {for (final o in options) o.uid: o};
       dimensions.add(CategoryDimension(
         uid: catUid,
         name: category.displayName,
         options: [
-          for (final o in options)
-            CategoryDimensionOption(uid: o.uid, name: o.displayName),
+          for (final uid in optionUids)
+            if (optionByUid[uid] case final o?)
+              CategoryDimensionOption(uid: o.uid, name: o.displayName),
         ],
       ));
     }

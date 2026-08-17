@@ -66,7 +66,8 @@ List<PeriodOption> fixedPeriodOptions() {
       PeriodOption(
         kind: PeriodKind.fixed,
         id: months[i].id,
-        label: '${i == 0 ? 'This Month' : 'Last Month'} · ${months[i].label}',
+        label:
+            '${i == 0 ? 'This Month' : 'Last Month'} · ${months[i].labelEnglish}',
       ),
   ];
 }

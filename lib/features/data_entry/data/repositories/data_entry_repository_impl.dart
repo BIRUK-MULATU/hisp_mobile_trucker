@@ -3,9 +3,12 @@ import 'dart:async';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/auth/session_service.dart';
 import '../../../../core/data/completeness.dart';
+import '../../../../core/data/controller_element_service.dart';
 import '../../../../core/data/data_value_push.dart';
 import '../../../../core/data/data_value_store.dart';
 import '../../../../core/data/data_value_sync.dart';
+import '../../../../core/data/element_label_service.dart';
+import '../../../../core/data/indicator_display_service.dart';
 import '../../../../core/data/validation_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/exceptions.dart';
@@ -69,6 +72,26 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     // Same for option sets: many elements share one set.
     final optionResource = OptionResource(_db);
     final optionsBySet = <String, List<entity.OptionEntity>>{};
+    // "Controller" data elements (see ControllerElementService) — the
+    // ones whose Boolean value shows/hides the rest of their group.
+    final controllerGates =
+        await ControllerElementService(_db).controllersFor(uids);
+    // "Labeled" data elements (see ElementLabelService) — grouped in
+    // the form under a shared KPI/indicator heading.
+    final elementLabels = await ElementLabelService(_db).labelsFor(uids);
+    // Read-only calculated indicators (see IndicatorDisplayService) —
+    // anchored to whichever element they reference appears first.
+    final displayIndicators =
+        await IndicatorDisplayService(_db).displayIndicatorsFor(uids);
+    // DHIS2's own "greyed fields" — (element, combo) cells the data
+    // set's section(s) mark as not applicable, always disabled.
+    final greyRows = sectionId == null
+        ? await SectionResource(_db).greyFieldsForDataSet(dataSetId)
+        : await SectionResource(_db).greyFieldsOf(sectionId);
+    final greyedCells = {
+      for (final r in greyRows)
+        '${r.dataElementUid}_${r.categoryOptionComboUid}',
+    };
 
     final result = <entity.DataElementEntity>[];
     for (final uid in uids) {
@@ -107,9 +130,16 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
         categoryComboId: comboUid,
         categoryOptionCombos: [
           for (final coc in cocs)
-            entity.CategoryOptionCombo(id: coc.uid, name: coc.name),
+            entity.CategoryOptionCombo(
+              id: coc.uid,
+              name: coc.name,
+              isGreyed: greyedCells.contains('${row.uid}_${coc.uid}'),
+            ),
         ],
         options: options,
+        controlledElementIds: controllerGates[uid] ?? const [],
+        label: elementLabels[uid],
+        displayIndicators: displayIndicators[uid] ?? const [],
       ));
     }
     if (result.isEmpty) {
@@ -127,8 +157,8 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String period,
     String? attributeOptionComboUid,
   }) async {
-    final aoc =
-        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
+    final aoc = attributeOptionComboUid ??
+        await _defaultAttributeOptionCombo(dataSetId);
     final elementUids = await DataSetResource(_db).dataElementUids(dataSetId);
 
     // Fresh server state when reachable; purely best-effort.
@@ -175,8 +205,8 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String period,
     String? attributeOptionComboUid,
   }) async {
-    final aoc =
-        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
+    final aoc = attributeOptionComboUid ??
+        await _defaultAttributeOptionCombo(dataSetId);
     final store = DataValueStore(_db);
     final storedBy = await SecureStorage().getUsername();
 
@@ -204,13 +234,31 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String period,
     String? attributeOptionComboUid,
   }) async {
-    final aoc =
-        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
+    final aoc = attributeOptionComboUid ??
+        await _defaultAttributeOptionCombo(dataSetId);
     return ValidationService(_db).validateForm(
       dataSetUid: dataSetId,
       period: period,
       orgUnitUid: orgUnitId,
       attributeOptionComboUid: aoc,
+    );
+  }
+
+  @override
+  Future<List<ValidationViolation>> validateLiveValues({
+    required String dataSetId,
+    required List<entity.DataValueEntity> dataValues,
+  }) async {
+    return ValidationService(_db).validateValues(
+      dataSetUid: dataSetId,
+      values: [
+        for (final v in dataValues)
+          (
+            dataElementUid: v.dataElementId,
+            comboUid: v.categoryOptionComboId,
+            value: v.value,
+          ),
+      ],
     );
   }
 
@@ -221,8 +269,8 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String period,
     String? attributeOptionComboUid,
   }) async {
-    final aoc =
-        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
+    final aoc = attributeOptionComboUid ??
+        await _defaultAttributeOptionCombo(dataSetId);
 
     // Completing is the sign-off: the form's drafts become sendable.
     final elementUids = await DataSetResource(_db).dataElementUids(dataSetId);
@@ -259,8 +307,8 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String period,
     String? attributeOptionComboUid,
   }) async {
-    final aoc =
-        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
+    final aoc = attributeOptionComboUid ??
+        await _defaultAttributeOptionCombo(dataSetId);
     final reg = await CompletenessStore(_db).statusOf(
       dataSetUid: dataSetId,
       period: period,
@@ -277,8 +325,8 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String period,
     String? attributeOptionComboUid,
   }) async {
-    final aoc =
-        attributeOptionComboUid ?? await _defaultAttributeOptionCombo(dataSetId);
+    final aoc = attributeOptionComboUid ??
+        await _defaultAttributeOptionCombo(dataSetId);
 
     // completed=false is its own pending fact: the push turns it into
     // a DELETE against completeDataSetRegistrations. Drafts stay
@@ -346,7 +394,8 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
       return canonicalDefaultComboUid;
     }
 
-    final cached = await _db.getSyncInfo(defaultAttributeOptionComboSyncInfoKey);
+    final cached =
+        await _db.getSyncInfo(defaultAttributeOptionComboSyncInfoKey);
     if (cached != null) return cached;
 
     final fetched = await _fetchDefaultComboFromDataSet(dataSetId);
@@ -376,11 +425,11 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     final api = AppSession.instance.api;
     if (api == null || !await _networkInfo.isConnected) return null;
     try {
-      final res = await api.get('/api/dataSets/$dataSetId.json',
-          queryParameters: {
-            'fields': 'categoryCombo[id,name,displayName,'
-                'categoryOptionCombos[id,name]]',
-          });
+      final res =
+          await api.get('/api/dataSets/$dataSetId.json', queryParameters: {
+        'fields': 'categoryCombo[id,name,displayName,'
+            'categoryOptionCombos[id,name]]',
+      });
       final combo = (res.data as Map<String, dynamic>)['categoryCombo']
           as Map<String, dynamic>?;
       if (combo == null) return null;
@@ -414,7 +463,6 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     } catch (e) {
       log.w('[dataEntry] default combo fetch failed: $e');
       return null;
-
     }
   }
 }

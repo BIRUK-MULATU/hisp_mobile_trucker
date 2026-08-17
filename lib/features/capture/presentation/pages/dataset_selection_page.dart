@@ -44,6 +44,9 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
 
   _PageMode _mode = _PageMode.datasets;
 
+  bool _searchActive = false;
+  String _searchQuery = '';
+
   List<DataSetEntity>? _dataSets;
   String? _error;
 
@@ -153,6 +156,13 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
     if (mounted) await _load();
   }
 
+  void _toggleSearch() {
+    setState(() {
+      _searchActive = !_searchActive;
+      if (!_searchActive) _searchQuery = '';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,53 +170,109 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
       appBar: AppBar(
         backgroundColor: AppColors.primary,
         elevation: 0,
+        titleSpacing: _searchActive ? 0 : null,
         actions: [
-          const ConnectivityIndicator(),
-          IconButton(
-            icon: _isSyncing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
+          if (!_searchActive) const ConnectivityIndicator(),
+          if (_mode == _PageMode.datasets)
+            IconButton(
+              icon: Icon(
+                _searchActive ? Icons.close_rounded : Icons.search_rounded,
+                color: Colors.white,
+                size: AppDimensions.iconLG,
+              ),
+              onPressed: _toggleSearch,
+              tooltip: _searchActive ? 'Close search' : 'Search datasets',
+            ),
+          if (!_searchActive) ...[
+            IconButton(
+              icon: _isSyncing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                        semanticsLabel: 'Syncing',
+                      ),
+                    )
+                  : const Icon(
+                      Icons.sync_rounded,
                       color: Colors.white,
-                      semanticsLabel: 'Syncing',
+                      size: AppDimensions.iconLG,
                     ),
-                  )
-                : const Icon(
-                    Icons.sync_rounded,
-                    color: Colors.white,
-                    size: AppDimensions.iconLG,
-                  ),
-            onPressed: _isSyncing ? null : _onSyncTapped,
-            tooltip: 'Sync all',
-          ),
-          const SizedBox(width: AppDimensions.spaceXS),
+              onPressed: _isSyncing ? null : _onSyncTapped,
+              tooltip: 'Sync all',
+            ),
+            const SizedBox(width: AppDimensions.spaceXS),
+          ],
         ],
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _mode == _PageMode.datasets ? 'Select Dataset' : 'Report Period',
-              style: AppTextStyles.appBarTitle,
-            ),
-            Text(
-              // Reports span every org unit the user captured at.
-              _mode == _PageMode.datasets
-                  ? widget.orgUnitName
-                  : 'All organisation units',
-              style: AppTextStyles.bodySmall.copyWith(
-                color: Colors.white.withValues(alpha: 0.85),
+        title: _searchActive
+            ? Container(
+                height: 40,
+                margin: const EdgeInsets.only(right: AppDimensions.spaceSM),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  autofocus: true,
+                  onChanged: (q) => setState(() => _searchQuery = q),
+                  cursorColor: AppColors.primary,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: AppTextStyles.bodyLarge.copyWith(color: Colors.black87),
+                  decoration: InputDecoration(
+                    filled: false,
+                    isDense: true,
+                    hintText: 'Search datasets...',
+                    hintStyle: AppTextStyles.bodyLarge.copyWith(
+                      color: Colors.black38,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: AppColors.primary,
+                      size: AppDimensions.iconLG,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: AppDimensions.space,
+                      vertical: 10,
+                    ),
+                  ),
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _mode == _PageMode.datasets
+                        ? 'Select Dataset'
+                        : 'Report Period',
+                    style: AppTextStyles.appBarTitle,
+                  ),
+                  Text(
+                    // Reports span every org unit the user captured at.
+                    _mode == _PageMode.datasets
+                        ? widget.orgUnitName
+                        : 'All organisation units',
+                    style: AppTextStyles.bodySmall.copyWith(
+                      color: Colors.white.withValues(alpha: 0.85),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
       ),
       body: Column(
         children: [
@@ -224,7 +290,15 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
                 ),
               ],
               index: _mode.index,
-              onChanged: (i) => setState(() => _mode = _PageMode.values[i]),
+              onChanged: (i) => setState(() {
+                _mode = _PageMode.values[i];
+                // Search only applies to the dataset list — close it
+                // when switching to Report Period.
+                if (_mode != _PageMode.datasets) {
+                  _searchActive = false;
+                  _searchQuery = '';
+                }
+              }),
             ),
           ),
           const Divider(height: 1, color: AppColors.divider),
@@ -289,15 +363,24 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
     );
   }
 
+  List<DataSetEntity> _filterDataSets(List<DataSetEntity> dataSets) {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return dataSets;
+    return [
+      for (final d in dataSets)
+        if (d.name.toLowerCase().contains(q)) d,
+    ];
+  }
+
   Widget _buildDatasetsBody() {
     if (_error != null) {
       return _ErrorView(message: _error!, onRetry: _load);
     }
-    final dataSets = _dataSets;
-    if (dataSets == null) {
+    final allDataSets = _dataSets;
+    if (allDataSets == null) {
       return const AppLoader(message: 'Loading datasets...');
     }
-    if (dataSets.isEmpty) {
+    if (allDataSets.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(AppDimensions.spaceXXL),
@@ -314,6 +397,30 @@ class _DatasetSelectionPageState extends State<DatasetSelectionPage> {
                 'No datasets are assigned to '
                 '${widget.orgUnitName}.\nPick a different '
                 'organisation unit or contact your administrator.',
+                style: AppTextStyles.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final dataSets = _filterDataSets(allDataSets);
+    if (dataSets.isEmpty) {
+      final query = _searchQuery.trim();
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppDimensions.spaceXXL),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.search_off_rounded,
+                  size: AppDimensions.iconHuge, color: AppColors.textSecondary),
+              const SizedBox(height: AppDimensions.spaceLG),
+              const Text('No results', style: AppTextStyles.headingSmall),
+              const SizedBox(height: AppDimensions.spaceSM),
+              Text(
+                'No datasets match "$query".',
                 style: AppTextStyles.bodySmall,
                 textAlign: TextAlign.center,
               ),

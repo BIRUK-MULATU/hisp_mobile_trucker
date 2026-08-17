@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../database/app_database.dart';
+import 'attribute.dart';
 import 'metadata_resource.dart';
 
 @DataClassName('OptionSet')
@@ -22,8 +23,14 @@ class OptionSetResource extends MetadataResource<OptionSet> {
   String get resource => 'optionSets';
 
   @override
-  List<String> get fields =>
-      ['id', 'name', 'displayName', 'valueType', 'lastUpdated'];
+  List<String> get fields => [
+        'id',
+        'name',
+        'displayName',
+        'valueType',
+        'lastUpdated',
+        attributeValuesField,
+      ];
 
   @override
   TableInfo<Table, OptionSet> get table => db.optionSetsTable;
@@ -43,5 +50,26 @@ class OptionSetResource extends MetadataResource<OptionSet> {
       valueType: json['valueType'] as String? ?? 'TEXT',
       lastUpdated: lastUpdatedFrom(json),
     );
+  }
+
+  /// Also (re)writes this option set's attribute values — e.g. the
+  /// "Label Option Set" flag that marks one option set as the
+  /// controlled vocabulary for [ElementLabelService].
+  @override
+  Future<void> saveAll(List<Map<String, dynamic>> items) async {
+    await db.transaction(() async {
+      for (final os in items) {
+        final uid = os['id'] as String;
+        await db
+            .into(db.optionSetsTable)
+            .insertOnConflictUpdate(companionFromJson(os));
+        await (db.delete(db.attributeValuesTable)
+              ..where((t) =>
+                  t.objectType.equals('optionSet') & t.objectUid.equals(uid)))
+            .go();
+        await db
+            .batch((b) => writeAttributeValues(b, db, 'optionSet', uid, os));
+      }
+    });
   }
 }
