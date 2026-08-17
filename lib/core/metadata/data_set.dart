@@ -39,6 +39,7 @@ class DataSetResource extends MetadataResource<DataSet> {
         attributeValuesField,
         // dataElement carries its own combo so the override can resolve:
         'dataSetElements[sortOrder,compulsory,categoryCombo[id],dataElement[id,categoryCombo[id]]]',
+        'compulsoryDataElementOperands[dataElement[id],categoryOptionCombo[id]]',
         'organisationUnits[id]',
       ];
 
@@ -96,6 +97,9 @@ class DataSetResource extends MetadataResource<DataSet> {
         await (db.delete(db.dataSetElementsTable)
               ..where((t) => t.dataSetUid.equals(dsUid)))
             .go();
+        await (db.delete(db.compulsoryDataElementOperandsTable)
+              ..where((t) => t.dataSetUid.equals(dsUid)))
+            .go();
         await (db.delete(db.dataSetOrgUnitsTable)
               ..where((t) => t.dataSetUid.equals(dsUid)))
             .go();
@@ -119,6 +123,21 @@ class DataSetResource extends MetadataResource<DataSet> {
               ),
             );
             order++;
+          }
+          for (final op in (ds['compulsoryDataElementOperands'] as List? ??
+                  [])
+              .cast<Map<String, dynamic>>()) {
+            final opDe = op['dataElement'] as Map<String, dynamic>?;
+            final opCoc = op['categoryOptionCombo'] as Map<String, dynamic>?;
+            if (opDe == null || opCoc == null) continue;
+            b.insert(
+              db.compulsoryDataElementOperandsTable,
+              CompulsoryDataElementOperandsTableCompanion.insert(
+                dataSetUid: dsUid,
+                dataElementUid: opDe['id'] as String,
+                categoryOptionComboUid: opCoc['id'] as String,
+              ),
+            );
           }
           for (final ou in (ds['organisationUnits'] as List? ?? [])
               .cast<Map<String, dynamic>>()) {
@@ -162,6 +181,9 @@ class DataSetResource extends MetadataResource<DataSet> {
       await (db.delete(db.dataSetOrgUnitsTable)
             ..where((t) => t.dataSetUid.isIn(removed)))
           .go();
+      await (db.delete(db.compulsoryDataElementOperandsTable)
+            ..where((t) => t.dataSetUid.isIn(removed)))
+          .go();
     }
     return (updated: items.length, deleted: removed.length);
   }
@@ -193,6 +215,24 @@ class DataSetResource extends MetadataResource<DataSet> {
           ..where((t) => t.dataSetUid.equals(dataSetUid)))
         .get();
     return {for (final r in rows) r.dataElementUid: r.compulsory};
+  }
+
+  /// DHIS2 `dataSet.compulsoryDataElementOperands` for this data set —
+  /// specific (element, combo) pairs required independent of
+  /// [compulsoryByElement], since an instance may mark a whole element
+  /// compulsory, specific combos of it, or both.
+  Future<List<({String dataElementUid, String categoryOptionComboUid})>>
+      compulsoryOperands(String dataSetUid) async {
+    final rows = await (db.select(db.compulsoryDataElementOperandsTable)
+          ..where((t) => t.dataSetUid.equals(dataSetUid)))
+        .get();
+    return [
+      for (final r in rows)
+        (
+          dataElementUid: r.dataElementUid,
+          categoryOptionComboUid: r.categoryOptionComboUid,
+        ),
+    ];
   }
 
   /// This DHIS2 instance classifies every data set with a custom

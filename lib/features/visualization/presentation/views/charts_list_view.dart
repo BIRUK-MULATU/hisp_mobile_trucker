@@ -258,3 +258,4 @@ class _SyncStatusIcon extends StatelessWidget {
     );
   }
 }
+

@@ -183,6 +183,7 @@ class CompleteDataSetRegistrationsTable extends Table {
   ValidationRulesTable,
   // links (all in core/metadata/links.dart)
   DataSetElementsTable,
+  CompulsoryDataElementOperandsTable,
   DataSetOrgUnitsTable,
   SectionDataElementsTable,
   SectionIndicatorsTable,
@@ -215,7 +216,7 @@ class AppDatabase extends _$AppDatabase {
       raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -279,6 +280,9 @@ class AppDatabase extends _$AppDatabase {
                     dataSetElementsTable, dataSetElementsTable.compulsory);
               }
             },
+            // DHIS2 `dataSet.compulsoryDataElementOperands` — the
+            // element+combo-pair sibling of dataSetElement.compulsory.
+            5: (m) => m.createTable(compulsoryDataElementOperandsTable),
           };
           for (var target = from + 1; target <= to; target++) {
             final step = steps[target];

@@ -26,6 +26,24 @@ class DataSetElementsTable extends Table {
   Set<Column> get primaryKey => {dataSetUid, dataElementUid};
 }
 
+/// DHIS2 `dataSet.compulsoryDataElementOperands` — a finer-grained
+/// sibling of DataSetElementsTable.compulsory: instead of requiring
+/// EVERY combo of an element, this marks specific (element, combo)
+/// PAIRS as required, independent of whether the element itself is
+/// flagged dataSetElement.compulsory. An instance may use either
+/// mechanism, or both, per dataset.
+@DataClassName('CompulsoryDataElementOperand')
+class CompulsoryDataElementOperandsTable extends Table {
+  TextColumn get dataSetUid => text().withLength(min: 11, max: 11)();
+  TextColumn get dataElementUid => text().withLength(min: 11, max: 11)();
+  TextColumn get categoryOptionComboUid =>
+      text().withLength(min: 11, max: 11)();
+
+  @override
+  Set<Column> get primaryKey =>
+      {dataSetUid, dataElementUid, categoryOptionComboUid};
+}
+
 @DataClassName('DataSetOrgUnit')
 class DataSetOrgUnitsTable extends Table {
   TextColumn get dataSetUid => text().withLength(min: 11, max: 11)();

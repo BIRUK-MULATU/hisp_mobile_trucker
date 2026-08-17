@@ -59,6 +59,15 @@ class DataElementEntity {
   String get displayName => shortName ?? name;
 
   bool get isController => controlledElementIds.isNotEmpty;
+
+  /// True when ANY cell of this element is required — either the
+  /// whole element (dataSetElement.compulsory) or at least one combo
+  /// individually (compulsoryDataElementOperands, see
+  /// CategoryOptionCombo.isCompulsory). Drives the "*" shown on the
+  /// element's row/header — the specific combo rows carry their own
+  /// finer-grained flag for when only some combos are required.
+  bool get hasCompulsoryCell =>
+      compulsory || categoryOptionCombos.any((c) => c.isCompulsory);
 }
 
 /// One choice of a data element's option set. [code] is what gets
@@ -85,11 +94,18 @@ class CategoryOptionCombo {
   /// just "closed period, temporarily view-only".
   final bool isGreyed;
 
+  /// DHIS2 `compulsoryDataElementOperands` — this exact (element,
+  /// combo) cell is individually required, independent of whether the
+  /// owning element is dataSetElement.compulsory. See
+  /// DataElementEntity.hasCompulsoryCell.
+  final bool isCompulsory;
+
   const CategoryOptionCombo({
     required this.id,
     required this.name,
     this.shortName,
     this.isGreyed = false,
+    this.isCompulsory = false,
   });
 
   String get displayName => shortName ?? name;

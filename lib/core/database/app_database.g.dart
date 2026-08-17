@@ -5966,6 +5966,281 @@ class DataSetElementsTableCompanion extends UpdateCompanion<DataSetElement> {
   }
 }
 
+class $CompulsoryDataElementOperandsTableTable
+    extends CompulsoryDataElementOperandsTable
+    with
+        TableInfo<$CompulsoryDataElementOperandsTableTable,
+            CompulsoryDataElementOperand> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CompulsoryDataElementOperandsTableTable(this.attachedDatabase,
+      [this._alias]);
+  static const VerificationMeta _dataSetUidMeta =
+      const VerificationMeta('dataSetUid');
+  @override
+  late final GeneratedColumn<String> dataSetUid = GeneratedColumn<String>(
+      'data_set_uid', aliasedName, false,
+      additionalChecks:
+          GeneratedColumn.checkTextLength(minTextLength: 11, maxTextLength: 11),
+      type: DriftSqlType.string,
+      requiredDuringInsert: true);
+  static const VerificationMeta _dataElementUidMeta =
+      const VerificationMeta('dataElementUid');
+  @override
+  late final GeneratedColumn<String> dataElementUid = GeneratedColumn<String>(
+      'data_element_uid', aliasedName, false,
+      additionalChecks:
+          GeneratedColumn.checkTextLength(minTextLength: 11, maxTextLength: 11),
+      type: DriftSqlType.string,
+      requiredDuringInsert: true);
+  static const VerificationMeta _categoryOptionComboUidMeta =
+      const VerificationMeta('categoryOptionComboUid');
+  @override
+  late final GeneratedColumn<String> categoryOptionComboUid =
+      GeneratedColumn<String>('category_option_combo_uid', aliasedName, false,
+          additionalChecks: GeneratedColumn.checkTextLength(
+              minTextLength: 11, maxTextLength: 11),
+          type: DriftSqlType.string,
+          requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [dataSetUid, dataElementUid, categoryOptionComboUid];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'compulsory_data_element_operands_table';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<CompulsoryDataElementOperand> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('data_set_uid')) {
+      context.handle(
+          _dataSetUidMeta,
+          dataSetUid.isAcceptableOrUnknown(
+              data['data_set_uid']!, _dataSetUidMeta));
+    } else if (isInserting) {
+      context.missing(_dataSetUidMeta);
+    }
+    if (data.containsKey('data_element_uid')) {
+      context.handle(
+          _dataElementUidMeta,
+          dataElementUid.isAcceptableOrUnknown(
+              data['data_element_uid']!, _dataElementUidMeta));
+    } else if (isInserting) {
+      context.missing(_dataElementUidMeta);
+    }
+    if (data.containsKey('category_option_combo_uid')) {
+      context.handle(
+          _categoryOptionComboUidMeta,
+          categoryOptionComboUid.isAcceptableOrUnknown(
+              data['category_option_combo_uid']!, _categoryOptionComboUidMeta));
+    } else if (isInserting) {
+      context.missing(_categoryOptionComboUidMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey =>
+      {dataSetUid, dataElementUid, categoryOptionComboUid};
+  @override
+  CompulsoryDataElementOperand map(Map<String, dynamic> data,
+      {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CompulsoryDataElementOperand(
+      dataSetUid: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}data_set_uid'])!,
+      dataElementUid: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}data_element_uid'])!,
+      categoryOptionComboUid: attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}category_option_combo_uid'])!,
+    );
+  }
+
+  @override
+  $CompulsoryDataElementOperandsTableTable createAlias(String alias) {
+    return $CompulsoryDataElementOperandsTableTable(attachedDatabase, alias);
+  }
+}
+
+class CompulsoryDataElementOperand extends DataClass
+    implements Insertable<CompulsoryDataElementOperand> {
+  final String dataSetUid;
+  final String dataElementUid;
+  final String categoryOptionComboUid;
+  const CompulsoryDataElementOperand(
+      {required this.dataSetUid,
+      required this.dataElementUid,
+      required this.categoryOptionComboUid});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['data_set_uid'] = Variable<String>(dataSetUid);
+    map['data_element_uid'] = Variable<String>(dataElementUid);
+    map['category_option_combo_uid'] = Variable<String>(categoryOptionComboUid);
+    return map;
+  }
+
+  CompulsoryDataElementOperandsTableCompanion toCompanion(bool nullToAbsent) {
+    return CompulsoryDataElementOperandsTableCompanion(
+      dataSetUid: Value(dataSetUid),
+      dataElementUid: Value(dataElementUid),
+      categoryOptionComboUid: Value(categoryOptionComboUid),
+    );
+  }
+
+  factory CompulsoryDataElementOperand.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CompulsoryDataElementOperand(
+      dataSetUid: serializer.fromJson<String>(json['dataSetUid']),
+      dataElementUid: serializer.fromJson<String>(json['dataElementUid']),
+      categoryOptionComboUid:
+          serializer.fromJson<String>(json['categoryOptionComboUid']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'dataSetUid': serializer.toJson<String>(dataSetUid),
+      'dataElementUid': serializer.toJson<String>(dataElementUid),
+      'categoryOptionComboUid':
+          serializer.toJson<String>(categoryOptionComboUid),
+    };
+  }
+
+  CompulsoryDataElementOperand copyWith(
+          {String? dataSetUid,
+          String? dataElementUid,
+          String? categoryOptionComboUid}) =>
+      CompulsoryDataElementOperand(
+        dataSetUid: dataSetUid ?? this.dataSetUid,
+        dataElementUid: dataElementUid ?? this.dataElementUid,
+        categoryOptionComboUid:
+            categoryOptionComboUid ?? this.categoryOptionComboUid,
+      );
+  CompulsoryDataElementOperand copyWithCompanion(
+      CompulsoryDataElementOperandsTableCompanion data) {
+    return CompulsoryDataElementOperand(
+      dataSetUid:
+          data.dataSetUid.present ? data.dataSetUid.value : this.dataSetUid,
+      dataElementUid: data.dataElementUid.present
+          ? data.dataElementUid.value
+          : this.dataElementUid,
+      categoryOptionComboUid: data.categoryOptionComboUid.present
+          ? data.categoryOptionComboUid.value
+          : this.categoryOptionComboUid,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CompulsoryDataElementOperand(')
+          ..write('dataSetUid: $dataSetUid, ')
+          ..write('dataElementUid: $dataElementUid, ')
+          ..write('categoryOptionComboUid: $categoryOptionComboUid')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(dataSetUid, dataElementUid, categoryOptionComboUid);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CompulsoryDataElementOperand &&
+          other.dataSetUid == this.dataSetUid &&
+          other.dataElementUid == this.dataElementUid &&
+          other.categoryOptionComboUid == this.categoryOptionComboUid);
+}
+
+class CompulsoryDataElementOperandsTableCompanion
+    extends UpdateCompanion<CompulsoryDataElementOperand> {
+  final Value<String> dataSetUid;
+  final Value<String> dataElementUid;
+  final Value<String> categoryOptionComboUid;
+  final Value<int> rowid;
+  const CompulsoryDataElementOperandsTableCompanion({
+    this.dataSetUid = const Value.absent(),
+    this.dataElementUid = const Value.absent(),
+    this.categoryOptionComboUid = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CompulsoryDataElementOperandsTableCompanion.insert({
+    required String dataSetUid,
+    required String dataElementUid,
+    required String categoryOptionComboUid,
+    this.rowid = const Value.absent(),
+  })  : dataSetUid = Value(dataSetUid),
+        dataElementUid = Value(dataElementUid),
+        categoryOptionComboUid = Value(categoryOptionComboUid);
+  static Insertable<CompulsoryDataElementOperand> custom({
+    Expression<String>? dataSetUid,
+    Expression<String>? dataElementUid,
+    Expression<String>? categoryOptionComboUid,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (dataSetUid != null) 'data_set_uid': dataSetUid,
+      if (dataElementUid != null) 'data_element_uid': dataElementUid,
+      if (categoryOptionComboUid != null)
+        'category_option_combo_uid': categoryOptionComboUid,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CompulsoryDataElementOperandsTableCompanion copyWith(
+      {Value<String>? dataSetUid,
+      Value<String>? dataElementUid,
+      Value<String>? categoryOptionComboUid,
+      Value<int>? rowid}) {
+    return CompulsoryDataElementOperandsTableCompanion(
+      dataSetUid: dataSetUid ?? this.dataSetUid,
+      dataElementUid: dataElementUid ?? this.dataElementUid,
+      categoryOptionComboUid:
+          categoryOptionComboUid ?? this.categoryOptionComboUid,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (dataSetUid.present) {
+      map['data_set_uid'] = Variable<String>(dataSetUid.value);
+    }
+    if (dataElementUid.present) {
+      map['data_element_uid'] = Variable<String>(dataElementUid.value);
+    }
+    if (categoryOptionComboUid.present) {
+      map['category_option_combo_uid'] =
+          Variable<String>(categoryOptionComboUid.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CompulsoryDataElementOperandsTableCompanion(')
+          ..write('dataSetUid: $dataSetUid, ')
+          ..write('dataElementUid: $dataElementUid, ')
+          ..write('categoryOptionComboUid: $categoryOptionComboUid, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $DataSetOrgUnitsTableTable extends DataSetOrgUnitsTable
     with TableInfo<$DataSetOrgUnitsTableTable, DataSetOrgUnit> {
   @override
@@ -10770,6 +11045,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ValidationRulesTableTable(this);
   late final $DataSetElementsTableTable dataSetElementsTable =
       $DataSetElementsTableTable(this);
+  late final $CompulsoryDataElementOperandsTableTable
+      compulsoryDataElementOperandsTable =
+      $CompulsoryDataElementOperandsTableTable(this);
   late final $DataSetOrgUnitsTableTable dataSetOrgUnitsTable =
       $DataSetOrgUnitsTableTable(this);
   late final $SectionDataElementsTableTable sectionDataElementsTable =
@@ -10818,6 +11096,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         dataElementGroupsTable,
         validationRulesTable,
         dataSetElementsTable,
+        compulsoryDataElementOperandsTable,
         dataSetOrgUnitsTable,
         sectionDataElementsTable,
         sectionIndicatorsTable,
@@ -13794,6 +14073,165 @@ typedef $$DataSetElementsTableTableProcessedTableManager
         ),
         DataSetElement,
         PrefetchHooks Function()>;
+typedef $$CompulsoryDataElementOperandsTableTableCreateCompanionBuilder
+    = CompulsoryDataElementOperandsTableCompanion Function({
+  required String dataSetUid,
+  required String dataElementUid,
+  required String categoryOptionComboUid,
+  Value<int> rowid,
+});
+typedef $$CompulsoryDataElementOperandsTableTableUpdateCompanionBuilder
+    = CompulsoryDataElementOperandsTableCompanion Function({
+  Value<String> dataSetUid,
+  Value<String> dataElementUid,
+  Value<String> categoryOptionComboUid,
+  Value<int> rowid,
+});
+
+class $$CompulsoryDataElementOperandsTableTableFilterComposer
+    extends Composer<_$AppDatabase, $CompulsoryDataElementOperandsTableTable> {
+  $$CompulsoryDataElementOperandsTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get dataSetUid => $composableBuilder(
+      column: $table.dataSetUid, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get dataElementUid => $composableBuilder(
+      column: $table.dataElementUid,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get categoryOptionComboUid => $composableBuilder(
+      column: $table.categoryOptionComboUid,
+      builder: (column) => ColumnFilters(column));
+}
+
+class $$CompulsoryDataElementOperandsTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $CompulsoryDataElementOperandsTableTable> {
+  $$CompulsoryDataElementOperandsTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get dataSetUid => $composableBuilder(
+      column: $table.dataSetUid, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get dataElementUid => $composableBuilder(
+      column: $table.dataElementUid,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get categoryOptionComboUid => $composableBuilder(
+      column: $table.categoryOptionComboUid,
+      builder: (column) => ColumnOrderings(column));
+}
+
+class $$CompulsoryDataElementOperandsTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CompulsoryDataElementOperandsTableTable> {
+  $$CompulsoryDataElementOperandsTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get dataSetUid => $composableBuilder(
+      column: $table.dataSetUid, builder: (column) => column);
+
+  GeneratedColumn<String> get dataElementUid => $composableBuilder(
+      column: $table.dataElementUid, builder: (column) => column);
+
+  GeneratedColumn<String> get categoryOptionComboUid => $composableBuilder(
+      column: $table.categoryOptionComboUid, builder: (column) => column);
+}
+
+class $$CompulsoryDataElementOperandsTableTableTableManager
+    extends RootTableManager<
+        _$AppDatabase,
+        $CompulsoryDataElementOperandsTableTable,
+        CompulsoryDataElementOperand,
+        $$CompulsoryDataElementOperandsTableTableFilterComposer,
+        $$CompulsoryDataElementOperandsTableTableOrderingComposer,
+        $$CompulsoryDataElementOperandsTableTableAnnotationComposer,
+        $$CompulsoryDataElementOperandsTableTableCreateCompanionBuilder,
+        $$CompulsoryDataElementOperandsTableTableUpdateCompanionBuilder,
+        (
+          CompulsoryDataElementOperand,
+          BaseReferences<
+              _$AppDatabase,
+              $CompulsoryDataElementOperandsTableTable,
+              CompulsoryDataElementOperand>
+        ),
+        CompulsoryDataElementOperand,
+        PrefetchHooks Function()> {
+  $$CompulsoryDataElementOperandsTableTableTableManager(
+      _$AppDatabase db, $CompulsoryDataElementOperandsTableTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CompulsoryDataElementOperandsTableTableFilterComposer(
+                  $db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CompulsoryDataElementOperandsTableTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CompulsoryDataElementOperandsTableTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> dataSetUid = const Value.absent(),
+            Value<String> dataElementUid = const Value.absent(),
+            Value<String> categoryOptionComboUid = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              CompulsoryDataElementOperandsTableCompanion(
+            dataSetUid: dataSetUid,
+            dataElementUid: dataElementUid,
+            categoryOptionComboUid: categoryOptionComboUid,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String dataSetUid,
+            required String dataElementUid,
+            required String categoryOptionComboUid,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              CompulsoryDataElementOperandsTableCompanion.insert(
+            dataSetUid: dataSetUid,
+            dataElementUid: dataElementUid,
+            categoryOptionComboUid: categoryOptionComboUid,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$CompulsoryDataElementOperandsTableTableProcessedTableManager
+    = ProcessedTableManager<
+        _$AppDatabase,
+        $CompulsoryDataElementOperandsTableTable,
+        CompulsoryDataElementOperand,
+        $$CompulsoryDataElementOperandsTableTableFilterComposer,
+        $$CompulsoryDataElementOperandsTableTableOrderingComposer,
+        $$CompulsoryDataElementOperandsTableTableAnnotationComposer,
+        $$CompulsoryDataElementOperandsTableTableCreateCompanionBuilder,
+        $$CompulsoryDataElementOperandsTableTableUpdateCompanionBuilder,
+        (
+          CompulsoryDataElementOperand,
+          BaseReferences<
+              _$AppDatabase,
+              $CompulsoryDataElementOperandsTableTable,
+              CompulsoryDataElementOperand>
+        ),
+        CompulsoryDataElementOperand,
+        PrefetchHooks Function()>;
 typedef $$DataSetOrgUnitsTableTableCreateCompanionBuilder
     = DataSetOrgUnitsTableCompanion Function({
   required String dataSetUid,
@@ -16420,6 +16858,10 @@ class $AppDatabaseManager {
       $$ValidationRulesTableTableTableManager(_db, _db.validationRulesTable);
   $$DataSetElementsTableTableTableManager get dataSetElementsTable =>
       $$DataSetElementsTableTableTableManager(_db, _db.dataSetElementsTable);
+  $$CompulsoryDataElementOperandsTableTableTableManager
+      get compulsoryDataElementOperandsTable =>
+          $$CompulsoryDataElementOperandsTableTableTableManager(
+              _db, _db.compulsoryDataElementOperandsTable);
   $$DataSetOrgUnitsTableTableTableManager get dataSetOrgUnitsTable =>
       $$DataSetOrgUnitsTableTableTableManager(_db, _db.dataSetOrgUnitsTable);
   $$SectionDataElementsTableTableTableManager get sectionDataElementsTable =>

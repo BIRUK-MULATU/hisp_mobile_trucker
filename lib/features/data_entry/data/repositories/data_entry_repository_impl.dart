@@ -65,6 +65,13 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
         await DataSetResource(_db).effectiveComboByElement(dataSetId);
     final compulsoryMap =
         await DataSetResource(_db).compulsoryByElement(dataSetId);
+    // compulsoryDataElementOperands — specific (element, combo) pairs
+    // required independent of compulsoryMap above (an instance may use
+    // either mechanism, or both — see missingMandatoryFields).
+    final compulsoryOperandKeys = {
+      for (final op in await DataSetResource(_db).compulsoryOperands(dataSetId))
+        '${op.dataElementUid}_${op.categoryOptionComboUid}',
+    };
     final rows = await DataElementResource(_db).getByIds(uids);
     final byUid = {for (final r in rows) r.uid: r};
     final comboResource = CategoryComboResource(_db);
@@ -136,6 +143,8 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
               id: coc.uid,
               name: coc.name,
               isGreyed: greyedCells.contains('${row.uid}_${coc.uid}'),
+              isCompulsory:
+                  compulsoryOperandKeys.contains('${row.uid}_${coc.uid}'),
             ),
         ],
         options: options,
@@ -275,8 +284,9 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     // Whole data set, not just the currently open section — completing
     // applies dataset-wide.
     final elements = await getDataElements(dataSetId: dataSetId);
-    final compulsoryElements = elements.where((e) => e.compulsory);
-    if (compulsoryElements.isEmpty) return const [];
+    final compulsoryElements = elements.where((e) => e.compulsory).toList();
+    final operands = await DataSetResource(_db).compulsoryOperands(dataSetId);
+    if (compulsoryElements.isEmpty && operands.isEmpty) return const [];
 
     final values = await getDataValues(
       dataSetId: dataSetId,
@@ -290,13 +300,45 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     };
 
     final missing = <String>[];
+    // Keys already judged via dataSetElement.compulsory, so the operand
+    // pairs below don't re-check (and double-report) the same cell.
+    final checked = <String>{};
     for (final e in compulsoryElements) {
       for (final combo in e.categoryOptionCombos) {
         if (combo.isGreyed) continue; // never enterable, can't be "missing"
-        if (!filled.contains('${e.id}_${combo.id}')) {
+        final key = '${e.id}_${combo.id}';
+        checked.add(key);
+        if (!filled.contains(key)) {
           missing.add(combo.name == 'default'
               ? e.displayName
               : '${e.displayName} — ${combo.displayName}');
+        }
+      }
+    }
+
+    // compulsoryDataElementOperands: specific (element, combo) pairs
+    // required independent of whether the element itself is
+    // dataSetElement.compulsory — e.g. only some combos of a
+    // disaggregated element may be mandatory.
+    if (operands.isNotEmpty) {
+      final byId = {for (final e in elements) e.id: e};
+      for (final op in operands) {
+        final key = '${op.dataElementUid}_${op.categoryOptionComboUid}';
+        if (!checked.add(key)) continue; // already judged above
+        final element = byId[op.dataElementUid];
+        if (element == null) continue; // not in this dataset's synced list
+        entity.CategoryOptionCombo? combo;
+        for (final c in element.categoryOptionCombos) {
+          if (c.id == op.categoryOptionComboUid) {
+            combo = c;
+            break;
+          }
+        }
+        if (combo == null || combo.isGreyed) continue;
+        if (!filled.contains(key)) {
+          missing.add(combo.name == 'default'
+              ? element.displayName
+              : '${element.displayName} — ${combo.displayName}');
         }
       }
     }
