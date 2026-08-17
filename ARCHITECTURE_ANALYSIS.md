@@ -1,7 +1,7 @@
-# HISP Mobile Tracker — Complete Architecture Analysis
+# RDHIS2 Mobile Tracker — Complete Architecture Analysis
 
 > **Prepared for:** New developer onboarding
-> **Project:** HISP Mobile Tracker (offline-first Flutter app for DHIS2 health data collection)
+> **Project:** RDHIS2 Mobile Tracker (offline-first Flutter app for DHIS2 health data collection)
 > **Developed by:** HISP Ethiopia for the Federal Ministry of Health
 
 ---
@@ -28,7 +28,7 @@
 
 ### Purpose
 
-HISP Mobile Tracker is an **offline-first Flutter mobile application** for collecting aggregate health data into [DHIS2](https://dhis2.org) (District Health Information Software), Ethiopia's national Health Management Information System. It was built by **HISP Ethiopia** in collaboration with the **Federal Ministry of Health**.
+RDHIS2 Mobile Tracker is an **offline-first Flutter mobile application** for collecting aggregate health data into [DHIS2](https://dhis2.org) (District Health Information Software), Ethiopia's national Health Management Information System. It was built by **HISP Ethiopia** in collaboration with the **Federal Ministry of Health**.
 
 ### Problem Solved
 

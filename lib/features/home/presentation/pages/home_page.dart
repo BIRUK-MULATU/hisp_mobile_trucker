@@ -421,7 +421,7 @@ class _HomeDrawer extends StatelessWidget {
                       .copyWith(color: AppColors.textSecondary)),
               const SizedBox(height: AppDimensions.spaceLG),
               const Text(
-                'HISP Mobile Tracker is the official mobile data '
+                'RDHIS2 Mobile Tracker is the official mobile data '
                 'collection and reporting application of the Ministry '
                 'of Health, built on the DHIS2 Health Management '
                 'Information System. It enables health workers to '

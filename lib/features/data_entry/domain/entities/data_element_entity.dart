@@ -37,6 +37,11 @@ class DataElementEntity {
   /// directly above this element, computed live — never entered.
   final List<DisplayIndicator> displayIndicators;
 
+  /// DHIS2 `dataSetElement.compulsory` for the data set this entity
+  /// was loaded for — must be filled before the data set can be
+  /// marked complete (see DataEntryRepository.missingMandatoryFields).
+  final bool compulsory;
+
   const DataElementEntity({
     required this.id,
     required this.name,
@@ -48,6 +53,7 @@ class DataElementEntity {
     this.controlledElementIds = const [],
     this.label,
     this.displayIndicators = const [],
+    this.compulsory = false,
   });
 
   String get displayName => shortName ?? name;

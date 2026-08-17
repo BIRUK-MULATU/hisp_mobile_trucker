@@ -38,7 +38,7 @@ class DataSetResource extends MetadataResource<DataSet> {
         'categoryCombo[id]',
         attributeValuesField,
         // dataElement carries its own combo so the override can resolve:
-        'dataSetElements[sortOrder,categoryCombo[id],dataElement[id,categoryCombo[id]]]',
+        'dataSetElements[sortOrder,compulsory,categoryCombo[id],dataElement[id,categoryCombo[id]]]',
         'organisationUnits[id]',
       ];
 
@@ -115,6 +115,7 @@ class DataSetResource extends MetadataResource<DataSet> {
                 dataElementUid: de['id'] as String,
                 categoryComboUid: effective,
                 sortOrder: Value((dse['sortOrder'] as int?) ?? order),
+                compulsory: Value((dse['compulsory'] as bool?) ?? false),
               ),
             );
             order++;
@@ -182,6 +183,16 @@ class DataSetResource extends MetadataResource<DataSet> {
           ..where((t) => t.dataSetUid.equals(dataSetUid)))
         .get();
     return {for (final r in rows) r.dataElementUid: r.categoryComboUid};
+  }
+
+  /// DHIS2 `dataSetElement.compulsory` per element for this data set —
+  /// a link-table property, so it's looked up the same way as
+  /// [effectiveComboByElement].
+  Future<Map<String, bool>> compulsoryByElement(String dataSetUid) async {
+    final rows = await (db.select(db.dataSetElementsTable)
+          ..where((t) => t.dataSetUid.equals(dataSetUid)))
+        .get();
+    return {for (final r in rows) r.dataElementUid: r.compulsory};
   }
 
   /// This DHIS2 instance classifies every data set with a custom

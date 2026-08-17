@@ -65,4 +65,10 @@ flutter_launcher_icons:
   remove_alpha_ios: true
   web:
     generate: true
-  image_path: "assets/images/app_logo.png"
+  # app_logo.png has ~25% transparent margin baked in around the badge,
+  # so a plain resize left the icon looking small/centered with dead
+  # space around it on every launcher. app_icon.png/app_icon_foreground
+  # are the same artwork re-cropped to fill the canvas (source untouched).
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_background: "#1E2844"
+  adaptive_icon_foreground: "assets/images/app_icon_foreground.png"

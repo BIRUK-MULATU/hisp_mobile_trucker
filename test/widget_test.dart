@@ -80,6 +80,15 @@ class _FakeDataEntryRepository implements DataEntryRepository {
       const [];
 
   @override
+  Future<List<String>> missingMandatoryFields({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+    String? attributeOptionComboUid,
+  }) async =>
+      const [];
+
+  @override
   Future<bool> isCompleted({
     required String dataSetId,
     required String orgUnitId,

@@ -1,6 +1,6 @@
-# HISP Mobile Tracker — Developer Documentation
+# RDHIS2 Mobile Tracker — Developer Documentation
 
-This is the full onboarding documentation for the HISP Mobile Tracker codebase — an
+This is the full onboarding documentation for the RDHIS2 Mobile Tracker codebase — an
 offline-first Flutter application for capturing aggregate health data into DHIS2, built by
 HISP Ethiopia for the Federal Ministry of Health. It is written for a developer who has
 never seen this codebase before and needs to become productive in it quickly, without

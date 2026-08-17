@@ -48,6 +48,18 @@ abstract class DataEntryRepository {
     required List<DataValueEntity> dataValues,
   });
 
+  /// Compulsory dataSetElement fields (DHIS2 `dataSetElement.compulsory`)
+  /// with no value currently saved locally, across the WHOLE data set
+  /// (not just one section — completing acts dataset-wide). Unlike
+  /// [validateDataSet], this DOES block completing: same contract as
+  /// the DHIS2 web/Android apps for compulsory fields.
+  Future<List<String>> missingMandatoryFields({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+    String? attributeOptionComboUid,
+  });
+
   /// Mark dataset as complete
   Future<void> completeDataSet({
     required String dataSetId,

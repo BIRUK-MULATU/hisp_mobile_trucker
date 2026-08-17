@@ -63,6 +63,8 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
 
     final effectiveCombo =
         await DataSetResource(_db).effectiveComboByElement(dataSetId);
+    final compulsoryMap =
+        await DataSetResource(_db).compulsoryByElement(dataSetId);
     final rows = await DataElementResource(_db).getByIds(uids);
     final byUid = {for (final r in rows) r.uid: r};
     final comboResource = CategoryComboResource(_db);
@@ -140,6 +142,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
         controlledElementIds: controllerGates[uid] ?? const [],
         label: elementLabels[uid],
         displayIndicators: displayIndicators[uid] ?? const [],
+        compulsory: compulsoryMap[uid] ?? false,
       ));
     }
     if (result.isEmpty) {
@@ -260,6 +263,44 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
           ),
       ],
     );
+  }
+
+  @override
+  Future<List<String>> missingMandatoryFields({
+    required String dataSetId,
+    required String orgUnitId,
+    required String period,
+    String? attributeOptionComboUid,
+  }) async {
+    // Whole data set, not just the currently open section — completing
+    // applies dataset-wide.
+    final elements = await getDataElements(dataSetId: dataSetId);
+    final compulsoryElements = elements.where((e) => e.compulsory);
+    if (compulsoryElements.isEmpty) return const [];
+
+    final values = await getDataValues(
+      dataSetId: dataSetId,
+      orgUnitId: orgUnitId,
+      period: period,
+      attributeOptionComboUid: attributeOptionComboUid,
+    );
+    final filled = {
+      for (final v in values)
+        if (v.value.trim().isNotEmpty) v.key,
+    };
+
+    final missing = <String>[];
+    for (final e in compulsoryElements) {
+      for (final combo in e.categoryOptionCombos) {
+        if (combo.isGreyed) continue; // never enterable, can't be "missing"
+        if (!filled.contains('${e.id}_${combo.id}')) {
+          missing.add(combo.name == 'default'
+              ? e.displayName
+              : '${e.displayName} — ${combo.displayName}');
+        }
+      }
+    }
+    return missing;
   }
 
   @override

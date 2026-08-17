@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.hisp" "\0"
-            VALUE "FileDescription", "hisp_mobile_trucker" "\0"
+            VALUE "FileDescription", "RDHIS2" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "hisp_mobile_trucker" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.hisp. All rights reserved." "\0"
             VALUE "OriginalFilename", "hisp_mobile_trucker.exe" "\0"
-            VALUE "ProductName", "hisp_mobile_trucker" "\0"
+            VALUE "ProductName", "RDHIS2" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

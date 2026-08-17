@@ -1,10 +1,10 @@
-# HISP Mobile Tracker
+# RDHIS2 Mobile Tracker
 
 [![CI](https://github.com/BIRUK-MULATU/hisp_mobile_trucker/actions/workflows/ci.yml/badge.svg)](https://github.com/BIRUK-MULATU/hisp_mobile_trucker/actions/workflows/ci.yml)
 [![Flutter](https://img.shields.io/badge/Flutter-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 [![DHIS2](https://img.shields.io/badge/DHIS2-2.40-4285F4)](https://dhis2.org)
 
-**HISP Mobile Tracker** is an offline-first Flutter app for collecting aggregate
+**RDHIS2 Mobile Tracker** is an offline-first Flutter app for collecting aggregate
 health data into [DHIS2](https://dhis2.org) (the national Health Management
 Information System). It is built for health workers in the field: data can be
 entered at any time — with or without a connection — and is synchronized with

@@ -413,6 +413,19 @@ class _DataEntryTableState extends State<DataEntryTable> {
     return true;
   }
 
+  // Element display name, with a red "*" appended for a compulsory
+  // element (DHIS2 dataSetElement.compulsory) — must be filled before
+  // the data set can be marked complete.
+  static Widget _elementNameText(DataElementEntity element, TextStyle style) {
+    if (!element.compulsory) return Text(element.displayName, style: style);
+    return Text.rich(
+      TextSpan(style: style, children: [
+        TextSpan(text: element.displayName),
+        const TextSpan(text: ' *', style: TextStyle(color: AppColors.error)),
+      ]),
+    );
+  }
+
   Widget _buildSection(DataElementEntity element) {
     final combos = _combosFor(element);
 
@@ -491,9 +504,9 @@ class _DataEntryTableState extends State<DataEntryTable> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    element.displayName,
-                    style: AppTextStyles.bodySmall.copyWith(
+                  child: _elementNameText(
+                    element,
+                    AppTextStyles.bodySmall.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
@@ -582,9 +595,9 @@ class _DataEntryTableState extends State<DataEntryTable> {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              element.displayName,
-              style: AppTextStyles.bodySmall.copyWith(
+            child: _elementNameText(
+              element,
+              AppTextStyles.bodySmall.copyWith(
                 color: AppColors.primary,
                 fontWeight: FontWeight.w600,
                 fontSize: 12,

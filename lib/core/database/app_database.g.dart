@@ -5665,9 +5665,19 @@ class $DataSetElementsTableTable extends DataSetElementsTable
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(0));
+  static const VerificationMeta _compulsoryMeta =
+      const VerificationMeta('compulsory');
+  @override
+  late final GeneratedColumn<bool> compulsory = GeneratedColumn<bool>(
+      'compulsory', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("compulsory" IN (0, 1))'),
+      defaultValue: const Constant(false));
   @override
   List<GeneratedColumn> get $columns =>
-      [dataSetUid, dataElementUid, categoryComboUid, sortOrder];
+      [dataSetUid, dataElementUid, categoryComboUid, sortOrder, compulsory];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -5706,6 +5716,12 @@ class $DataSetElementsTableTable extends DataSetElementsTable
       context.handle(_sortOrderMeta,
           sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
     }
+    if (data.containsKey('compulsory')) {
+      context.handle(
+          _compulsoryMeta,
+          compulsory.isAcceptableOrUnknown(
+              data['compulsory']!, _compulsoryMeta));
+    }
     return context;
   }
 
@@ -5723,6 +5739,8 @@ class $DataSetElementsTableTable extends DataSetElementsTable
           DriftSqlType.string, data['${effectivePrefix}category_combo_uid'])!,
       sortOrder: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      compulsory: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}compulsory'])!,
     );
   }
 
@@ -5740,11 +5758,17 @@ class DataSetElement extends DataClass implements Insertable<DataSetElement> {
   /// resolved at write time in DataSetResource.saveAll.
   final String categoryComboUid;
   final int sortOrder;
+
+  /// DHIS2 `dataSetElement.compulsory` — must be filled before this
+  /// data set can be marked complete. A link-table property: the same
+  /// element can be compulsory in one data set and optional in another.
+  final bool compulsory;
   const DataSetElement(
       {required this.dataSetUid,
       required this.dataElementUid,
       required this.categoryComboUid,
-      required this.sortOrder});
+      required this.sortOrder,
+      required this.compulsory});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -5752,6 +5776,7 @@ class DataSetElement extends DataClass implements Insertable<DataSetElement> {
     map['data_element_uid'] = Variable<String>(dataElementUid);
     map['category_combo_uid'] = Variable<String>(categoryComboUid);
     map['sort_order'] = Variable<int>(sortOrder);
+    map['compulsory'] = Variable<bool>(compulsory);
     return map;
   }
 
@@ -5761,6 +5786,7 @@ class DataSetElement extends DataClass implements Insertable<DataSetElement> {
       dataElementUid: Value(dataElementUid),
       categoryComboUid: Value(categoryComboUid),
       sortOrder: Value(sortOrder),
+      compulsory: Value(compulsory),
     );
   }
 
@@ -5772,6 +5798,7 @@ class DataSetElement extends DataClass implements Insertable<DataSetElement> {
       dataElementUid: serializer.fromJson<String>(json['dataElementUid']),
       categoryComboUid: serializer.fromJson<String>(json['categoryComboUid']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      compulsory: serializer.fromJson<bool>(json['compulsory']),
     );
   }
   @override
@@ -5782,6 +5809,7 @@ class DataSetElement extends DataClass implements Insertable<DataSetElement> {
       'dataElementUid': serializer.toJson<String>(dataElementUid),
       'categoryComboUid': serializer.toJson<String>(categoryComboUid),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'compulsory': serializer.toJson<bool>(compulsory),
     };
   }
 
@@ -5789,12 +5817,14 @@ class DataSetElement extends DataClass implements Insertable<DataSetElement> {
           {String? dataSetUid,
           String? dataElementUid,
           String? categoryComboUid,
-          int? sortOrder}) =>
+          int? sortOrder,
+          bool? compulsory}) =>
       DataSetElement(
         dataSetUid: dataSetUid ?? this.dataSetUid,
         dataElementUid: dataElementUid ?? this.dataElementUid,
         categoryComboUid: categoryComboUid ?? this.categoryComboUid,
         sortOrder: sortOrder ?? this.sortOrder,
+        compulsory: compulsory ?? this.compulsory,
       );
   DataSetElement copyWithCompanion(DataSetElementsTableCompanion data) {
     return DataSetElement(
@@ -5807,6 +5837,8 @@ class DataSetElement extends DataClass implements Insertable<DataSetElement> {
           ? data.categoryComboUid.value
           : this.categoryComboUid,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      compulsory:
+          data.compulsory.present ? data.compulsory.value : this.compulsory,
     );
   }
 
@@ -5816,14 +5848,15 @@ class DataSetElement extends DataClass implements Insertable<DataSetElement> {
           ..write('dataSetUid: $dataSetUid, ')
           ..write('dataElementUid: $dataElementUid, ')
           ..write('categoryComboUid: $categoryComboUid, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('compulsory: $compulsory')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(dataSetUid, dataElementUid, categoryComboUid, sortOrder);
+  int get hashCode => Object.hash(
+      dataSetUid, dataElementUid, categoryComboUid, sortOrder, compulsory);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5831,7 +5864,8 @@ class DataSetElement extends DataClass implements Insertable<DataSetElement> {
           other.dataSetUid == this.dataSetUid &&
           other.dataElementUid == this.dataElementUid &&
           other.categoryComboUid == this.categoryComboUid &&
-          other.sortOrder == this.sortOrder);
+          other.sortOrder == this.sortOrder &&
+          other.compulsory == this.compulsory);
 }
 
 class DataSetElementsTableCompanion extends UpdateCompanion<DataSetElement> {
@@ -5839,12 +5873,14 @@ class DataSetElementsTableCompanion extends UpdateCompanion<DataSetElement> {
   final Value<String> dataElementUid;
   final Value<String> categoryComboUid;
   final Value<int> sortOrder;
+  final Value<bool> compulsory;
   final Value<int> rowid;
   const DataSetElementsTableCompanion({
     this.dataSetUid = const Value.absent(),
     this.dataElementUid = const Value.absent(),
     this.categoryComboUid = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.compulsory = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DataSetElementsTableCompanion.insert({
@@ -5852,6 +5888,7 @@ class DataSetElementsTableCompanion extends UpdateCompanion<DataSetElement> {
     required String dataElementUid,
     required String categoryComboUid,
     this.sortOrder = const Value.absent(),
+    this.compulsory = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : dataSetUid = Value(dataSetUid),
         dataElementUid = Value(dataElementUid),
@@ -5861,6 +5898,7 @@ class DataSetElementsTableCompanion extends UpdateCompanion<DataSetElement> {
     Expression<String>? dataElementUid,
     Expression<String>? categoryComboUid,
     Expression<int>? sortOrder,
+    Expression<bool>? compulsory,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -5868,6 +5906,7 @@ class DataSetElementsTableCompanion extends UpdateCompanion<DataSetElement> {
       if (dataElementUid != null) 'data_element_uid': dataElementUid,
       if (categoryComboUid != null) 'category_combo_uid': categoryComboUid,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (compulsory != null) 'compulsory': compulsory,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5877,12 +5916,14 @@ class DataSetElementsTableCompanion extends UpdateCompanion<DataSetElement> {
       Value<String>? dataElementUid,
       Value<String>? categoryComboUid,
       Value<int>? sortOrder,
+      Value<bool>? compulsory,
       Value<int>? rowid}) {
     return DataSetElementsTableCompanion(
       dataSetUid: dataSetUid ?? this.dataSetUid,
       dataElementUid: dataElementUid ?? this.dataElementUid,
       categoryComboUid: categoryComboUid ?? this.categoryComboUid,
       sortOrder: sortOrder ?? this.sortOrder,
+      compulsory: compulsory ?? this.compulsory,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5902,6 +5943,9 @@ class DataSetElementsTableCompanion extends UpdateCompanion<DataSetElement> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (compulsory.present) {
+      map['compulsory'] = Variable<bool>(compulsory.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5915,6 +5959,7 @@ class DataSetElementsTableCompanion extends UpdateCompanion<DataSetElement> {
           ..write('dataElementUid: $dataElementUid, ')
           ..write('categoryComboUid: $categoryComboUid, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('compulsory: $compulsory, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -13573,6 +13618,7 @@ typedef $$DataSetElementsTableTableCreateCompanionBuilder
   required String dataElementUid,
   required String categoryComboUid,
   Value<int> sortOrder,
+  Value<bool> compulsory,
   Value<int> rowid,
 });
 typedef $$DataSetElementsTableTableUpdateCompanionBuilder
@@ -13581,6 +13627,7 @@ typedef $$DataSetElementsTableTableUpdateCompanionBuilder
   Value<String> dataElementUid,
   Value<String> categoryComboUid,
   Value<int> sortOrder,
+  Value<bool> compulsory,
   Value<int> rowid,
 });
 
@@ -13606,6 +13653,9 @@ class $$DataSetElementsTableTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get compulsory => $composableBuilder(
+      column: $table.compulsory, builder: (column) => ColumnFilters(column));
 }
 
 class $$DataSetElementsTableTableOrderingComposer
@@ -13630,6 +13680,9 @@ class $$DataSetElementsTableTableOrderingComposer
 
   ColumnOrderings<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get compulsory => $composableBuilder(
+      column: $table.compulsory, builder: (column) => ColumnOrderings(column));
 }
 
 class $$DataSetElementsTableTableAnnotationComposer
@@ -13652,6 +13705,9 @@ class $$DataSetElementsTableTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<bool> get compulsory => $composableBuilder(
+      column: $table.compulsory, builder: (column) => column);
 }
 
 class $$DataSetElementsTableTableTableManager extends RootTableManager<
@@ -13687,6 +13743,7 @@ class $$DataSetElementsTableTableTableManager extends RootTableManager<
             Value<String> dataElementUid = const Value.absent(),
             Value<String> categoryComboUid = const Value.absent(),
             Value<int> sortOrder = const Value.absent(),
+            Value<bool> compulsory = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               DataSetElementsTableCompanion(
@@ -13694,6 +13751,7 @@ class $$DataSetElementsTableTableTableManager extends RootTableManager<
             dataElementUid: dataElementUid,
             categoryComboUid: categoryComboUid,
             sortOrder: sortOrder,
+            compulsory: compulsory,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -13701,6 +13759,7 @@ class $$DataSetElementsTableTableTableManager extends RootTableManager<
             required String dataElementUid,
             required String categoryComboUid,
             Value<int> sortOrder = const Value.absent(),
+            Value<bool> compulsory = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               DataSetElementsTableCompanion.insert(
@@ -13708,6 +13767,7 @@ class $$DataSetElementsTableTableTableManager extends RootTableManager<
             dataElementUid: dataElementUid,
             categoryComboUid: categoryComboUid,
             sortOrder: sortOrder,
+            compulsory: compulsory,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
