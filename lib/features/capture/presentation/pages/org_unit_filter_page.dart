@@ -259,102 +259,106 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
         ),
       );
     }
-    return ListView.builder(
-      itemCount: _displayNodes.length,
-      itemBuilder: (context, index) {
-        final item = _displayNodes[index];
-        final node = item.node;
-        final isSelected = node.id == _selected?.id;
-        return InkWell(
-          onTap: node.hasChildren
-              ? () => _toggleExpand(node)
-              : () => setState(() => _selected = node),
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: AppDimensions.spaceSM + (item.depth * 16.0),
-              right: AppDimensions.space,
-              top: AppDimensions.spaceSM,
-              bottom: AppDimensions.spaceSM,
-            ),
-            child: Row(
-              children: [
-                // ── Arrow / loading spinner ────────────
-                SizedBox(
-                  width: 24,
-                  child: node.isLoadingChildren
-                      ? const Padding(
-                          padding: EdgeInsets.all(3),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.primary,
-                          ),
-                        )
-                      : node.hasChildren
-                          ? GestureDetector(
-                              onTap: () => _toggleExpand(node),
-                              child: AnimatedRotation(
-                                turns: node.isExpanded ? 0.25 : 0,
-                                duration: const Duration(milliseconds: 150),
-                                child: const Icon(
-                                  Icons.chevron_right_rounded,
-                                  size: 20,
-                                  color: AppColors.textSecondary,
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: _loadRoots,
+      child: ListView.builder(
+        itemCount: _displayNodes.length,
+        itemBuilder: (context, index) {
+          final item = _displayNodes[index];
+          final node = item.node;
+          final isSelected = node.id == _selected?.id;
+          return InkWell(
+            onTap: node.hasChildren
+                ? () => _toggleExpand(node)
+                : () => setState(() => _selected = node),
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: AppDimensions.spaceSM + (item.depth * 16.0),
+                right: AppDimensions.space,
+                top: AppDimensions.spaceSM,
+                bottom: AppDimensions.spaceSM,
+              ),
+              child: Row(
+                children: [
+                  // ── Arrow / loading spinner ────────────
+                  SizedBox(
+                    width: 24,
+                    child: node.isLoadingChildren
+                        ? const Padding(
+                            padding: EdgeInsets.all(3),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary,
+                            ),
+                          )
+                        : node.hasChildren
+                            ? GestureDetector(
+                                onTap: () => _toggleExpand(node),
+                                child: AnimatedRotation(
+                                  turns: node.isExpanded ? 0.25 : 0,
+                                  duration: const Duration(milliseconds: 150),
+                                  child: const Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 20,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                  ),
+                  const SizedBox(width: 4),
+
+                  // ── Radio (every node is selectable) ───
+                  GestureDetector(
+                    onTap: () => setState(() => _selected = node),
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.border,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: isSelected
+                          ? Center(
+                              child: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
                                 ),
                               ),
                             )
-                          : const SizedBox.shrink(),
-                ),
-                const SizedBox(width: 4),
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: AppDimensions.spaceSM),
 
-                // ── Radio (every node is selectable) ───
-                GestureDetector(
-                  onTap: () => setState(() => _selected = node),
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
+                  // ── Name ───────────────────────────────
+                  Expanded(
+                    child: Text(
+                      node.name,
+                      style: AppTextStyles.bodyMedium.copyWith(
                         color: isSelected
                             ? AppColors.primary
-                            : AppColors.border,
-                        width: 1.5,
+                            : AppColors.textPrimary,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w400,
                       ),
                     ),
-                    child: isSelected
-                        ? Center(
-                            child: Container(
-                              width: 10,
-                              height: 10,
-                              decoration: const BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          )
-                        : null,
                   ),
-                ),
-                const SizedBox(width: AppDimensions.spaceSM),
-
-                // ── Name ───────────────────────────────
-                Expanded(
-                  child: Text(
-                    node.name,
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: isSelected
-                          ? AppColors.primary
-                          : AppColors.textPrimary,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

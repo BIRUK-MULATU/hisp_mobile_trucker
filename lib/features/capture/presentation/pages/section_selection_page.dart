@@ -177,25 +177,29 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
       return const AppLoader(message: 'Loading sections...');
     }
     // A width-capped grid: one column on phones, two on tablets.
-    return ResponsiveContent(
-      maxWidth: 1000,
-      child: GridView.builder(
-        padding: const EdgeInsets.all(AppDimensions.space),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 500,
-          mainAxisExtent: 104,
-          mainAxisSpacing: AppDimensions.spaceSM,
-          crossAxisSpacing: AppDimensions.spaceSM,
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: _load,
+      child: ResponsiveContent(
+        maxWidth: 1000,
+        child: GridView.builder(
+          padding: const EdgeInsets.all(AppDimensions.space),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 500,
+            mainAxisExtent: 104,
+            mainAxisSpacing: AppDimensions.spaceSM,
+            crossAxisSpacing: AppDimensions.spaceSM,
+          ),
+          itemCount: sections.length,
+          itemBuilder: (context, index) {
+            final section = sections[index];
+            return _SectionCard(
+              index: index + 1,
+              section: section,
+              onTap: () => _openSection(section),
+            );
+          },
         ),
-        itemCount: sections.length,
-        itemBuilder: (context, index) {
-          final section = sections[index];
-          return _SectionCard(
-            index: index + 1,
-            section: section,
-            onTap: () => _openSection(section),
-          );
-        },
       ),
     );
   }
