@@ -18,6 +18,16 @@ import 'organisation_unit.dart';
 import 'section.dart';
 import 'validation_rule.dart';
 
+/// One of the logged-in user's assigned (capture) organisation units,
+/// with its DHIS2 hierarchy level — needed to bound the org unit sync
+/// to that root plus its direct children only, not the whole subtree.
+class CaptureRoot {
+  final String id;
+  final int level;
+
+  const CaptureRoot({required this.id, required this.level});
+}
+
 /// The ONLY place in the app that holds an ApiClient for metadata.
 /// Everything else constructs resources with db alone and therefore
 /// cannot reach the network — by construction.
@@ -69,12 +79,14 @@ class MetadataSyncService {
         await DataElementGroupResource(_db).syncAll(_api);
 
     // ── 4. The user's capture roots from /me, then ONLY that org
-    //       subtree — a facility user must not pull the national tree.
-    final rootUids = await _fetchUserCaptureRoots();
-    counts['organisationUnits'] =
-        await (OrgUnitResource(_db)..captureRootUids = rootUids)
-            .syncAll(_api);
-    await _flagCaptureRoots(rootUids);
+    //       root plus its direct children — not the whole subtree, and
+    //       never the national tree.
+    final roots = await _fetchUserCaptureRoots();
+    counts['organisationUnits'] = await (OrgUnitResource(_db)
+          ..captureRootUids = [for (final root in roots) root.id]
+          ..captureRootLevels = {for (final root in roots) root.id: root.level})
+        .syncAll(_api);
+    await _flagCaptureRoots([for (final root in roots) root.id]);
 
     // ── 5. Data sets and sections (reference nearly everything) ──
     counts['dataSets'] = await DataSetResource(_db).syncAll(_api);
@@ -133,10 +145,13 @@ class MetadataSyncService {
   }
 
   /// /api/me: caches the user row for offline login and returns the
-  /// capture org unit uids — which also SCOPE the org unit sync.
-  Future<List<String>> _fetchUserCaptureRoots() async {
+  /// capture org units (uid + level) — which also SCOPE the org unit
+  /// sync. The level travels with the uid so [OrgUnitResource] can
+  /// bound the synced subtree to direct children only (see its
+  /// `captureRootLevels` / `isValid`) without a second API round-trip.
+  Future<List<CaptureRoot>> _fetchUserCaptureRoots() async {
     final res = await _api.get('/api/me.json', queryParameters: {
-      'fields': 'id,username,displayName,organisationUnits[id]',
+      'fields': 'id,username,displayName,organisationUnits[id,level]',
     });
     final me = res.data as Map<String, dynamic>;
 
@@ -151,7 +166,7 @@ class MetadataSyncService {
     return [
       for (final ou in (me['organisationUnits'] as List? ?? [])
           .cast<Map<String, dynamic>>())
-        ou['id'] as String,
+        CaptureRoot(id: ou['id'] as String, level: ou['level'] as int? ?? 0),
     ];
   }
 
@@ -198,11 +213,17 @@ class MetadataSyncService {
     r['indicators'] = await IndicatorResource(_db).syncDelta(_api);
     r['dataElementGroups'] =
         await DataElementGroupResource(_db).syncDelta(_api);
-    final rootUids = await _fetchUserCaptureRoots();
-    r['organisationUnits'] =
-        await (OrgUnitResource(_db)..captureRootUids = rootUids)
-            .syncDelta(_api);
-    await _flagCaptureRoots(rootUids);
+    final roots = await _fetchUserCaptureRoots();
+    final orgUnitResource = OrgUnitResource(_db)
+      ..captureRootUids = [for (final root in roots) root.id]
+      ..captureRootLevels = {for (final root in roots) root.id: root.level};
+    r['organisationUnits'] = await orgUnitResource.syncDelta(_api);
+    // Converges devices that synced before the direct-children-only
+    // bound existed (or whose capture assignment changed) without
+    // needing a full re-sync — see pruneOutOfScope's doc comment.
+    final pruned = await orgUnitResource.pruneOutOfScope();
+    if (pruned > 0) log.i('[organisationUnits] pruned $pruned out-of-scope');
+    await _flagCaptureRoots([for (final root in roots) root.id]);
     r['dataSets'] = await DataSetResource(_db).syncDelta(_api);
     r['sections'] = await SectionResource(_db).syncDelta(_api);
     r['validationRules'] = await ValidationRuleResource(_db).syncDelta(_api);

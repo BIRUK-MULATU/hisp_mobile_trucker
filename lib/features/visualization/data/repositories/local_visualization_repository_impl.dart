@@ -6,6 +6,7 @@ import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/app_logger.dart';
+import '../../../capture/domain/entities/org_unit_tree_node.dart';
 import '../../domain/entities/analytics_data.dart';
 import '../../domain/entities/chart_config.dart';
 import '../../domain/repositories/local_visualization_repository.dart';
@@ -121,6 +122,40 @@ class LocalVisualizationRepositoryImpl implements LocalVisualizationRepository {
     ];
     refs.sort((a, b) => a.name.compareTo(b.name));
     return refs;
+  }
+
+  /// Live org unit children for the builder's org unit picker —
+  /// deliberately bypasses the local capture database entirely (never
+  /// cached, never written locally): a chart can be built against ANY
+  /// org unit in the full hierarchy, unlike Capture's own org unit
+  /// tree, which is intentionally depth-bounded to root + direct
+  /// children to keep offline storage small (see OrgUnitResource).
+  /// The builder is already online-only end to end, so there's no
+  /// offline case to support here.
+  Future<List<OrgUnitTreeNode>> getOrgUnitChildrenLive(
+      String parentId) async {
+    final res = await _api.get('/api/organisationUnits.json', queryParameters: {
+      'filter': 'parent.id:eq:$parentId',
+      'fields': 'id,displayName,path,level,children[id]',
+      'paging': 'false',
+    });
+    final items = ((res.data as Map<String, dynamic>)['organisationUnits']
+                as List? ??
+            const [])
+        .cast<Map<String, dynamic>>();
+    final nodes = [
+      for (final ou in items)
+        OrgUnitTreeNode(
+          id: ou['id'] as String,
+          name: (ou['displayName'] ?? '') as String,
+          parentId: parentId,
+          level: ou['level'] as int? ?? 0,
+          path: ou['path'] as String?,
+          childCount: (ou['children'] as List? ?? const []).length,
+        ),
+    ];
+    nodes.sort((a, b) => a.name.compareTo(b.name));
+    return nodes;
   }
 
   // ── Analytics ──────────────────────────────────────────────────

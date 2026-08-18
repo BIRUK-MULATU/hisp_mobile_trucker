@@ -8,11 +8,22 @@ import '../../domain/entities/org_unit_tree_node.dart';
 import '../../domain/usecases/get_org_unit_children_usecase.dart';
 
 /// Full-page organisation unit tree opened from the filter panel's
-/// tree icon. The user browses the same lazily-loaded hierarchy as
-/// the capture workflow, picks a node, and the page pops with it so
-/// the caller can apply it as the ORG. UNIT filter.
+/// tree icon (and reused by the chart builder's org unit picker). The
+/// user browses a lazily-loaded hierarchy, picks a node, and the page
+/// pops with it so the caller can apply it (as the ORG. UNIT filter,
+/// or as a chart's org unit).
+///
+/// By default children come from the local capture database (offline
+/// tree, intentionally depth-bounded to root + direct children — see
+/// OrgUnitResource). Pass [fetchChildren] to source children from
+/// somewhere else instead — the chart builder uses this to browse the
+/// FULL live hierarchy, since building a chart is already online-only
+/// and isn't bound by what's kept for offline capture.
 class OrgUnitFilterPage extends StatefulWidget {
-  const OrgUnitFilterPage({super.key});
+  final Future<List<OrgUnitTreeNode>> Function(String parentId)?
+      fetchChildren;
+
+  const OrgUnitFilterPage({super.key, this.fetchChildren});
 
   @override
   State<OrgUnitFilterPage> createState() => _OrgUnitFilterPageState();
@@ -20,8 +31,8 @@ class OrgUnitFilterPage extends StatefulWidget {
 
 class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
   final _secureStorage = SecureStorage();
-  late final CaptureRepositoryImpl _repository;
-  late final GetOrgUnitChildrenUseCase _getChildren;
+  late final Future<List<OrgUnitTreeNode>> Function(String parentId)
+      _fetchChildren;
 
   List<OrgUnitTreeNode> _roots = [];
   List<_DisplayNode> _displayNodes = [];
@@ -32,8 +43,9 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
   @override
   void initState() {
     super.initState();
-    _repository = CaptureRepositoryImpl();
-    _getChildren = GetOrgUnitChildrenUseCase(_repository);
+    final defaultUseCase = GetOrgUnitChildrenUseCase(CaptureRepositoryImpl());
+    _fetchChildren = widget.fetchChildren ??
+        (parentId) => defaultUseCase.call(parentId: parentId);
     _loadRoots();
   }
 
@@ -60,7 +72,7 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
         );
         // The stored assignment has no child count — resolve the
         // first level now so the root renders correctly expanded.
-        root.children.addAll(await _getChildren.call(parentId: id));
+        root.children.addAll(await _fetchChildren(id));
         root.childrenLoaded = true;
         roots.add(root);
       }
@@ -104,7 +116,7 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
     if (!node.childrenLoaded) {
       setState(() => node.isLoadingChildren = true);
       try {
-        final children = await _getChildren.call(parentId: node.id);
+        final children = await _fetchChildren(node.id);
         node.children.addAll(children);
         node.childrenLoaded = true;
       } catch (_) {

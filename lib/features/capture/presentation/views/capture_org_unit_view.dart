@@ -409,18 +409,25 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
         ),
       );
     }
-    return ListView.builder(
-      itemCount: nodes.length,
-      itemBuilder: (context, index) {
-        final item = nodes[index];
-        return _TreeTile(
-          node: item.node,
-          depth: item.depth,
-          isSelected: item.node.id == _selected?.id,
-          onExpand: () => _toggleExpand(item.node),
-          onSelect: () => _select(item.node),
-        );
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () async {
+        await _loadRoots();
+        await _applyDataFilters();
       },
+      child: ListView.builder(
+        itemCount: nodes.length,
+        itemBuilder: (context, index) {
+          final item = nodes[index];
+          return _TreeTile(
+            node: item.node,
+            depth: item.depth,
+            isSelected: item.node.id == _selected?.id,
+            onExpand: () => _toggleExpand(item.node),
+            onSelect: () => _select(item.node),
+          );
+        },
+      ),
     );
   }
 }

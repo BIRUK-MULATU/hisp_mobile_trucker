@@ -323,4 +323,49 @@ void main() {
       );
     });
   });
+
+  group('getOrgUnitChildrenLive', () {
+    test('queries the server directly, filtered to the parent, not the '
+        'local (depth-bounded) capture tree', () async {
+      final adapter = _CannedAdapter(body: {
+        'organisationUnits': [
+          {
+            'id': 'healthCenter1',
+            'displayName': 'Health Center B',
+            'path': '/national/region/zone/woreda/phcuA/healthCenter1',
+            'level': 6,
+            'children': [
+              {'id': 'healthPost1'},
+              {'id': 'healthPost2'},
+            ],
+          },
+          {
+            'id': 'healthCenter2',
+            'displayName': 'Health Center A',
+            'path': '/national/region/zone/woreda/phcuA/healthCenter2',
+            'level': 6,
+            'children': <Map<String, dynamic>>[],
+          },
+        ],
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
+
+      final children = await repo.getOrgUnitChildrenLive('phcuA');
+
+      expect(adapter.lastUri!.path, '/api/organisationUnits.json');
+      expect(adapter.lastUri!.queryParameters['filter'], 'parent.id:eq:phcuA');
+      // Alphabetical, and childCount derived from the nested children.
+      expect(children.map((c) => c.name),
+          ['Health Center A', 'Health Center B']);
+      expect(children.firstWhere((c) => c.id == 'healthCenter1').childCount,
+          2);
+      expect(children.firstWhere((c) => c.id == 'healthCenter2').childCount,
+          0);
+      expect(children.first.parentId, 'phcuA');
+    });
+  });
 }

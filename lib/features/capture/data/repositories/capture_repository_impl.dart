@@ -8,6 +8,7 @@ import '../../../../core/errors/exceptions.dart';
 import '../../../../core/metadata/data_set.dart';
 import '../../../../core/metadata/organisation_unit.dart';
 import '../../../../core/metadata/section.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
 import '../../domain/entities/dataset_entity.dart';
 import '../../domain/entities/dataset_section_entity.dart';
@@ -15,24 +16,57 @@ import '../../domain/entities/org_unit_tree_node.dart';
 import '../../domain/entities/report_instance_entity.dart';
 import '../../domain/repositories/capture_repository.dart';
 
-/// Capture navigation entirely on the local database — the synced
-/// metadata IS the user's world, so browsing org units, datasets and
-/// sections needs no network at all.
+/// Capture navigation is LOCAL-FIRST — the synced metadata (root +
+/// direct children only, see OrgUnitResource) is what's available
+/// offline. Beyond that depth, browsing and opening a dataset both
+/// fall back to a LIVE query when online (never attempted offline —
+/// there's genuinely nothing more to show without a connection). A
+/// facility reached this way gets cached locally the moment its
+/// dataset list is actually opened (not just browsed past), so it's
+/// usable offline from then on without needing much device storage
+/// for facilities nobody has actually visited.
 class CaptureRepositoryImpl implements CaptureRepository {
   final SessionService _session;
+  final ApiClient? _apiOverride;
 
-  CaptureRepositoryImpl({SessionService? session})
-      : _session = session ?? AppSession.instance.service;
+  CaptureRepositoryImpl({SessionService? session, ApiClient? api})
+      : _session = session ?? AppSession.instance.service,
+        _apiOverride = api;
 
   AppDatabase get _db => _session.db;
+
+  /// Null offline (or logged in locally-only) — every live call site
+  /// checks this instead of throwing, since offline is an expected,
+  /// silent "nothing more to show" here, not an error.
+  ApiClient? get _api => _apiOverride ?? AppSession.instance.api;
 
   @override
   Future<List<OrgUnitTreeNode>> getOrgUnitChildren(String parentId) async {
     final children = await OrgUnitResource(_db).getChildren(parentId);
-    if (children.isEmpty) return const [];
+    if (children.isEmpty) {
+      // Beyond the direct-children depth bound (or a true leaf) —
+      // live is the only way to tell, and only possible online. A
+      // non-null ApiClient means "logged in", NOT "currently
+      // connected" — genuinely offline, the request throws
+      // (connection error), which is expected here, not a real
+      // failure: nothing more to show without a connection.
+      final api = _api;
+      if (api == null) return const [];
+      try {
+        return await _fetchChildrenLive(api, parentId);
+      } catch (_) {
+        return const [];
+      }
+    }
 
     // One grouped query for the expand arrows: how many children does
-    // each child itself have.
+    // each child itself have — accurate LOCALLY, except for a capture
+    // root's direct children specifically: anything past THEM is
+    // deliberately never synced, so their local count is always 0
+    // whether or not real children exist on the server. Correct that
+    // one boundary with a live existence check (only possible/needed
+    // online — offline, 0 is the right answer: there's nothing more
+    // to show without a connection anyway).
     final t = _db.orgUnitsTable;
     final countExp = t.uid.count();
     final grouped = await (_db.selectOnly(t)
@@ -43,6 +77,24 @@ class CaptureRepositoryImpl implements CaptureRepository {
     final childCounts = {
       for (final row in grouped) row.read(t.parentUid)!: row.read(countExp)!,
     };
+
+    final api = _api;
+    if (api != null) {
+      final parent = await OrgUnitResource(_db).getById(parentId);
+      if (parent?.isUserCaptureRoot ?? false) {
+        for (final c in children) {
+          if ((childCounts[c.uid] ?? 0) == 0) {
+            try {
+              childCounts[c.uid] = await _hasLiveChildren(api, c.uid) ? 1 : 0;
+            } catch (_) {
+              // Offline mid-loop (or any other failure) — leave this
+              // child's count at its local (0) value; the arrow just
+              // won't show until a later successful check.
+            }
+          }
+        }
+      }
+    }
 
     return [
       for (final c in children)
@@ -58,9 +110,65 @@ class CaptureRepositoryImpl implements CaptureRepository {
     ];
   }
 
+  /// Live children of [parentId], mapped the same shape as the local
+  /// query — NOT persisted here (browsing alone shouldn't cache
+  /// anything; see [getDataSetsForOrgUnit] for what actually does).
+  Future<List<OrgUnitTreeNode>> _fetchChildrenLive(
+      ApiClient api, String parentId) async {
+    final res = await api.get('/api/organisationUnits.json', queryParameters: {
+      'filter': 'parent.id:eq:$parentId',
+      'fields': 'id,displayName,path,children[id]',
+      'paging': 'false',
+    });
+    final items = ((res.data as Map<String, dynamic>)['organisationUnits']
+                as List? ??
+            const [])
+        .cast<Map<String, dynamic>>();
+    final nodes = [
+      for (final ou in items)
+        OrgUnitTreeNode(
+          id: ou['id'] as String,
+          name: (ou['displayName'] ?? '') as String,
+          parentId: parentId,
+          level: '/'.allMatches((ou['path'] as String? ?? '')).length,
+          path: ou['path'] as String?,
+          childCount: (ou['children'] as List? ?? const []).length,
+        ),
+    ];
+    nodes.sort((a, b) => a.name.compareTo(b.name));
+    return nodes;
+  }
+
+  /// Cheap existence check: does [uid] have at least one child on the
+  /// server? Used only to decide whether a capture root's direct
+  /// child gets an expand arrow (see [getOrgUnitChildren]) — a
+  /// pageSize of 1 keeps this a minimal request, not a full fetch.
+  Future<bool> _hasLiveChildren(ApiClient api, String uid) async {
+    final res = await api.get('/api/organisationUnits.json', queryParameters: {
+      'filter': 'parent.id:eq:$uid',
+      'fields': 'id',
+      'pageSize': '1',
+    });
+    final items =
+        (res.data as Map<String, dynamic>)['organisationUnits'] as List?;
+    return items != null && items.isNotEmpty;
+  }
+
   @override
   Future<List<DataSetEntity>> getDataSetsForOrgUnit(String orgUnitId) async {
-    final rows = await DataSetResource(_db).getByOrgUnit(orgUnitId);
+    var rows = await DataSetResource(_db).getByOrgUnit(orgUnitId);
+    if (rows.isEmpty) {
+      final api = _api;
+      if (api != null) {
+        try {
+          rows = await _fetchAndCacheVisitedOrgUnit(api, orgUnitId);
+        } catch (_) {
+          // Offline (or the request otherwise failed) — fall through
+          // to the "nothing assigned / never synced" handling below,
+          // same as if there were no api at all.
+        }
+      }
+    }
     if (rows.isEmpty) {
       // Distinguish "nothing assigned" from "never synced".
       final anyMeta = await (_db.select(_db.dataSetsTable)..limit(1)).get();
@@ -92,6 +200,44 @@ class CaptureRepositoryImpl implements CaptureRepository {
           isDiseaseRegistration: diseaseDataSets.contains(ds.uid),
         ),
     ]..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  /// The user has genuinely opened (not just browsed past) a facility
+  /// beyond the synced depth bound — fetch its own record plus its
+  /// dataset assignments live, and CACHE both locally, so this one
+  /// facility (not the whole hierarchy) is usable offline from here
+  /// on. Dataset metadata itself needs no fetching here: DataSetResource
+  /// syncs every dataset's full definition regardless of org unit
+  /// scope already, only the ASSIGNMENT (which datasets this facility
+  /// has) and the facility's own row are missing locally.
+  Future<List<DataSet>> _fetchAndCacheVisitedOrgUnit(
+      ApiClient api, String orgUnitId) async {
+    final res = await api.get('/api/organisationUnits/$orgUnitId.json',
+        queryParameters: {
+          'fields': 'id,name,displayName,parent[id,name],path,code,'
+              'openingDate,closedDate,lastUpdated,dataSets[id]',
+        });
+    final json = res.data as Map<String, dynamic>;
+    final dataSetUids = [
+      for (final ds
+          in (json['dataSets'] as List? ?? const []).cast<Map<String, dynamic>>())
+        ds['id'] as String,
+    ];
+
+    await _db
+        .into(_db.orgUnitsTable)
+        .insertOnConflictUpdate(OrgUnitResource(_db).companionFromJson(json));
+    if (dataSetUids.isNotEmpty) {
+      await _db.batch((b) {
+        b.insertAllOnConflictUpdate(_db.dataSetOrgUnitsTable, [
+          for (final dsUid in dataSetUids)
+            DataSetOrgUnitsTableCompanion.insert(
+                dataSetUid: dsUid, orgUnitUid: orgUnitId),
+        ]);
+      });
+    }
+
+    return DataSetResource(_db).getByIds(dataSetUids);
   }
 
   @override

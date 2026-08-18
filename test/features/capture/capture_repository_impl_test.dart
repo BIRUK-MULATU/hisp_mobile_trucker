@@ -1,8 +1,14 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hisp_mobile_trucker/core/auth/session_service.dart';
 import 'package:hisp_mobile_trucker/core/database/app_database.dart';
+import 'package:hisp_mobile_trucker/core/network/api_client.dart';
 import 'package:hisp_mobile_trucker/features/capture/data/repositories/capture_repository_impl.dart';
 import 'package:hisp_mobile_trucker/features/capture/domain/entities/report_instance_entity.dart';
 
@@ -13,6 +19,47 @@ class _TestSession extends SessionService {
 
   @override
   AppDatabase get db => _testDb;
+}
+
+/// Replays one canned JSON response for EVERY request (fine for these
+/// tests — each one only issues a single kind of request), and
+/// records the request uris seen for assertions.
+class _CannedAdapter implements HttpClientAdapter {
+  _CannedAdapter({required this.body});
+
+  final Map<String, dynamic> body;
+  final List<Uri> requestedUris = [];
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? _,
+      Future<void>? __) async {
+    requestedUris.add(options.uri);
+    return ResponseBody.fromString(
+      jsonEncode(body),
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// Simulates being genuinely offline DESPITE a configured ApiClient —
+/// e.g. logged in previously, but no network route right now. This is
+/// the actual failure mode a non-null ApiClient does NOT rule out.
+class _ThrowingAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? _,
+      Future<void>? __) async {
+    throw DioException(
+        requestOptions: options, type: DioExceptionType.connectionError);
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 void main() {
@@ -255,6 +302,184 @@ void main() {
 
       final reports = await repository.getUserReports();
       expect([for (final r in reports) r.dataSetId], [dsB, ds1]);
+    });
+  });
+
+  group('getOrgUnitChildren — beyond the synced depth bound', () {
+    test('offline (no api): nothing locally synced means nothing shown, '
+        'no live attempt', () async {
+      // ou1 has no children in orgUnitsTable at all.
+      final children = await repository.getOrgUnitChildren(ou1);
+      expect(children, isEmpty);
+    });
+
+    test('online: falls back to a live query when nothing is synced '
+        'locally for this node', () async {
+      final adapter = _CannedAdapter(body: {
+        'organisationUnits': [
+          {
+            'id': 'healthCenter1',
+            'displayName': 'Health Center',
+            'path': '/national/$ou1/healthCenter1',
+            'children': [
+              {'id': 'x'}
+            ],
+          },
+        ],
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final children = await repo.getOrgUnitChildren(ou1);
+
+      expect(adapter.requestedUris.single.path,
+          '/api/organisationUnits.json');
+      expect(adapter.requestedUris.single.queryParameters['filter'],
+          'parent.id:eq:$ou1');
+      expect(children, hasLength(1));
+      expect(children.single.id, 'healthCenter1');
+      expect(children.single.childCount, 1,
+          reason: 'derived from the nested children[] the live query asked for');
+    });
+
+    test('a capture root\'s direct child with zero LOCAL grandchildren '
+        'still gets an expand arrow when a live check finds real ones',
+        () async {
+      // ou1 is a capture root; child1 is its direct child, synced with
+      // (correctly) zero children of its own locally — but it DOES
+      // have children on the server.
+      await (db.update(db.orgUnitsTable)..where((t) => t.uid.equals(ou1)))
+          .write(const OrgUnitsTableCompanion(isUserCaptureRoot: Value(true)));
+      const child1 = 'phcuA000001';
+      await db.into(db.orgUnitsTable).insert(
+            OrgUnitsTableCompanion.insert(
+              uid: child1,
+              name: 'PHCU A',
+              displayName: 'PHCU A',
+              parentUid: const Value(ou1),
+              path: '/$ou1/$child1',
+            ),
+          );
+
+      final adapter = _CannedAdapter(body: {
+        'organisationUnits': [
+          {'id': 'someGrandchild'},
+        ],
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final children = await repo.getOrgUnitChildren(ou1);
+
+      expect(children.single.id, child1);
+      expect(children.single.childCount, greaterThan(0),
+          reason: 'the live existence check found real grandchildren, so '
+              'the local (always-0) count must not win');
+    });
+  });
+
+  group('getDataSetsForOrgUnit — beyond the synced depth bound', () {
+    const facilityUid = 'healthCntr1';
+
+    test('online: live-fetches the facility\'s dataset assignment and '
+        'CACHES it, so a later call succeeds purely locally', () async {
+      final adapter = _CannedAdapter(body: {
+        'id': facilityUid,
+        'name': 'Health Center B',
+        'displayName': 'Health Center B',
+        'parent': {'id': ou1, 'name': 'Health Post A'},
+        'path': '/$ou1/$facilityUid',
+        'dataSets': [
+          {'id': ds1},
+        ],
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final live = await repo.getDataSetsForOrgUnit(facilityUid);
+      expect(live.map((d) => d.id), [ds1]);
+      expect(adapter.requestedUris.single.path,
+          '/api/organisationUnits/$facilityUid.json');
+
+      // Cached: the facility row and its dataset link both now exist
+      // locally, so a fresh (api-less/offline) repository sees them
+      // without any live call at all.
+      final offlineRepo = CaptureRepositoryImpl(session: _TestSession(db));
+      final cached = await offlineRepo.getDataSetsForOrgUnit(facilityUid);
+      expect(cached.map((d) => d.id), [ds1]);
+
+      final savedOrgUnit = await (db.select(db.orgUnitsTable)
+            ..where((t) => t.uid.equals(facilityUid)))
+          .getSingle();
+      expect(savedOrgUnit.parentUid, ou1);
+    });
+
+    test('offline: no api, no local assignment — falls through to the '
+        '"no metadata" handling untouched (dataset metadata IS present, '
+        'so this just returns empty, no crash)', () async {
+      final result = await repository.getDataSetsForOrgUnit(facilityUid);
+      expect(result, isEmpty);
+    });
+
+    test('a CONFIGURED api that fails with a connection error (genuinely '
+        'offline despite being logged in) degrades gracefully instead of '
+        'throwing — regression for a real bug caught in the running app',
+        () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final result = await repo.getDataSetsForOrgUnit(facilityUid);
+      expect(result, isEmpty);
+    });
+  });
+
+  group('live fallback degrades gracefully when actually offline '
+      '(configured api, but the request itself fails)', () {
+    test('getOrgUnitChildren on an unsynced node returns empty, not a '
+        'thrown exception', () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      expect(await repo.getOrgUnitChildren(ou1), isEmpty);
+    });
+
+    test('getOrgUnitChildren\'s boundary childCount check failing leaves '
+        'the local (0) count rather than throwing', () async {
+      await (db.update(db.orgUnitsTable)..where((t) => t.uid.equals(ou1)))
+          .write(const OrgUnitsTableCompanion(isUserCaptureRoot: Value(true)));
+      const child1 = 'phcuA000001';
+      await db.into(db.orgUnitsTable).insert(
+            OrgUnitsTableCompanion.insert(
+              uid: child1,
+              name: 'PHCU A',
+              displayName: 'PHCU A',
+              parentUid: const Value(ou1),
+              path: '/$ou1/$child1',
+            ),
+          );
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final children = await repo.getOrgUnitChildren(ou1);
+      expect(children.single.childCount, 0);
     });
   });
 }

@@ -243,9 +243,17 @@ class _ChartBuilderViewState extends State<ChartBuilderView> {
   }
 
   Future<void> _pickOrgUnit() async {
+    // Live, not the local capture tree: a chart can be built against
+    // any org unit in the full hierarchy, not just the ones kept
+    // locally for offline capture (see OrgUnitResource's depth bound)
+    // — the builder is already online-only end to end anyway.
     final node = await Navigator.push<OrgUnitTreeNode>(
       context,
-      MaterialPageRoute(builder: (_) => const OrgUnitFilterPage()),
+      MaterialPageRoute(
+        builder: (_) => OrgUnitFilterPage(
+          fetchChildren: _repository.getOrgUnitChildrenLive,
+        ),
+      ),
     );
     if (node != null && mounted) setState(() => _orgUnit = node);
   }
