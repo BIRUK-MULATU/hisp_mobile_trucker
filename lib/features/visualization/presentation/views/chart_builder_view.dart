@@ -7,9 +7,11 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../capture/domain/entities/org_unit_tree_node.dart';
 import '../../../capture/presentation/pages/org_unit_filter_page.dart';
-import '../../data/repositories/chart_repository_impl.dart';
+import '../../data/repositories/local_visualization_repository_impl.dart';
 import '../../domain/entities/analytics_data.dart';
 import '../../domain/entities/chart_config.dart';
+import '../../domain/repositories/local_visualization_repository.dart';
+import '../../domain/usecases/save_visualization_usecase.dart';
 import '../widgets/chart_type_selector.dart';
 import '../widgets/dhis2_chart.dart';
 import '../widgets/item_picker_sheet.dart';
@@ -18,20 +20,27 @@ import '../widgets/period_selector.dart';
 /// The Create New tab: pick a chart type, a data selection
 /// (indicator / data element / dataset), one organisation unit and a
 /// period, then Update runs analytics and previews the chart. Save
-/// puts it on the Charts tab.
+/// puts it on the Local Dashboard tab. Also doubles as the EDIT form
+/// — passing [editing] prefills every field from that saved chart and
+/// Save overwrites it in place (same id) instead of creating a new one.
 class ChartBuilderView extends StatefulWidget {
-  /// Called after a successful save so the shell can switch to the
-  /// Charts tab and refresh it.
+  /// Called after a successful save so the caller can switch tabs
+  /// and/or refresh a list.
   final VoidCallback onSaved;
 
-  const ChartBuilderView({super.key, required this.onSaved});
+  /// When set, the form starts prefilled from this saved chart and
+  /// saving updates it in place rather than creating a new one.
+  final ChartConfig? editing;
+
+  const ChartBuilderView({super.key, required this.onSaved, this.editing});
 
   @override
   State<ChartBuilderView> createState() => _ChartBuilderViewState();
 }
 
 class _ChartBuilderViewState extends State<ChartBuilderView> {
-  final _repository = ChartRepositoryImpl();
+  final _repository = LocalVisualizationRepositoryImpl();
+  late final _saveVisualization = SaveVisualizationUseCase(_repository);
   final _nameController = TextEditingController();
 
   ChartType _chartType = ChartType.column;
@@ -60,6 +69,64 @@ class _ChartBuilderViewState extends State<ChartBuilderView> {
 
   AnalyticsData? _preview;
   ChartConfig? _previewConfig;
+
+  @override
+  void initState() {
+    super.initState();
+    final editing = widget.editing;
+    if (editing == null) return;
+    _chartType = editing.chartType;
+    _dataType = editing.dataType;
+    _nameController.text = editing.name;
+    _orgUnit = OrgUnitTreeNode(
+        id: editing.orgUnitId, name: editing.orgUnitName, level: 0);
+    _period = PeriodOption(
+        kind: editing.periodKind, id: editing.periodId, label: editing.periodLabel);
+    switch (editing.dataType) {
+      case ChartDataType.indicator:
+        if (editing.groupId != null) {
+          _indicatorGroup =
+              ChartItemRef(id: editing.groupId!, name: editing.groupName ?? '');
+        }
+        _indicators = editing.items;
+      case ChartDataType.dataElement:
+        _disaggregation = editing.disaggregation ?? Disaggregation.totalsOnly;
+        if (editing.groupId != null) {
+          _deGroup =
+              ChartItemRef(id: editing.groupId!, name: editing.groupName ?? '');
+        }
+        _dataElements = _reconstructDataElements(editing.items);
+      case ChartDataType.dataSet:
+        _dataSet = editing.items.isNotEmpty ? editing.items.first : null;
+        _metric = editing.metric;
+    }
+  }
+
+  /// Best-effort rebuild of the picker's per-element/coc shape from
+  /// the flat items a saved chart stores — enough to show the right
+  /// selection and re-run the SAME query unchanged (ids round-trip
+  /// exactly; only display names are approximate until the user
+  /// re-opens the picker, which refreshes everything from the server).
+  List<DataElementWithCocs> _reconstructDataElements(
+      List<ChartItemRef> items) {
+    final byElement = <String, List<ChartItemRef>>{};
+    for (final item in items) {
+      final elementId = item.id.split('.').first;
+      (byElement[elementId] ??= []).add(item);
+    }
+    return [
+      for (final entry in byElement.entries)
+        DataElementWithCocs(
+          ref: ChartItemRef(id: entry.key, name: entry.value.first.name),
+          cocs: entry.value.first.id.contains('.')
+              ? [
+                  for (final i in entry.value)
+                    ChartItemRef(id: i.id.split('.').last, name: i.id.split('.').last),
+                ]
+              : const [],
+        ),
+    ];
+  }
 
   @override
   void dispose() {
@@ -269,10 +336,18 @@ class _ChartBuilderViewState extends State<ChartBuilderView> {
       }
       final name = _nameController.text.trim();
       final config = ChartConfig(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        // Editing keeps the original id (so Save overwrites the same
+        // chart in place) and createdAt (editing isn't recreating it).
+        id: widget.editing?.id ??
+            DateTime.now().millisecondsSinceEpoch.toString(),
         name: name.isEmpty ? _defaultName : name,
         chartType: _chartType,
         dataType: _dataType!,
+        groupId: switch (_dataType!) {
+          ChartDataType.indicator => _indicatorGroup?.id,
+          ChartDataType.dataElement => _deGroup?.id,
+          ChartDataType.dataSet => null,
+        },
         groupName: switch (_dataType!) {
           ChartDataType.indicator => _indicatorGroup?.name,
           ChartDataType.dataElement => _deGroup?.name,
@@ -287,7 +362,7 @@ class _ChartBuilderViewState extends State<ChartBuilderView> {
         periodKind: _period!.kind,
         periodId: _period!.id,
         periodLabel: _period!.label,
-        createdAt: DateTime.now(),
+        createdAt: widget.editing?.createdAt ?? DateTime.now(),
       );
       final data = await _repository.runChart(config);
       if (mounted) {
@@ -307,9 +382,9 @@ class _ChartBuilderViewState extends State<ChartBuilderView> {
   Future<void> _save() async {
     final config = _previewConfig;
     if (config == null) return;
-    await _repository.saveChart(config);
+    await _saveVisualization(config);
     if (!mounted) return;
-    _toast('Chart saved.');
+    _toast(widget.editing != null ? 'Chart updated.' : 'Chart saved.');
     widget.onSaved();
   }
 
@@ -525,7 +600,8 @@ class _ChartBuilderViewState extends State<ChartBuilderView> {
                           ),
                         ),
                         icon: const Icon(Icons.save_rounded),
-                        label: const Text('Save Chart'),
+                        label: Text(
+                            widget.editing != null ? 'Save Changes' : 'Save Chart'),
                       ),
                     ),
                   ],

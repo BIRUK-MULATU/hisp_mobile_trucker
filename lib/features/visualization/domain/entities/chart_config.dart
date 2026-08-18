@@ -1,7 +1,9 @@
 /// A user-built chart: everything needed to (re)run its analytics
 /// query and render it. Persisted as JSON in the per-user database's
 /// syncInfo store, so saved charts survive restarts without a schema
-/// migration.
+/// migration. Purely local — this configuration is never pushed to
+/// the DHIS2 server as a Visualization object; only the analytics
+/// RESULT it produces gets cached for offline viewing.
 library;
 
 /// The chart types the builder offers, mapped to the DHIS2
@@ -57,12 +59,6 @@ enum DataSetMetric {
 
 enum PeriodKind { relative, fixed }
 
-/// Push state of a chart's DHIS2 Visualization object — separate from
-/// [SyncState] in app_database.dart (that one tracks data VALUES; this
-/// tracks a metadata OBJECT, created once then left alone). Stored by
-/// name, not index, so this JSON blob stays readable across changes.
-enum ChartSyncState { pending, synced, error }
-
 /// One selectable metadata item (indicator, data element, operand,
 /// data set, org unit…): the uid that goes on the wire plus the name
 /// shown to the user.
@@ -86,8 +82,10 @@ class ChartConfig {
   final ChartType chartType;
   final ChartDataType dataType;
 
-  /// The indicator/data element group the items came from — only for
-  /// showing where the selection lives; not part of the query.
+  /// The indicator/data element group the items came from. [groupId]
+  /// is what lets the builder re-fetch that group's items on edit;
+  /// [groupName] is just for display and not part of the query.
+  final String? groupId;
   final String? groupName;
 
   /// The dx selection, ready for analytics: indicator uids, data
@@ -109,24 +107,12 @@ class ChartConfig {
 
   final DateTime createdAt;
 
-  /// Push state of this chart's DHIS2 Visualization object. Freshly
-  /// built charts default to [ChartSyncState.pending] — the auto-sync
-  /// path (same one that pushes data values/completions) picks them up
-  /// the next time the phone is online.
-  final ChartSyncState syncState;
-
-  /// Set once the server has accepted a CREATE, so later pushes PUT an
-  /// update to the same object instead of creating a duplicate.
-  final String? serverVisualizationId;
-
-  /// Human-readable rejection reason from the last failed push.
-  final String? syncError;
-
   const ChartConfig({
     required this.id,
     required this.name,
     required this.chartType,
     required this.dataType,
+    this.groupId,
     this.groupName,
     required this.items,
     this.disaggregation,
@@ -137,38 +123,7 @@ class ChartConfig {
     required this.periodId,
     required this.periodLabel,
     required this.createdAt,
-    this.syncState = ChartSyncState.pending,
-    this.serverVisualizationId,
-    this.syncError,
   });
-
-  /// [syncError] is NOT defaulted from `this` — every call site sets it
-  /// explicitly (a message on failure, null to clear it on success), so
-  /// there's no way for a stale error to survive a state change.
-  ChartConfig copyWith({
-    ChartSyncState? syncState,
-    String? serverVisualizationId,
-    String? syncError,
-  }) =>
-      ChartConfig(
-        id: id,
-        name: name,
-        chartType: chartType,
-        dataType: dataType,
-        groupName: groupName,
-        items: items,
-        disaggregation: disaggregation,
-        metric: metric,
-        orgUnitId: orgUnitId,
-        orgUnitName: orgUnitName,
-        periodKind: periodKind,
-        periodId: periodId,
-        periodLabel: periodLabel,
-        createdAt: createdAt,
-        syncState: syncState ?? this.syncState,
-        serverVisualizationId: serverVisualizationId ?? this.serverVisualizationId,
-        syncError: syncError,
-      );
 
   /// The analytics dx dimension items for this chart.
   List<String> get dxItems => [
@@ -185,6 +140,7 @@ class ChartConfig {
         'name': name,
         'chartType': chartType.dhis2Type,
         'dataType': dataType.name,
+        if (groupId != null) 'groupId': groupId,
         if (groupName != null) 'groupName': groupName,
         'items': [for (final i in items) i.toJson()],
         if (disaggregation != null) 'disaggregation': disaggregation!.name,
@@ -195,10 +151,6 @@ class ChartConfig {
         'periodId': periodId,
         'periodLabel': periodLabel,
         'createdAt': createdAt.toIso8601String(),
-        'syncState': syncState.name,
-        if (serverVisualizationId != null)
-          'serverVisualizationId': serverVisualizationId,
-        if (syncError != null) 'syncError': syncError,
       };
 
   factory ChartConfig.fromJson(Map<String, dynamic> json) => ChartConfig(
@@ -207,6 +159,7 @@ class ChartConfig {
         chartType: ChartType.fromDhis2((json['chartType'] ?? '') as String),
         dataType: ChartDataType.values.asNameMap()[json['dataType']] ??
             ChartDataType.indicator,
+        groupId: json['groupId'] as String?,
         groupName: json['groupName'] as String?,
         items: [
           for (final i in (json['items'] as List? ?? const []))
@@ -223,9 +176,5 @@ class ChartConfig {
         periodLabel: (json['periodLabel'] ?? '') as String,
         createdAt: DateTime.tryParse((json['createdAt'] ?? '') as String) ??
             DateTime.now(),
-        syncState: ChartSyncState.values.asNameMap()[json['syncState']] ??
-            ChartSyncState.pending,
-        serverVisualizationId: json['serverVisualizationId'] as String?,
-        syncError: json['syncError'] as String?,
       );
 }

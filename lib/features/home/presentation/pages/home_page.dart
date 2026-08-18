@@ -238,10 +238,12 @@ class _HomePageState extends State<HomePage> {
         showFilterButton: _mode == HomeMode.capture,
         isSyncing: _isSyncing,
         // Search targets whichever mode is active: org units in
-        // Capture, saved charts in Visualization.
+        // Capture, or whichever side of the Dashboards tab's own
+        // Server/Local toggle is showing in Visualization (Create New
+        // has no list to filter).
         searchHint: _mode == HomeMode.capture
             ? 'Search organisation units...'
-            : 'Search charts...',
+            : 'Search dashboards or charts...',
         onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
         onSyncTap: _onSyncTapped,
         onListViewTap: () => setState(() => _showFilters = !_showFilters),

@@ -15,6 +15,12 @@ class EthiopianPeriodService {
 
   /// Periods for the picker of one data set: most recent [count],
   /// Ethiopian-labelled, each carrying open/expired/notYetOpen status.
+  ///
+  /// Monthly datasets additionally open their NEXT period early — from
+  /// the 21st of the current Ethiopian month — on top of the current
+  /// month staying open until its own expiry, so a facility can start
+  /// entering next month's data a few days ahead instead of waiting
+  /// for the 1st. E.g. Hamle 21 onward, Nehase is already selectable.
   Future<List<SelectablePeriod>> periodsFor({
     required DataSet dataSet,
     int count = 12,
@@ -25,6 +31,25 @@ class EthiopianPeriodService {
     );
 
     final result = <SelectablePeriod>[];
+    if (dataSet.periodType.toUpperCase() == 'MONTHLY') {
+      final earlyOpen = _earlyOpenNextMonth();
+      if (earlyOpen != null) {
+        final (start, end) = _gregorianBounds(earlyOpen.id);
+        final status = await _access.statusOf(
+          periodStart: start,
+          periodEnd: end,
+          expiryDays: dataSet.expiryDays,
+          openFuturePeriods: dataSet.openFuturePeriods,
+          periodsAhead: 0,
+        );
+        result.add(SelectablePeriod(
+          id: earlyOpen.id,
+          labelAmharic: earlyOpen.label,
+          labelEnglish: earlyOpen.labelEnglish,
+          status: status,
+        ));
+      }
+    }
     for (var i = 0; i < periods.length; i++) {
       final p = periods[i];
       final (start, end) = _gregorianBounds(p.id);
@@ -77,6 +102,35 @@ class EthiopianPeriodService {
     return periods.first.id;
   }
 
+  /// The next Ethiopian month's period, if today is on/after the 21st
+  /// of the current month — null otherwise. Ethiopian months 1–12 are
+  /// always exactly 30 days, so "the 21st" lands 10 days before every
+  /// ordinary month-end regardless of which month it is; Pagume (13)
+  /// never reaches day 21 (it only has 5 or 6), so this naturally
+  /// never fires heading into it. No distinct Pagume period is ever
+  /// produced here either (see EthiopianCalendar._generateMonthlyPeriods)
+  /// — Nehase (12) is followed directly by next year's Meskerem (1).
+  EthiopianPeriod? _earlyOpenNextMonth() {
+    final ethToday = EthiopianCalendar.today();
+    if (ethToday.day < 21) return null;
+    var nextMonth = ethToday.month + 1;
+    var nextYear = ethToday.year;
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear++;
+    }
+    final id = '$nextYear${nextMonth.toString().padLeft(2, '0')}';
+    return EthiopianPeriod(
+      id: id,
+      label: '${EthiopianCalendar.monthNamesAmharic[nextMonth - 1]} $nextYear',
+      labelEnglish:
+          '${EthiopianCalendar.monthNamesEnglish[nextMonth - 1]} $nextYear',
+      year: nextYear,
+      month: nextMonth,
+      type: PeriodType.monthly,
+    );
+  }
+
   /// Ungated period list for pickers without a dataset context
   /// (e.g. metadata not synced yet) — everything selectable.
   static List<SelectablePeriod> plainPeriodsFor({
@@ -122,13 +176,22 @@ class EthiopianPeriodService {
         return (day, day);
       }
     }
-    // Monthly: yyyyMM (Ethiopian year, months 01–13 incl. Pagume)
+    // Monthly: yyyyMM. No distinct Pagume (13) period is ever
+    // generated (see EthiopianCalendar._generateMonthlyPeriods) — its
+    // ~5-6 days report under Meskerem instead, so Meskerem's (month 1)
+    // window starts at Pagume 1 of the PREVIOUS EC year rather than
+    // true Meskerem 1. Nehase (12) needs no change: it already ends
+    // right where Pagume begins. `m >= 13` only remains reachable for
+    // a legacy stored id from before this fix.
     final monthly = RegExp(r'^(\d{4})(\d{2})$').firstMatch(id);
     if (monthly != null) {
       final y = int.parse(monthly.group(1)!);
       final m = int.parse(monthly.group(2)!);
       final end = m >= 13 ? dayBefore(y + 1, 1) : dayBefore(y, m + 1);
-      return (EthiopianCalendar.toGregorian(y, m, 1), end);
+      final start = m == 1
+          ? EthiopianCalendar.toGregorian(y - 1, 13, 1)
+          : EthiopianCalendar.toGregorian(y, m, 1);
+      return (start, end);
     }
     // QuarterlyNov: yyyyNovQn — EFY quarters, Hamle-anchored:
     // Q1 Hamle(y-1)–Meskerem(y) incl. Pagume, Q2 Tikimt–Tahsas,

@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import '../../features/visualization/data/repositories/chart_repository_impl.dart';
-import '../../features/visualization/domain/entities/chart_config.dart';
 import '../auth/app_session.dart';
 import '../data/completeness.dart';
 import '../data/data_value_push.dart';
@@ -54,11 +52,8 @@ class DriftSyncManager implements SyncManager {
       await _repairDuplicateDefaultCombos(db, api);
       final pushed = await _pushDataValues(db);
       final completions = await CompletenessSync(db, api).pushPending();
-      final charts = await ChartRepositoryImpl(session: session.service, api: api)
-          .pushPendingCharts();
-      if (pushed > 0 || completions > 0 || charts > 0) {
-        log.i('[autoSync] pushed $pushed values, $completions completions, '
-            '$charts charts');
+      if (pushed > 0 || completions > 0) {
+        log.i('[autoSync] pushed $pushed values, $completions completions');
       }
     } finally {
       _running = false;
@@ -74,16 +69,6 @@ class DriftSyncManager implements SyncManager {
 
     if (await DataValueStore(db).pendingCount() > 0) return true;
     if ((await CompletenessStore(db).pending()).isNotEmpty) return true;
-
-    final api = session.api;
-    if (api != null) {
-      final charts =
-          await ChartRepositoryImpl(session: session.service, api: api)
-              .getSavedCharts();
-      if (charts.any((c) => c.syncState != ChartSyncState.synced)) {
-        return true;
-      }
-    }
     return false;
   }
 

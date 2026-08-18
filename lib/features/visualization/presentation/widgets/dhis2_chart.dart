@@ -6,9 +6,15 @@ import '../../../../shared/theme/app_text_styles.dart';
 import '../../domain/entities/analytics_data.dart';
 
 /// Renders one DHIS2 visualization natively. The DHIS2 type decides
-/// the chart: COLUMN/BAR families → bars, LINE/AREA → lines,
-/// PIE → pie, SINGLE_VALUE/GAUGE → the number, everything else
-/// (PIVOT_TABLE, unknown types) → a plain data table.
+/// the chart: COLUMN/BAR families (incl. YEAR_OVER_YEAR_COLUMN) →
+/// bars, LINE/AREA (incl. YEAR_OVER_YEAR_LINE) → lines, PIE → pie,
+/// SINGLE_VALUE/GAUGE → the number, everything else (PIVOT_TABLE,
+/// SCATTER, RADAR, unknown types) → a plain data table — every
+/// visualization type is at least representable this way, never
+/// dropped, since [AnalyticsData] already generalizes to N series ×
+/// N categories regardless of how many dimensions the source
+/// visualization actually varies (see
+/// ChartRepositoryImpl._reshapeGenericGrid for remote visualizations).
 class Dhis2Chart extends StatelessWidget {
   final AnalyticsData data;
 
@@ -61,13 +67,16 @@ class Dhis2Chart extends StatelessWidget {
           case 'LINE':
           case 'AREA':
           case 'STACKED_AREA':
+          case 'YEAR_OVER_YEAR_LINE':
             return _Lines(
               data: data,
-              filled: data.type.toUpperCase() != 'LINE',
+              filled: data.type.toUpperCase() != 'LINE' &&
+                  data.type.toUpperCase() != 'YEAR_OVER_YEAR_LINE',
               scale: scale,
             );
           case 'COLUMN':
           case 'STACKED_COLUMN':
+          case 'YEAR_OVER_YEAR_COLUMN':
             return _Bars(data: data, scale: scale);
           case 'BAR':
           case 'STACKED_BAR':

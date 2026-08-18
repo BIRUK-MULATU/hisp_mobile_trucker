@@ -9,7 +9,7 @@ import 'package:hisp_mobile_trucker/core/auth/session_service.dart';
 import 'package:hisp_mobile_trucker/core/database/app_database.dart';
 import 'package:hisp_mobile_trucker/core/errors/exceptions.dart';
 import 'package:hisp_mobile_trucker/core/network/api_client.dart';
-import 'package:hisp_mobile_trucker/features/visualization/data/repositories/chart_repository_impl.dart';
+import 'package:hisp_mobile_trucker/features/visualization/data/repositories/local_visualization_repository_impl.dart';
 import 'package:hisp_mobile_trucker/features/visualization/domain/entities/chart_config.dart';
 
 /// A session whose database is the test's in-memory one — no login.
@@ -58,32 +58,6 @@ class _ThrowingAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-/// Returns one canned status/body for every request and records the
-/// last request's method, path and body for assertions.
-class _RecordingAdapter implements HttpClientAdapter {
-  _RecordingAdapter({required this.statusCode, required this.body});
-
-  final int statusCode;
-  final Map<String, dynamic> body;
-  RequestOptions? lastRequest;
-
-  @override
-  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? _,
-      Future<void>? __) async {
-    lastRequest = options;
-    return ResponseBody.fromString(
-      jsonEncode(body),
-      statusCode,
-      headers: {
-        Headers.contentTypeHeader: ['application/json'],
-      },
-    );
-  }
-
-  @override
-  void close({bool force = false}) {}
-}
-
 void main() {
   late AppDatabase db;
 
@@ -123,6 +97,7 @@ void main() {
         name: 'My chart',
         chartType: ChartType.gauge,
         dataType: ChartDataType.dataElement,
+        groupId: 'deGroup01',
         groupName: 'RMNCH',
         items: const [
           ChartItemRef(id: 'de001.coc01', name: 'ANC visits <15'),
@@ -143,6 +118,7 @@ void main() {
       expect(restored.name, original.name);
       expect(restored.chartType, ChartType.gauge);
       expect(restored.dataType, ChartDataType.dataElement);
+      expect(restored.groupId, 'deGroup01');
       expect(restored.groupName, 'RMNCH');
       expect(restored.items.single.id, 'de001.coc01');
       expect(restored.disaggregation, Disaggregation.detailsOnly);
@@ -163,7 +139,7 @@ void main() {
 
   group('saved charts', () {
     test('save, list newest-first, delete', () async {
-      final repo = ChartRepositoryImpl(session: _TestSession(db));
+      final repo = LocalVisualizationRepositoryImpl(session: _TestSession(db));
 
       await repo.saveChart(config(id: 'a'));
       await repo.saveChart(config(id: 'b'));
@@ -176,16 +152,44 @@ void main() {
       expect([for (final c in charts) c.id], ['a']);
     });
 
+    test('saving a config with an existing id overwrites it in place '
+        '(this is how editing persists)', () async {
+      final repo = LocalVisualizationRepositoryImpl(session: _TestSession(db));
+      await repo.saveChart(config(id: 'a'));
+
+      final edited = ChartConfig(
+        id: 'a',
+        name: 'Renamed chart',
+        chartType: ChartType.pie,
+        dataType: ChartDataType.indicator,
+        items: const [ChartItemRef(id: 'indicator02', name: 'Edited item')],
+        orgUnitId: 'orgUnit0002',
+        orgUnitName: 'A different facility',
+        periodKind: PeriodKind.relative,
+        periodId: 'THIS_YEAR',
+        periodLabel: 'This Year',
+        createdAt: DateTime(2026, 7, 24), // original createdAt preserved
+      );
+      await repo.saveChart(edited);
+
+      final charts = await repo.getSavedCharts();
+      expect(charts, hasLength(1));
+      expect(charts.single.name, 'Renamed chart');
+      expect(charts.single.chartType, ChartType.pie);
+      expect(charts.single.items.single.id, 'indicator02');
+    });
+
     test('unreadable stored JSON degrades to an empty list', () async {
-      await db.setSyncInfo(ChartRepositoryImpl.savedChartsKey, 'not json');
-      final repo = ChartRepositoryImpl(session: _TestSession(db));
+      await db.setSyncInfo(
+          LocalVisualizationRepositoryImpl.savedChartsKey, 'not json');
+      final repo = LocalVisualizationRepositoryImpl(session: _TestSession(db));
       expect(await repo.getSavedCharts(), isEmpty);
     });
   });
 
   group('analytics', () {
     test('query parameters put dx+pe in dimensions and ou in filter', () {
-      final params = ChartRepositoryImpl.analyticsParams(config(
+      final params = LocalVisualizationRepositoryImpl.analyticsParams(config(
         items: const [
           ChartItemRef(id: 'ind01', name: 'A'),
           ChartItemRef(id: 'ind02', name: 'B'),
@@ -224,8 +228,8 @@ void main() {
           baseUrl: 'https://example.invalid', username: 'u', password: 'p');
       client.dio.httpClientAdapter = adapter;
 
-      final repo =
-          ChartRepositoryImpl(session: _TestSession(db), api: client);
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
       final data = await repo.runChart(config());
 
       expect(adapter.lastUri!.path, '/api/analytics.json');
@@ -260,8 +264,8 @@ void main() {
       final client = ApiClient.withBasicAuth(
           baseUrl: 'https://example.invalid', username: 'u', password: 'p');
       client.dio.httpClientAdapter = _CannedAdapter(body: cannedBody());
-      final repo =
-          ChartRepositoryImpl(session: _TestSession(db), api: client);
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
 
       await repo.runChart(config());
 
@@ -278,8 +282,8 @@ void main() {
       final client = ApiClient.withBasicAuth(
           baseUrl: 'https://example.invalid', username: 'u', password: 'p');
       client.dio.httpClientAdapter = _CannedAdapter(body: cannedBody());
-      final repo =
-          ChartRepositoryImpl(session: _TestSession(db), api: client);
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
       await repo.runChart(config());
 
       final result =
@@ -293,8 +297,8 @@ void main() {
       final client = ApiClient.withBasicAuth(
           baseUrl: 'https://example.invalid', username: 'u', password: 'p');
       client.dio.httpClientAdapter = _ThrowingAdapter();
-      final repo =
-          ChartRepositoryImpl(session: _TestSession(db), api: client);
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
 
       expect(
         () => repo.loadChart(config(), skipLiveAttempt: true),
@@ -306,8 +310,8 @@ void main() {
       final client = ApiClient.withBasicAuth(
           baseUrl: 'https://example.invalid', username: 'u', password: 'p');
       client.dio.httpClientAdapter = _CannedAdapter(body: cannedBody());
-      final repo =
-          ChartRepositoryImpl(session: _TestSession(db), api: client);
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
       await repo.saveChart(config());
       await repo.runChart(config());
 
@@ -317,159 +321,6 @@ void main() {
         () => repo.loadChart(config(), skipLiveAttempt: true),
         throwsA(isA<NetworkException>()),
       );
-    });
-  });
-
-  group('push to server', () {
-    test('creates a new Visualization and stores the server uid', () async {
-      final adapter = _RecordingAdapter(statusCode: 201, body: {
-        'httpStatus': 'Created',
-        'response': {'uid': 'viz00000001'},
-      });
-      final client = ApiClient.withBasicAuth(
-          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
-      client.dio.httpClientAdapter = adapter;
-      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
-      await repo.saveChart(config());
-
-      final pushed = await repo.pushPendingCharts();
-
-      expect(pushed, 1);
-      expect(adapter.lastRequest!.method, 'POST');
-      expect(adapter.lastRequest!.path, '/api/visualizations.json');
-      final saved = (await repo.getSavedCharts()).single;
-      expect(saved.syncState, ChartSyncState.synced);
-      expect(saved.serverVisualizationId, 'viz00000001');
-    });
-
-    test('already-synced charts are not pushed again', () async {
-      final adapter = _ThrowingAdapter();
-      final client = ApiClient.withBasicAuth(
-          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
-      client.dio.httpClientAdapter = adapter;
-      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
-      await repo.saveChart(config().copyWith(
-        syncState: ChartSyncState.synced,
-        serverVisualizationId: 'viz00000001',
-      ));
-
-      final pushed = await repo.pushPendingCharts();
-      expect(pushed, 0);
-    });
-
-    test('a previously-created chart PUTs to its own object on a later push',
-        () async {
-      final adapter = _RecordingAdapter(statusCode: 200, body: {
-        'httpStatus': 'OK',
-        'response': {},
-      });
-      final client = ApiClient.withBasicAuth(
-          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
-      client.dio.httpClientAdapter = adapter;
-      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
-      await repo.saveChart(config().copyWith(
-        syncState: ChartSyncState.error,
-        serverVisualizationId: 'vizExisting1',
-        syncError: 'stale error to be cleared',
-      ));
-
-      await repo.pushPendingCharts();
-
-      expect(adapter.lastRequest!.method, 'PUT');
-      expect(adapter.lastRequest!.path, '/api/visualizations/vizExisting1.json');
-      final saved = (await repo.getSavedCharts()).single;
-      expect(saved.syncState, ChartSyncState.synced);
-      expect(saved.serverVisualizationId, 'vizExisting1');
-      expect(saved.syncError, isNull);
-    });
-
-    test('server rejection settles the chart as error with the message',
-        () async {
-      final adapter = _RecordingAdapter(statusCode: 409, body: {
-        'httpStatus': 'Conflict',
-        'message': 'Object referenced by another object.',
-      });
-      final client = ApiClient.withBasicAuth(
-          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
-      client.dio.httpClientAdapter = adapter;
-      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
-      await repo.saveChart(config());
-
-      final pushed = await repo.pushPendingCharts();
-
-      expect(pushed, 0);
-      final saved = (await repo.getSavedCharts()).single;
-      expect(saved.syncState, ChartSyncState.error);
-      expect(saved.syncError, 'Object referenced by another object.');
-    });
-
-    test('transport failure leaves the chart pending for the next attempt',
-        () async {
-      final client = ApiClient.withBasicAuth(
-          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
-      client.dio.httpClientAdapter = _ThrowingAdapter();
-      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
-      await repo.saveChart(config());
-
-      final pushed = await repo.pushPendingCharts();
-
-      expect(pushed, 0);
-      final saved = (await repo.getSavedCharts()).single;
-      expect(saved.syncState, ChartSyncState.pending);
-    });
-
-    test(
-        'dataset metrics nest dataSet+metric (verified against a live '
-        '2.40.1 server’s own saved visualizations)', () async {
-      final adapter = _RecordingAdapter(statusCode: 201, body: {
-        'response': {'uid': 'viz1'}
-      });
-      final client = ApiClient.withBasicAuth(
-          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
-      client.dio.httpClientAdapter = adapter;
-      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
-
-      await repo.saveChart(config(
-        dataType: ChartDataType.dataSet,
-        items: const [ChartItemRef(id: 'dataSet0001', name: 'HMIS Monthly')],
-        metric: DataSetMetric.expectedReports,
-      ));
-      await repo.pushPendingCharts();
-
-      final body = adapter.lastRequest!.data as Map<String, dynamic>;
-      final items = body['dataDimensionItems'] as List;
-      expect(items.single['dataDimensionItemType'], 'REPORTING_RATE');
-      final reportingRate = items.single['reportingRate'] as Map;
-      expect((reportingRate['dataSet'] as Map)['id'], 'dataSet0001');
-      expect(reportingRate['metric'], 'EXPECTED_REPORTS');
-
-      // Confirmed live: columns[].items carries the PLAIN dataset id,
-      // never a composite "dataSet.METRIC" string.
-      final columns = (body['columns'] as List).single as Map;
-      expect(columns['items'], [
-        {'id': 'dataSet0001'}
-      ]);
-    });
-
-    test('indicators and totals-only data elements nest a plain id',
-        () async {
-      final adapter = _RecordingAdapter(statusCode: 201, body: {
-        'response': {'uid': 'viz1'}
-      });
-      final client = ApiClient.withBasicAuth(
-          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
-      client.dio.httpClientAdapter = adapter;
-      final repo = ChartRepositoryImpl(session: _TestSession(db), api: client);
-
-      await repo.saveChart(config(items: const [
-        ChartItemRef(id: 'indicator01', name: 'ANC 1st visit'),
-      ]));
-      await repo.pushPendingCharts();
-
-      final body = adapter.lastRequest!.data as Map<String, dynamic>;
-      final item = (body['dataDimensionItems'] as List).single as Map;
-      expect(item['dataDimensionItemType'], 'INDICATOR');
-      expect((item['indicator'] as Map)['id'], 'indicator01');
     });
   });
 }

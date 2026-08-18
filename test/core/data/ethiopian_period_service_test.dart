@@ -1,6 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:hisp_mobile_trucker/core/data/ethiopian_calendar.dart';
 import 'package:hisp_mobile_trucker/core/data/ethiopian_period_service.dart';
 import 'package:hisp_mobile_trucker/core/data/period_access.dart';
 import 'package:hisp_mobile_trucker/core/database/app_database.dart';
@@ -51,6 +52,38 @@ void main() {
     final periods = await EthiopianPeriodService(db)
         .periodsFor(dataSet: dataSet('Monthly', expiryDays: 0), count: 12);
     expect(periods.every((p) => p.isOpen), isTrue);
+  });
+
+  test(
+      'monthly periods open the NEXT month early once today is the 21st or '
+      'later (e.g. Nehase opens on Hamle 21) — and never emit a distinct '
+      'Pagume (13) period, since this server has none', () async {
+    final periods = await EthiopianPeriodService(db)
+        .periodsFor(dataSet: dataSet('Monthly'), count: 12);
+    final ethToday = EthiopianCalendar.today();
+
+    // Pagume (month 13) only ever has 5-6 days, so day >= 21 can only
+    // happen for an ordinary month (1-12) — the early-open branch
+    // never has to consider wrapping out of Pagume itself.
+    if (ethToday.day >= 21) {
+      final nextMonth = ethToday.month == 12 ? 1 : ethToday.month + 1;
+      final nextYear = ethToday.month == 12 ? ethToday.year + 1 : ethToday.year;
+      final expectedId =
+          '$nextYear${nextMonth.toString().padLeft(2, '0')}';
+      expect(periods.first.id, expectedId,
+          reason: 'on/after the 21st, the next month should be prepended');
+      expect(periods.first.isOpen, isTrue);
+    } else {
+      // Within Pagume itself (month 13, always < day 21), "today"
+      // normalizes to the upcoming Meskerem instead of a "…13" id.
+      final expectedId = ethToday.month == 13
+          ? '${ethToday.year + 1}01'
+          : '${ethToday.year}${ethToday.month.toString().padLeft(2, '0')}';
+      expect(periods.first.id, expectedId,
+          reason: 'before the 21st, only the current month should lead');
+    }
+    expect(periods.any((p) => p.id.endsWith('13')), isFalse,
+        reason: 'no period id should ever claim a distinct Pagume month');
   });
 
   group('statusForPeriod', () {

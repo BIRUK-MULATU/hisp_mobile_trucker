@@ -1,7 +1,5 @@
 import 'dart:convert';
 
-import 'package:dio/dio.dart';
-
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/auth/session_service.dart';
 import '../../../../core/database/app_database.dart';
@@ -9,44 +7,16 @@ import '../../../../core/errors/exceptions.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/app_logger.dart';
 import '../../domain/entities/analytics_data.dart';
-import '../../domain/entities/chart_config.dart';
+import '../../domain/entities/chart_load_result.dart';
+import '../../domain/entities/dashboard_ref.dart';
+import '../../domain/entities/remote_visualization.dart';
 
-/// A data element together with its category option combos, so the
-/// builder can expand a "Details Only" selection into `de.coc`
-/// operand items without another round-trip.
-class DataElementWithCocs {
-  final ChartItemRef ref;
-  final List<ChartItemRef> cocs;
-
-  const DataElementWithCocs({required this.ref, required this.cocs});
-}
-
-/// Result of an offline-aware chart load — see [ChartRepositoryImpl.loadChart].
-class ChartLoadResult {
-  final AnalyticsData data;
-
-  /// True when [data] came from the local cache rather than a live
-  /// query — the UI must say so, since it can be stale.
-  final bool isFromCache;
-
-  /// When [isFromCache], the moment that result was captured.
-  final DateTime? cachedAt;
-
-  const ChartLoadResult(
-      {required this.data, required this.isFromCache, this.cachedAt});
-}
-
-/// The chart builder's data side: metadata pickers straight from the
-/// API (the builder itself is online-only — picking dimensions needs
-/// the server), the analytics query built from a ChartConfig, and the
-/// saved-chart list persisted as JSON under one syncInfo key in the
-/// per-user database (no schema change, so no migration).
-///
-/// VIEWING a saved chart is NOT online-only: [loadChart] caches every
-/// successful query result (also under syncInfo, one key per chart) so
-/// reopening it offline still shows the last-known numbers.
+/// The Server Dashboard side: browsing DHIS2 WebApp-authored
+/// dashboards and their visualizations, entirely read-only. This app
+/// never creates, edits, or pushes anything to these server objects —
+/// see [LocalVisualizationRepositoryImpl] for the separate, purely
+/// local charts built with Create New / Local Dashboard.
 class ChartRepositoryImpl {
-  static const savedChartsKey = 'savedCharts';
   static String _cacheKey(String chartId) => 'chartCache_$chartId';
 
   final SessionService _session;
@@ -67,122 +37,150 @@ class ChartRepositoryImpl {
     return api;
   }
 
-  // ── Metadata for the builder ───────────────────────────────────
+  // ── Server-side (WebApp) visualizations ─────────────────────────
+  //
+  // Read-only: nothing fetched here is ever written to the local
+  // chart container or cached like [LocalVisualizationRepositoryImpl]
+  // does for the user's own charts — these objects belong to the
+  // server, not the device.
 
-  Future<List<ChartItemRef>> getIndicatorGroups() =>
-      _refList('/api/indicatorGroups.json', 'indicatorGroups');
-
-  Future<List<ChartItemRef>> getIndicatorsInGroup(String groupId) =>
-      _nestedRefList('/api/indicatorGroups/$groupId.json', 'indicators');
-
-  Future<List<ChartItemRef>> getDataElementGroups() =>
-      _refList('/api/dataElementGroups.json', 'dataElementGroups');
-
-  /// Aggregatable data elements of one group, each with its COCs.
-  Future<List<DataElementWithCocs>> getDataElementsInGroup(
-      String groupId) async {
-    final res = await _api
-        .get('/api/dataElementGroups/$groupId.json', queryParameters: {
-      'fields': 'dataElements[id,displayName,domainType,'
-          'categoryCombo[categoryOptionCombos[id,displayName]]]',
+  /// Every visualization the current user can see on the server,
+  /// newest concerns aside — just a flat, alphabetical reference list
+  /// for the Charts screen to merge in alongside local charts.
+  Future<List<RemoteVisualizationRef>> getServerVisualizations() async {
+    final res = await _api.get('/api/visualizations.json', queryParameters: {
+      'fields': 'id,name,type',
+      'paging': 'false',
     });
-    final data = res.data as Map<String, dynamic>;
-    final elements =
-        (data['dataElements'] as List? ?? const []).cast<Map<String, dynamic>>();
-    final result = <DataElementWithCocs>[
-      for (final de in elements)
-        if (de['domainType'] != 'TRACKER')
-          DataElementWithCocs(
-            ref: ChartItemRef(
-              id: de['id'] as String,
-              name: (de['displayName'] ?? '') as String,
-            ),
-            cocs: [
-              for (final coc in ((de['categoryCombo']
-                          as Map<String, dynamic>?)?['categoryOptionCombos']
-                      as List? ??
-                  const []))
-                ChartItemRef(
-                  id: (coc as Map)['id'] as String,
-                  name: (coc['displayName'] ?? '') as String,
-                ),
-            ],
-          ),
+    final items = ((res.data as Map<String, dynamic>)['visualizations']
+                as List? ??
+            const [])
+        .cast<Map<String, dynamic>>();
+    final refs = [
+      for (final i in items)
+        RemoteVisualizationRef(
+          id: i['id'] as String,
+          name: (i['name'] ?? '') as String,
+          type: (i['type'] ?? '') as String,
+        ),
     ];
-    result.sort((a, b) => a.ref.name.compareTo(b.ref.name));
+    refs.sort((a, b) => a.name.compareTo(b.name));
+    return refs;
+  }
+
+  /// Runs a WebApp-authored visualization's OWN query, whatever its
+  /// type — this app doesn't restrict which DHIS2 visualization types
+  /// it will fetch or render. `columns`/`rows` are the dimensions that
+  /// VARY in the result (each becomes part of the series/category
+  /// key); `filters` are pinned and aggregated away, exactly as the
+  /// DHIS2 Data Visualizer treats them. That distinction matters for
+  /// correctness, not just chart type: e.g. a SINGLE_VALUE's `pe`
+  /// filter (say LAST_12_MONTHS) should sum to one number, while a
+  /// PIVOT_TABLE's `pe` on rows should stay broken out period by
+  /// period — collapsing one into the other silently changes the
+  /// numbers, not just the picture. Always attempts a live query; the
+  /// result is cached (same store as this app's own charts, keyed by
+  /// the visualization's id) purely so [loadServerVisualization] can
+  /// fall back to it offline — the visualization's own DEFINITION is
+  /// never cached or stored locally, only the last analytics answer.
+  Future<AnalyticsData> runServerVisualization(
+      RemoteVisualizationRef ref) async {
+    final metaRes =
+        await _api.get('/api/visualizations/${ref.id}.json', queryParameters: {
+      'fields': 'id,name,type,'
+          'columns[dimension,items[id,displayName]],'
+          'rows[dimension,items[id,displayName]],'
+          'filters[dimension,items[id,displayName]]',
+    });
+    final viz = metaRes.data as Map<String, dynamic>;
+    final columnAxes =
+        (viz['columns'] as List? ?? const []).cast<Map<String, dynamic>>();
+    final rowAxes =
+        (viz['rows'] as List? ?? const []).cast<Map<String, dynamic>>();
+    final filterAxes =
+        (viz['filters'] as List? ?? const []).cast<Map<String, dynamic>>();
+
+    final dimensions = <String>[];
+    final filters = <String>[];
+    final localNames = <String, String>{};
+    final columnDims = <String>[];
+    final rowDims = <String>[];
+
+    // One axis entry ({dimension, items}) → its query param + which
+    // varying-dimension list (if any) it feeds; shared so columns and
+    // rows are handled identically apart from which list they append
+    // to, and names are collected from every axis the same way.
+    void addAxis(Map<String, dynamic> axis, List<String>? varyingInto) {
+      final dim = axis['dimension'] as String? ?? '';
+      final items =
+          (axis['items'] as List? ?? const []).cast<Map<String, dynamic>>();
+      if (dim.isEmpty || items.isEmpty) return;
+      final ids = items.map((i) => i['id'] as String).join(';');
+      for (final i in items) {
+        localNames[i['id'] as String] = (i['displayName'] ?? '') as String;
+      }
+      if (varyingInto != null) {
+        varyingInto.add(dim);
+        dimensions.add('$dim:$ids');
+      } else {
+        filters.add('$dim:$ids');
+      }
+    }
+
+    for (final axis in columnAxes) {
+      addAxis(axis, columnDims);
+    }
+    for (final axis in rowAxes) {
+      addAxis(axis, rowDims);
+    }
+    for (final axis in filterAxes) {
+      addAxis(axis, null);
+    }
+
+    final gridRes = await _api.get('/api/analytics.json', queryParameters: {
+      'dimension': dimensions,
+      if (filters.isNotEmpty) 'filter': filters,
+      'includeMetadataDetails': 'false',
+    });
+
+    final result = _reshapeGenericGrid(
+      gridRes.data as Map<String, dynamic>,
+      visualizationId: ref.id,
+      title: (viz['name'] ?? ref.name) as String,
+      type: (viz['type'] ?? ref.type) as String,
+      localNames: localNames,
+      columnDims: columnDims,
+      rowDims: rowDims,
+    );
+    await _cacheResult(ref.id, result);
     return result;
   }
 
-  Future<List<ChartItemRef>> getDataSets() =>
-      _refList('/api/dataSets.json', 'dataSets');
-
-  Future<List<ChartItemRef>> _refList(String path, String key) async {
-    final res = await _api.get(path, queryParameters: {
-      'fields': 'id,displayName',
-      'paging': 'false',
-    });
-    final items = ((res.data as Map<String, dynamic>)[key] as List? ??
-            const [])
-        .cast<Map<String, dynamic>>();
-    final refs = [
-      for (final i in items)
-        ChartItemRef(id: i['id'] as String, name: (i['displayName'] ?? '') as String),
-    ];
-    refs.sort((a, b) => a.name.compareTo(b.name));
-    return refs;
-  }
-
-  Future<List<ChartItemRef>> _nestedRefList(String path, String key) async {
-    final res = await _api.get(path, queryParameters: {
-      'fields': '$key[id,displayName]',
-    });
-    final items = ((res.data as Map<String, dynamic>)[key] as List? ??
-            const [])
-        .cast<Map<String, dynamic>>();
-    final refs = [
-      for (final i in items)
-        ChartItemRef(id: i['id'] as String, name: (i['displayName'] ?? '') as String),
-    ];
-    refs.sort((a, b) => a.name.compareTo(b.name));
-    return refs;
-  }
-
-  // ── Analytics ──────────────────────────────────────────────────
-
-  /// dimension/filter parameter strings for a config — kept separate
-  /// from the request so tests can assert the query shape.
-  static ({List<String> dimensions, String filter}) analyticsParams(
-          ChartConfig config) =>
-      (
-        dimensions: [
-          'dx:${config.dxItems.join(';')}',
-          'pe:${config.periodId}',
-        ],
-        filter: 'ou:${config.orgUnitId}',
-      );
-
-  /// Run one chart's analytics query and reshape the grid for the
-  /// renderer: dx items are the series, periods the categories.
-  Future<AnalyticsData> runChart(ChartConfig config) async {
-    final params = analyticsParams(config);
-    final res = await _api.get('/api/analytics.json', queryParameters: {
-      'dimension': params.dimensions,
-      'filter': params.filter,
-      'includeMetadataDetails': 'false',
-    });
-    final grid = res.data as Map<String, dynamic>;
-
+  /// Reshapes an analytics grid for a REMOTE visualization, which
+  /// (unlike this app's own charts, always a plain dx-by-pe shape)
+  /// may vary more than one dimension per axis — e.g. a pivot table
+  /// with both org unit AND period on its rows. Every dimension on
+  /// the COLUMNS axis becomes part of the series key; every one on
+  /// ROWS becomes part of the category key, joined with " — " when
+  /// there's more than one, so any combination still renders as one
+  /// flat series×category grid instead of only supporting dx×pe. An
+  /// axis with nothing on it collapses to a single implicit key
+  /// (e.g. SINGLE_VALUE: dx on columns, nothing on rows).
+  AnalyticsData _reshapeGenericGrid(
+    Map<String, dynamic> grid, {
+    required String visualizationId,
+    required String title,
+    required String type,
+    required Map<String, String> localNames,
+    required List<String> columnDims,
+    required List<String> rowDims,
+  }) {
     final headers =
         (grid['headers'] as List? ?? const []).cast<Map<String, dynamic>>();
     final rows = (grid['rows'] as List? ?? const []).cast<List>();
     final metaData = grid['metaData'] as Map<String, dynamic>? ?? const {};
     final metaItems = metaData['items'] as Map<String, dynamic>? ?? const {};
-    final dimOrder =
-        metaData['dimensions'] as Map<String, dynamic>? ?? const {};
 
-    // The user's own selection names beat metaData (operand ids like
-    // de.coc are not always present there).
-    final localNames = {for (final i in config.items) i.id: i.name};
     String nameOf(String id) =>
         (metaItems[id] as Map<String, dynamic>?)?['name'] as String? ??
         localNames[id] ??
@@ -191,83 +189,232 @@ class ChartRepositoryImpl {
     final headerIndex = {
       for (var i = 0; i < headers.length; i++) headers[i]['name'] as String: i,
     };
-    final dxIndex = headerIndex['dx'];
-    final peIndex = headerIndex['pe'];
     final valueIndex = headerIndex['value'];
-    if (dxIndex == null || peIndex == null || valueIndex == null) {
-      log.w('[charts] analytics grid for ${config.id} misses dx/pe/value');
+    final colIndices =
+        [for (final d in columnDims) headerIndex[d]].whereType<int>().toList();
+    final rowIndices =
+        [for (final d in rowDims) headerIndex[d]].whereType<int>().toList();
+    if (valueIndex == null) {
+      log.w('[charts] analytics grid for $visualizationId missing value column');
       return AnalyticsData(
-          visualizationId: config.id,
-          title: config.name,
-          type: config.chartType.dhis2Type,
+          visualizationId: visualizationId,
+          title: title,
+          type: type,
           categories: const [],
           series: const []);
     }
 
-    // Server order where provided; the request order otherwise.
-    final dxOrder = (dimOrder['dx'] as List? ?? config.dxItems).cast<String>();
-    final peOrder = (dimOrder['pe'] as List? ?? const []).cast<String>();
-    final periods = peOrder.isNotEmpty
-        ? peOrder
-        : ({for (final r in rows) r[peIndex] as String}.toList()..sort());
+    String keyOf(List row, List<int> idx) =>
+        idx.isEmpty ? '' : idx.map((i) => row[i] as String).join('|');
+    String labelOf(List row, List<int> idx) => idx.isEmpty
+        ? title
+        : idx.map((i) => nameOf(row[i] as String)).join(' — ');
 
+    final seriesOrder = <String>[];
+    final seriesLabels = <String, String>{};
+    final categoryOrder = <String>[];
+    final categoryLabels = <String, String>{};
     final cells = <String, double>{};
+
     for (final row in rows) {
       final v = double.tryParse(row[valueIndex].toString());
-      if (v != null) cells['${row[dxIndex]}|${row[peIndex]}'] = v;
+      if (v == null) continue;
+      final sKey = keyOf(row, colIndices);
+      final cKey = keyOf(row, rowIndices);
+      if (!seriesLabels.containsKey(sKey)) {
+        seriesLabels[sKey] = labelOf(row, colIndices);
+        seriesOrder.add(sKey);
+      }
+      if (!categoryLabels.containsKey(cKey)) {
+        categoryLabels[cKey] = labelOf(row, rowIndices);
+        categoryOrder.add(cKey);
+      }
+      cells['$sKey|$cKey'] = v;
     }
 
-    final result = AnalyticsData(
-      visualizationId: config.id,
-      title: config.name,
-      type: config.chartType.dhis2Type,
-      categories: [for (final pe in periods) nameOf(pe)],
+    return AnalyticsData(
+      visualizationId: visualizationId,
+      title: title,
+      type: type,
+      categories: [for (final c in categoryOrder) categoryLabels[c]!],
       series: [
-        for (final dx in dxOrder)
+        for (final s in seriesOrder)
           AnalyticsSeries(
-            name: nameOf(dx),
-            values: [for (final pe in periods) cells['$dx|$pe']],
+            name: seriesLabels[s]!,
+            values: [for (final c in categoryOrder) cells['$s|$c']],
           ),
       ],
     );
-    await _cacheResult(config.id, result);
-    return result;
   }
 
-  /// Online-first, cache-fallback load for the chart VIEW screen: runs
-  /// the live query (caching it for next time) and only falls back to
-  /// whatever was last cached for this chart if that fails — offline,
-  /// timeout, server error. Rethrows the original error when there is
-  /// no cache to fall back to; the UI then has nothing useful to show.
-  ///
-  /// [skipLiveAttempt] lets a caller that already knows it's offline
-  /// (ConnectivityService) go straight to the cache instead of waiting
-  /// out a ~30s connection timeout first.
-  Future<ChartLoadResult> loadChart(
-    ChartConfig config, {
+  // ── Dashboards (grouping for server visualizations) ─────────────
+  //
+  // Mirrors the WebApp's Dashboard app: a dashboard is a named group
+  // of visualization items. The app never creates or edits one — but
+  // every level (the dashboard list, one dashboard's item list, and
+  // each item's analytics result) caches its last successful fetch
+  // under syncInfo, the same read-only "last known answer" pattern
+  // used for this app's own saved charts, so the whole Dashboards tab
+  // still works offline.
+
+  static const _dashboardsListKey = 'dashboardsList';
+  static String _dashboardItemsCacheKey(String dashboardId) =>
+      'dashboardItems_$dashboardId';
+
+  Future<List<DashboardRef>> getDashboards() async {
+    final res = await _api.get('/api/dashboards.json', queryParameters: {
+      'fields': 'id,name',
+      'paging': 'false',
+    });
+    final items = ((res.data as Map<String, dynamic>)['dashboards'] as List? ??
+            const [])
+        .cast<Map<String, dynamic>>();
+    final refs = [
+      for (final i in items)
+        DashboardRef(id: i['id'] as String, name: (i['name'] ?? '') as String),
+    ];
+    // Case-insensitive: plain compareTo is ordinal, so every ALL-CAPS
+    // name (e.g. "ART retension") would sort before any mixed-case
+    // one (e.g. "Adolescent...") regardless of actual letter order.
+    refs.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    await _db.setSyncInfo(
+        _dashboardsListKey, jsonEncode([for (final r in refs) r.toJson()]));
+    return refs;
+  }
+
+  /// The visualization items under one dashboard, in the WebApp's
+  /// order. MAP and APP dashboard items are skipped — this app only
+  /// renders analytics visualizations (see [Dhis2Chart]).
+  Future<List<RemoteVisualizationRef>> getDashboardVisualizations(
+      String dashboardId) async {
+    final res = await _api
+        .get('/api/dashboards/$dashboardId.json', queryParameters: {
+      'fields': 'dashboardItems[type,visualization[id,name,type]]',
+    });
+    final dashboardItems = ((res.data as Map<String, dynamic>)['dashboardItems']
+                as List? ??
+            const [])
+        .cast<Map<String, dynamic>>();
+    final refs = [
+      for (final item in dashboardItems)
+        if (item['type'] == 'VISUALIZATION' && item['visualization'] != null)
+          RemoteVisualizationRef(
+            id: (item['visualization'] as Map)['id'] as String,
+            name: ((item['visualization'] as Map)['name'] ?? '') as String,
+            type: ((item['visualization'] as Map)['type'] ?? '') as String,
+          ),
+    ];
+    await _db.setSyncInfo(_dashboardItemsCacheKey(dashboardId),
+        jsonEncode([for (final r in refs) r.toJson()]));
+    return refs;
+  }
+
+  /// Online-first, cache-fallback dashboard list — same shape as
+  /// [loadServerVisualization]: try live, fall back to the last
+  /// successful fetch when offline or the request fails.
+  Future<({List<DashboardRef> dashboards, bool isFromCache})> loadDashboards({
     bool skipLiveAttempt = false,
   }) async {
     if (!skipLiveAttempt) {
       try {
-        final data = await runChart(config);
+        final dashboards = await getDashboards();
+        return (dashboards: dashboards, isFromCache: false);
+      } catch (e) {
+        final cached = await _readDashboardsCache();
+        if (cached == null) rethrow;
+        log.w('[charts] live dashboards fetch failed ($e) — using cache');
+        return (dashboards: cached, isFromCache: true);
+      }
+    }
+    final cached = await _readDashboardsCache();
+    if (cached != null) return (dashboards: cached, isFromCache: true);
+    throw const NetworkException(
+        message:
+            'You are offline and no cached dashboards are available yet.');
+  }
+
+  Future<List<DashboardRef>?> _readDashboardsCache() async {
+    final raw = await _db.getSyncInfo(_dashboardsListKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+      return [for (final d in list) DashboardRef.fromJson(d)];
+    } catch (e) {
+      log.e('[charts] cached dashboards unreadable: $e');
+      return null;
+    }
+  }
+
+  /// Online-first, cache-fallback item list for one dashboard.
+  Future<({List<RemoteVisualizationRef> items, bool isFromCache})>
+      loadDashboardVisualizations(
+    String dashboardId, {
+    bool skipLiveAttempt = false,
+  }) async {
+    if (!skipLiveAttempt) {
+      try {
+        final items = await getDashboardVisualizations(dashboardId);
+        return (items: items, isFromCache: false);
+      } catch (e) {
+        final cached = await _readDashboardItemsCache(dashboardId);
+        if (cached == null) rethrow;
+        log.w('[charts] live dashboard items fetch failed for '
+            '$dashboardId ($e) — using cache');
+        return (items: cached, isFromCache: true);
+      }
+    }
+    final cached = await _readDashboardItemsCache(dashboardId);
+    if (cached != null) return (items: cached, isFromCache: true);
+    throw const NetworkException(
+        message:
+            'You are offline and this dashboard has no cached items yet.');
+  }
+
+  Future<List<RemoteVisualizationRef>?> _readDashboardItemsCache(
+      String dashboardId) async {
+    final raw = await _db.getSyncInfo(_dashboardItemsCacheKey(dashboardId));
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+      return [for (final i in list) RemoteVisualizationRef.fromJson(i)];
+    } catch (e) {
+      log.e('[charts] cached dashboard items for $dashboardId unreadable: $e');
+      return null;
+    }
+  }
+
+  /// Online-first, cache-fallback load for one dashboard item's chart
+  /// — reuses [_cacheResult]/[_readCache] keyed by the visualization's
+  /// own id. Safe to share that cache namespace with this app's local
+  /// chart ids: local ids are `DateTime.millisecondsSinceEpoch`
+  /// strings (pure digits), DHIS2 uids are always 11 chars starting
+  /// with a letter — the two id spaces can never collide.
+  Future<ChartLoadResult> loadServerVisualization(
+    RemoteVisualizationRef ref, {
+    bool skipLiveAttempt = false,
+  }) async {
+    if (!skipLiveAttempt) {
+      try {
+        final data = await runServerVisualization(ref);
         return ChartLoadResult(data: data, isFromCache: false);
       } catch (e) {
-        final cached = await _readCache(config.id);
+        final cached = await _readCache(ref.id);
         if (cached == null) rethrow;
-        log.w('[charts] live query failed for ${config.id} ($e) — '
+        log.w('[charts] live query failed for ${ref.id} ($e) — '
             'showing cache from ${cached.cachedAt}');
         return ChartLoadResult(
             data: cached.data, isFromCache: true, cachedAt: cached.cachedAt);
       }
     }
-    final cached = await _readCache(config.id);
+    final cached = await _readCache(ref.id);
     if (cached != null) {
       return ChartLoadResult(
           data: cached.data, isFromCache: true, cachedAt: cached.cachedAt);
     }
     throw const NetworkException(
         message: 'You are offline and no cached data is available for '
-            'this chart yet.');
+            'this visualization yet.');
   }
 
   Future<void> _cacheResult(String chartId, AnalyticsData data) {
@@ -295,219 +442,5 @@ class ChartRepositoryImpl {
       log.e('[charts] cached result for $chartId unreadable: $e');
       return null;
     }
-  }
-
-  // ── Saved charts ───────────────────────────────────────────────
-
-  Future<List<ChartConfig>> getSavedCharts() async {
-    final raw = await _db.getSyncInfo(savedChartsKey);
-    if (raw == null || raw.isEmpty) return const [];
-    try {
-      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-      final charts = [for (final c in list) ChartConfig.fromJson(c)];
-      charts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return charts;
-    } catch (e) {
-      log.e('[charts] saved charts unreadable, starting empty: $e');
-      return const [];
-    }
-  }
-
-  Future<void> saveChart(ChartConfig config) async {
-    final charts = await getSavedCharts();
-    final updated = [config, ...charts.where((c) => c.id != config.id)];
-    await _writeAll(updated);
-  }
-
-  Future<void> deleteChart(String id) async {
-    final charts = await getSavedCharts();
-    await _writeAll([...charts.where((c) => c.id != id)]);
-    await _db.setSyncInfo(_cacheKey(id), ''); // drop its cached result too
-  }
-
-  Future<void> _writeAll(List<ChartConfig> charts) => _db.setSyncInfo(
-      savedChartsKey, jsonEncode([for (final c in charts) c.toJson()]));
-
-  // ── Push to the server (DHIS2 Visualization object) ─────────────
-
-  /// Every saved chart still pending or previously rejected gets
-  /// pushed as a real DHIS2 Visualization — CREATE the first time
-  /// (POST), then PUT to the same object on any later push (there is
-  /// currently no chart-editing UI, so in practice this only ever
-  /// creates). Safe to call repeatedly and offline: a transport
-  /// failure leaves the chart pending for the next attempt, same
-  /// pattern as data value/completeness push.
-  Future<int> pushPendingCharts() async {
-    final charts = await getSavedCharts();
-    final pending = [
-      for (final c in charts)
-        if (c.syncState != ChartSyncState.synced) c,
-    ];
-    if (pending.isEmpty) return 0;
-
-    var ok = 0;
-    for (final chart in pending) {
-      try {
-        final payload = _visualizationPayload(chart);
-        final res = chart.serverVisualizationId == null
-            ? await _api.post('/api/visualizations.json', data: payload)
-            : await _api.put(
-                '/api/visualizations/${chart.serverVisualizationId}.json',
-                data: payload);
-        final response = (res.data as Map<String, dynamic>?)?['response']
-            as Map<String, dynamic>?;
-        final uid = chart.serverVisualizationId ?? response?['uid'] as String?;
-        await _updateChart(chart.copyWith(
-          syncState: ChartSyncState.synced,
-          serverVisualizationId: uid,
-          syncError: null,
-        ));
-        ok++;
-      } on DioException catch (e) {
-        final status = e.response?.statusCode;
-        final data = e.response?.data;
-        // 4xx with a body is a server VERDICT (validation rejected the
-        // visualization) — retrying the identical payload can't
-        // succeed, so settle as error the UI can surface. Anything
-        // else (timeout, 5xx, no response) is transport trouble: leave
-        // it pending for the next auto-sync pass.
-        if (status != null &&
-            status >= 400 &&
-            status < 500 &&
-            data is Map<String, dynamic>) {
-          final why = _rejectionMessage(data);
-          log.w('[charts] push rejected for ${chart.id}: $why');
-          await _updateChart(
-              chart.copyWith(syncState: ChartSyncState.error, syncError: why));
-        } else {
-          // Log the response body too, not just e.message — a 5xx
-          // often carries the server's actual stack trace/exception
-          // class in its body, which is the only way to tell "bad
-          // payload we're sending" apart from "genuine server hiccup."
-          log.e('[charts] push transport error for ${chart.id} '
-              '(status: $status): ${e.message}\nresponse body: $data');
-        }
-      }
-    }
-    log.i('[charts] pushed $ok/${pending.length}');
-    return ok;
-  }
-
-  /// One data dimension item, typed per the DHIS2 Visualization schema
-  /// — confirmed against a live 2.40.1 server's own saved
-  /// visualizations (`GET /api/visualizations.json?fields=...
-  /// dataDimensionItems`): every reference is a NESTED object
-  /// (`{dataElement:{id}}`, `{indicator:{id}}`,
-  /// `{reportingRate:{dataSet:{id}, metric}}`), never the dotted
-  /// composite id (`de.coc`, `dataSet.METRIC`) analytics uses for its
-  /// `dx` dimension — that composite form only ever showed up inside
-  /// `dimensionItem` (a server-computed display field), not in
-  /// anything a client would write.
-  Map<String, dynamic> _dataDimensionItem(ChartConfig config, ChartItemRef item) {
-    switch (config.dataType) {
-      case ChartDataType.indicator:
-        return {
-          'dataDimensionItemType': 'INDICATOR',
-          'indicator': {'id': item.id},
-        };
-      case ChartDataType.dataElement:
-        if (config.disaggregation == Disaggregation.detailsOnly) {
-          // item.id is "deUid.cocUid" (see chart_builder_view.dart) —
-          // split back into the two nested references. UNVERIFIED
-          // against a live server (no operand example turned up in
-          // the visualizations we fetched) — if this gets rejected,
-          // the rejection message will show the real shape needed.
-          final parts = item.id.split('.');
-          return {
-            'dataDimensionItemType': 'DATA_ELEMENT_OPERAND',
-            'dataElementOperand': {
-              'dataElement': {'id': parts[0]},
-              'categoryOptionCombo': {
-                'id': parts.length > 1 ? parts[1] : parts[0]
-              },
-            },
-          };
-        }
-        return {
-          'dataDimensionItemType': 'DATA_ELEMENT',
-          'dataElement': {'id': item.id},
-        };
-      case ChartDataType.dataSet:
-        return {
-          'dataDimensionItemType': 'REPORTING_RATE',
-          'reportingRate': {
-            'dataSet': {'id': item.id},
-            'metric': (config.metric ?? DataSetMetric.reportingRate).apiName,
-          },
-        };
-    }
-  }
-
-  /// Plain metadata ids for the dx COLUMNS list — position-matched to
-  /// [_dataDimensionItem]'s output (one id per `config.items` entry),
-  /// per the same live-server evidence: the compact `columns[].items`
-  /// list is always the plain dataElement/indicator/dataSet uid, even
-  /// when the fuller `dataDimensionItems` entry at that position is an
-  /// operand or a reporting-rate metric.
-  List<String> _columnIds(ChartConfig config) {
-    if (config.dataType == ChartDataType.dataElement &&
-        config.disaggregation == Disaggregation.detailsOnly) {
-      return [for (final item in config.items) item.id.split('.').first];
-    }
-    return [for (final item in config.items) item.id];
-  }
-
-  Map<String, dynamic> _visualizationPayload(ChartConfig config) {
-    return {
-      'name': config.name,
-      'type': config.chartType.dhis2Type,
-      'columns': [
-        {
-          'dimension': 'dx',
-          'items': [for (final id in _columnIds(config)) {'id': id}],
-        },
-      ],
-      'rows': [
-        {
-          'dimension': 'pe',
-          'items': [
-            {'id': config.periodId}
-          ],
-        },
-      ],
-      'filters': [
-        {
-          'dimension': 'ou',
-          'items': [
-            {'id': config.orgUnitId}
-          ],
-        },
-      ],
-      'dataDimensionItems': [
-        for (final item in config.items) _dataDimensionItem(config, item),
-      ],
-    };
-  }
-
-  /// Same shape DHIS2 uses for object-endpoint validation errors:
-  /// either an `errorReports`/`conflicts` list or a flat `message`.
-  String _rejectionMessage(Map<String, dynamic> data) {
-    final response = (data['response'] ?? data) as Map<String, dynamic>;
-    final conflicts = (response['errorReports'] ?? response['conflicts'])
-            as List? ??
-        const [];
-    if (conflicts.isNotEmpty) {
-      return conflicts
-          .map((c) => (c as Map)['message'] ?? c.toString())
-          .join('; ');
-    }
-    return (data['message'] ?? 'Rejected by server').toString();
-  }
-
-  Future<void> _updateChart(ChartConfig updated) async {
-    final charts = await getSavedCharts();
-    await _writeAll([
-      for (final c in charts) c.id == updated.id ? updated : c,
-    ]);
   }
 }

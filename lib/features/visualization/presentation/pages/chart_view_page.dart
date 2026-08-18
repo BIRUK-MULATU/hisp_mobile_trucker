@@ -6,13 +6,18 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
-import '../../data/repositories/chart_repository_impl.dart';
+import '../../data/repositories/local_visualization_repository_impl.dart';
 import '../../domain/entities/analytics_data.dart';
 import '../../domain/entities/chart_config.dart';
+import '../../domain/usecases/load_visualization_usecase.dart';
 import '../widgets/dhis2_chart.dart';
+import '../widgets/offline_cache_banner.dart';
+import 'chart_edit_page.dart';
 
 /// A saved chart, full page: reruns its analytics query on open so
 /// the numbers are current, then renders it with the shared renderer.
+/// The Edit action opens [ChartEditPage]; a successful edit pops this
+/// page too (with `true`) since [config] is now stale.
 class ChartViewPage extends StatefulWidget {
   final ChartConfig config;
 
@@ -23,7 +28,8 @@ class ChartViewPage extends StatefulWidget {
 }
 
 class _ChartViewPageState extends State<ChartViewPage> {
-  final _repository = ChartRepositoryImpl();
+  final _repository = LocalVisualizationRepositoryImpl();
+  late final _loadVisualization = LoadVisualizationUseCase(_repository);
 
   AnalyticsData? _data;
   String? _error;
@@ -62,7 +68,7 @@ class _ChartViewPageState extends State<ChartViewPage> {
     if (!mounted) return;
     final knownOffline = ConnectivityService.instance.online == false;
     try {
-      final result = await _repository.loadChart(widget.config,
+      final result = await _loadVisualization(widget.config,
           skipLiveAttempt: knownOffline);
       if (!mounted) return;
       setState(() {
@@ -75,6 +81,17 @@ class _ChartViewPageState extends State<ChartViewPage> {
         setState(() => _error = e.toString().replaceAll('Exception: ', ''));
       }
     }
+  }
+
+  Future<void> _edit() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => ChartEditPage(config: widget.config)),
+    );
+    // The edit updated this chart's saved config — this page's copy is
+    // now stale, so bubble the change up rather than trying to patch
+    // it in place.
+    if (changed == true && mounted) Navigator.pop(context, true);
   }
 
   @override
@@ -106,10 +123,17 @@ class _ChartViewPageState extends State<ChartViewPage> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, color: Colors.white),
+            onPressed: _edit,
+            tooltip: 'Edit chart',
+          ),
+        ],
       ),
       body: Column(
         children: [
-          if (_isFromCache) _CacheBanner(cachedAt: _cachedAt),
+          if (_isFromCache) OfflineCacheBanner(cachedAt: _cachedAt),
           Expanded(child: _buildBody()),
         ],
       ),
@@ -168,44 +192,5 @@ class _ChartViewPageState extends State<ChartViewPage> {
                     ],
                   ),
                 );
-  }
-}
-
-/// Tells the user they're looking at a snapshot, not live numbers —
-/// shown whenever the live query failed (offline, timeout, server
-/// error) and [ChartRepositoryImpl.loadChart] fell back to whatever
-/// was cached from the last successful view of this chart.
-class _CacheBanner extends StatelessWidget {
-  const _CacheBanner({required this.cachedAt});
-
-  final DateTime? cachedAt;
-
-  @override
-  Widget build(BuildContext context) {
-    final when = cachedAt == null
-        ? ''
-        : ' from ${cachedAt!.toLocal().toString().substring(0, 16)}';
-    return Container(
-      width: double.infinity,
-      color: AppColors.warningLight,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.space,
-        vertical: AppDimensions.spaceSM,
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.cloud_off_rounded,
-              size: AppDimensions.iconSM, color: AppColors.warning),
-          const SizedBox(width: AppDimensions.spaceXS),
-          Expanded(
-            child: Text(
-              'Offline — showing cached data$when',
-              style: AppTextStyles.labelSmall
-                  .copyWith(color: AppColors.warning),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
