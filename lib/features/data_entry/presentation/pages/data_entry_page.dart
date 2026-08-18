@@ -332,7 +332,18 @@ class _DataEntryViewState extends State<_DataEntryView> {
   }
 
   // ── Sync tapped — reload values from the server ───────────
-  void _onSyncTapped() {
+  // Fire-and-forget wrapper around [_reloadFromServer] for the app-bar
+  // icon, which doesn't need to know when the reload finishes.
+  void _onSyncTapped() => _reloadFromServer();
+
+  /// Shared by the app-bar sync icon and pull-to-refresh: re-dispatches
+  /// [DataEntryLoad], which already does a live server pull + push
+  /// when connected (see DataEntryRepositoryImpl.getDataValues) before
+  /// re-reading local values — so this is a genuine reload, not just a
+  /// local re-render. Awaits the resulting state so a caller (the
+  /// RefreshIndicator) knows when the real work is actually done,
+  /// instead of just when the event was enqueued.
+  Future<void> _reloadFromServer() async {
     final bloc = context.read<DataEntryBloc>();
     final state = bloc.state;
     // A reload replaces every cell — don't wipe unsaved edits.
@@ -346,6 +357,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
       );
       return;
     }
+    final done = bloc.stream
+        .firstWhere((s) => s is DataEntryLoaded || s is DataEntryError);
     bloc.add(DataEntryLoad(
       dataSetId: widget.dataSetId,
       orgUnitId: widget.orgUnitId,
@@ -353,6 +366,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
       sectionId: widget.sectionId,
       attributeOptionComboUid: widget.attributeOptionComboUid,
     ));
+    await done;
   }
 
   // Shared by Print and Download: the loaded form's state, or null
@@ -1216,23 +1230,31 @@ class _DataEntryViewState extends State<_DataEntryView> {
                     );
                   }
                   if (state is DataEntryLoaded) {
-                    return widget.isDiseaseRegistration
-                        ? DiseaseEntryList(
-                            dataElements: state.dataElements,
-                            dataValues: state.dataValues,
-                            orgUnitId: widget.orgUnitId,
-                            period: widget.period,
-                            readOnly: _isPeriodClosed,
-                            searchShowcaseKey: _diseaseSearchShowcaseKey,
-                          )
-                        : DataEntryTable(
-                            dataElements: state.dataElements,
-                            dataValues: state.dataValues,
-                            orgUnitId: widget.orgUnitId,
-                            period: widget.period,
-                            searchQuery: _searchQuery,
-                            readOnly: _isPeriodClosed,
-                          );
+                    // Guarded the same way as the app-bar sync icon —
+                    // dragging down with unsaved edits shows the
+                    // "save first" snackbar instead of silently
+                    // discarding them.
+                    return RefreshIndicator(
+                      color: AppColors.primary,
+                      onRefresh: _reloadFromServer,
+                      child: widget.isDiseaseRegistration
+                          ? DiseaseEntryList(
+                              dataElements: state.dataElements,
+                              dataValues: state.dataValues,
+                              orgUnitId: widget.orgUnitId,
+                              period: widget.period,
+                              readOnly: _isPeriodClosed,
+                              searchShowcaseKey: _diseaseSearchShowcaseKey,
+                            )
+                          : DataEntryTable(
+                              dataElements: state.dataElements,
+                              dataValues: state.dataValues,
+                              orgUnitId: widget.orgUnitId,
+                              period: widget.period,
+                              searchQuery: _searchQuery,
+                              readOnly: _isPeriodClosed,
+                            ),
+                    );
                   }
                   // Initial state (load event not processed yet) —
                   // keep the spinner up instead of a blank page.
