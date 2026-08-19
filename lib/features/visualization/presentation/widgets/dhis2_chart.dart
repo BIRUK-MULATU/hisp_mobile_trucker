@@ -301,6 +301,62 @@ class _HBars extends StatelessWidget {
   final double scale;
   const _HBars({required this.data, this.scale = 1.0});
 
+  // Past this many categories the list is bounded to a fixed-height,
+  // internally-scrollable capsule instead of stretching the page —
+  // e.g. a disease-by-disease breakdown can run into the hundreds of
+  // rows, which would otherwise force every row to be built eagerly.
+  static const _scrollThreshold = 8;
+
+  Widget _row(int c, double maxValue) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppDimensions.spaceSM),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            data.categories[c],
+            style:
+                AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          for (var s = 0; s < data.series.length; s++)
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        minHeight: 10 * scale,
+                        value: maxValue == 0
+                            ? 0
+                            : (data.series[s].values[c] ?? 0).abs() / maxValue,
+                        backgroundColor: AppColors.backgroundGrey,
+                        color: Dhis2Chart.colorOf(s),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 52 * scale,
+                    child: Text(
+                      data.series[s].values[c] == null
+                          ? ''
+                          : _compact(data.series[s].values[c]!),
+                      textAlign: TextAlign.right,
+                      style: AppTextStyles.labelSmall
+                          .copyWith(color: AppColors.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final maxValue = [
@@ -309,60 +365,24 @@ class _HBars extends StatelessWidget {
           if (v != null) v.abs(),
     ].fold<double>(0, (a, b) => a > b ? a : b);
 
+    final rows = data.categories.length;
+    final list = rows > _scrollThreshold
+        ? ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: 360 * scale),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: rows,
+              itemBuilder: (_, c) => _row(c, maxValue),
+            ),
+          )
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [for (var c = 0; c < rows; c++) _row(c, maxValue)],
+          );
+
     return Column(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var c = 0; c < data.categories.length; c++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppDimensions.spaceSM),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.categories[c],
-                  style: AppTextStyles.labelSmall
-                      .copyWith(color: AppColors.textSecondary),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                for (var s = 0; s < data.series.length; s++)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: LinearProgressIndicator(
-                              minHeight: 10 * scale,
-                              value: maxValue == 0
-                                  ? 0
-                                  : (data.series[s].values[c] ?? 0).abs() /
-                                      maxValue,
-                              backgroundColor: AppColors.backgroundGrey,
-                              color: Dhis2Chart.colorOf(s),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 52 * scale,
-                          child: Text(
-                            data.series[s].values[c] == null
-                                ? ''
-                                : _compact(data.series[s].values[c]!),
-                            textAlign: TextAlign.right,
-                            style: AppTextStyles.labelSmall
-                                .copyWith(color: AppColors.textPrimary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        _Legend(data: data, scale: scale),
-      ],
+      children: [list, _Legend(data: data, scale: scale)],
     );
   }
 }

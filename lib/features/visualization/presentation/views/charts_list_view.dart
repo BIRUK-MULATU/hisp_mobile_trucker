@@ -5,6 +5,7 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
+import '../../data/chart_draft_coordinator.dart';
 import '../../data/repositories/local_visualization_repository_impl.dart';
 import '../../domain/entities/chart_config.dart';
 import '../../domain/usecases/delete_visualization_usecase.dart';
@@ -35,7 +36,8 @@ class ChartsListView extends StatefulWidget {
 
 class ChartsListViewState extends State<ChartsListView> {
   final _repository = LocalVisualizationRepositoryImpl();
-  late final _getSavedVisualizations = GetSavedVisualizationsUseCase(_repository);
+  late final _getSavedVisualizations =
+      GetSavedVisualizationsUseCase(_repository);
   late final _deleteVisualization = DeleteVisualizationUseCase(_repository);
 
   List<ChartConfig>? _charts;
@@ -44,6 +46,16 @@ class ChartsListViewState extends State<ChartsListView> {
   void initState() {
     super.initState();
     reload();
+    // A background promotion pass (ChartDraftCoordinator, on
+    // reconnect) doesn't touch this widget directly — reload picks up
+    // whichever drafts it just finished.
+    ChartDraftCoordinator.instance.tick.addListener(reload);
+  }
+
+  @override
+  void dispose() {
+    ChartDraftCoordinator.instance.tick.removeListener(reload);
+    super.dispose();
   }
 
   Future<void> reload() async {
@@ -52,6 +64,10 @@ class ChartsListViewState extends State<ChartsListView> {
   }
 
   Future<void> _open(ChartConfig chart) async {
+    // A draft has no result to view yet — go straight to the form
+    // that can still edit/complete it instead of a chart page with
+    // nothing to show.
+    if (chart.isDraft) return _edit(chart);
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => ChartViewPage(config: chart)),
@@ -193,13 +209,19 @@ class ChartsListViewState extends State<ChartsListView> {
                       Container(
                         width: 44,
                         height: 44,
-                        decoration: const BoxDecoration(
-                          color: AppColors.primarySurface,
+                        decoration: BoxDecoration(
+                          color: chart.isDraft
+                              ? AppColors.warningLight
+                              : AppColors.primarySurface,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
-                          chartTypeIcon(chart.chartType),
-                          color: AppColors.primary,
+                          chart.isDraft
+                              ? Icons.cloud_off_rounded
+                              : chartTypeIcon(chart.chartType),
+                          color: chart.isDraft
+                              ? AppColors.warning
+                              : AppColors.primary,
                         ),
                       ),
                       const SizedBox(width: AppDimensions.spaceMD),
@@ -207,16 +229,46 @@ class ChartsListViewState extends State<ChartsListView> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              chart.name,
-                              style: AppTextStyles.bodyLarge
-                                  .copyWith(fontWeight: FontWeight.w600),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    chart.name,
+                                    style: AppTextStyles.bodyLarge
+                                        .copyWith(fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (chart.isDraft) ...[
+                                  const SizedBox(width: AppDimensions.spaceXS),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AppDimensions.spaceXS,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.warningLight,
+                                      borderRadius: BorderRadius.circular(
+                                          AppDimensions.radiusSM),
+                                    ),
+                                    child: Text(
+                                      'DRAFT',
+                                      style: AppTextStyles.labelSmall.copyWith(
+                                        color: AppColors.warning,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             const SizedBox(height: AppDimensions.spaceXS),
                             Text(
-                              chart.summary,
+                              chart.isDraft
+                                  ? "Saved offline — will finish building "
+                                      'once back online'
+                                  : chart.summary,
                               style: AppTextStyles.bodySmall
                                   .copyWith(color: AppColors.textSecondary),
                               maxLines: 2,

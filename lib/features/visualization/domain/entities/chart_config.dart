@@ -107,6 +107,12 @@ class ChartConfig {
 
   final DateTime createdAt;
 
+  /// True for a chart saved while offline, before its analytics query
+  /// has ever run successfully — see [LocalVisualizationRepository
+  /// .promotePendingDrafts]. The saved query definition is complete;
+  /// only the first live run (and the result it produces) is pending.
+  final bool isDraft;
+
   const ChartConfig({
     required this.id,
     required this.name,
@@ -123,7 +129,27 @@ class ChartConfig {
     required this.periodId,
     required this.periodLabel,
     required this.createdAt,
+    this.isDraft = false,
   });
+
+  ChartConfig copyWith({bool? isDraft}) => ChartConfig(
+        id: id,
+        name: name,
+        chartType: chartType,
+        dataType: dataType,
+        groupId: groupId,
+        groupName: groupName,
+        items: items,
+        disaggregation: disaggregation,
+        metric: metric,
+        orgUnitId: orgUnitId,
+        orgUnitName: orgUnitName,
+        periodKind: periodKind,
+        periodId: periodId,
+        periodLabel: periodLabel,
+        createdAt: createdAt,
+        isDraft: isDraft ?? this.isDraft,
+      );
 
   /// The analytics dx dimension items for this chart.
   List<String> get dxItems => [
@@ -151,6 +177,7 @@ class ChartConfig {
         'periodId': periodId,
         'periodLabel': periodLabel,
         'createdAt': createdAt.toIso8601String(),
+        if (isDraft) 'isDraft': true,
       };
 
   factory ChartConfig.fromJson(Map<String, dynamic> json) => ChartConfig(
@@ -176,5 +203,6 @@ class ChartConfig {
         periodLabel: (json['periodLabel'] ?? '') as String,
         createdAt: DateTime.tryParse((json['createdAt'] ?? '') as String) ??
             DateTime.now(),
+        isDraft: json['isDraft'] == true,
       );
 }

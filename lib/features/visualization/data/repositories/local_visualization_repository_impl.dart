@@ -4,6 +4,8 @@ import '../../../../core/auth/app_session.dart';
 import '../../../../core/auth/session_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/exceptions.dart';
+import '../../../../core/metadata/category_option_combo.dart';
+import '../../../../core/metadata/data_element_group.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/app_logger.dart';
 import '../../../capture/domain/entities/org_unit_tree_node.dart';
@@ -41,6 +43,17 @@ class LocalVisualizationRepositoryImpl implements LocalVisualizationRepository {
   }
 
   // ── Metadata for the builder ───────────────────────────────────
+  //
+  // The metadata sync every login/heartbeat already runs for Capture
+  // (see MetadataSyncService) pulls the WHOLE instance's data
+  // elements, data element groups, indicators and data sets — not
+  // just the ones referenced by locally-cached forms. So instead of
+  // needing a prior visit to each exact picker, these getters fall
+  // back to that same local database on any live failure (offline
+  // included), same universe of choices either way. The one gap:
+  // indicator GROUPS themselves aren't synced (only indicators are),
+  // so there's no offline group list — see getAllIndicatorsLocal,
+  // which ChartBuilderView uses instead when there's no connection.
 
   @override
   Future<List<ChartItemRef>> getIndicatorGroups() =>
@@ -51,11 +64,68 @@ class LocalVisualizationRepositoryImpl implements LocalVisualizationRepository {
       _nestedRefList('/api/indicatorGroups/$groupId.json', 'indicators');
 
   @override
-  Future<List<ChartItemRef>> getDataElementGroups() =>
-      _refList('/api/dataElementGroups.json', 'dataElementGroups');
+  Future<List<ChartItemRef>> getAllIndicatorsLocal() async {
+    final rows = await _db.select(_db.indicatorsTable).get();
+    final refs = [
+      for (final r in rows) ChartItemRef(id: r.uid, name: r.displayName),
+    ];
+    refs.sort((a, b) => a.name.compareTo(b.name));
+    return refs;
+  }
+
+  @override
+  Future<List<ChartItemRef>> getDataElementGroups() async {
+    try {
+      return await _refList('/api/dataElementGroups.json', 'dataElementGroups');
+    } catch (e) {
+      final rows = await _db.select(_db.dataElementGroupsTable).get();
+      if (rows.isEmpty) rethrow;
+      log.w('[charts] live dataElementGroups fetch failed ($e) — '
+          'using locally synced metadata');
+      final refs = [
+        for (final r in rows) ChartItemRef(id: r.uid, name: r.displayName),
+      ];
+      refs.sort((a, b) => a.name.compareTo(b.name));
+      return refs;
+    }
+  }
 
   @override
   Future<List<DataElementWithCocs>> getDataElementsInGroup(
+      String groupId) async {
+    try {
+      return await _fetchDataElementsInGroup(groupId);
+    } catch (e) {
+      final memberIds =
+          await DataElementGroupResource(_db).dataElementUids(groupId);
+      if (memberIds.isEmpty) rethrow;
+      log.w('[charts] live dataElements-in-group fetch failed ($e) — '
+          'using locally synced metadata');
+      final elements = await (_db.select(_db.dataElementsTable)
+            ..where((t) => t.uid.isIn(memberIds)))
+          .get();
+      final comboResource = CategoryOptionComboResource(_db);
+      final cocCache = <String, List<ChartItemRef>>{};
+      final result = <DataElementWithCocs>[];
+      for (final de in elements) {
+        var cocs = cocCache[de.categoryComboUid];
+        if (cocs == null) {
+          final rows =
+              await comboResource.getByCategoryCombo(de.categoryComboUid);
+          cocs = [for (final c in rows) ChartItemRef(id: c.uid, name: c.name)];
+          cocCache[de.categoryComboUid] = cocs;
+        }
+        result.add(DataElementWithCocs(
+          ref: ChartItemRef(id: de.uid, name: de.displayName),
+          cocs: cocs,
+        ));
+      }
+      result.sort((a, b) => a.ref.name.compareTo(b.ref.name));
+      return result;
+    }
+  }
+
+  Future<List<DataElementWithCocs>> _fetchDataElementsInGroup(
       String groupId) async {
     final res = await _api
         .get('/api/dataElementGroups/$groupId.json', queryParameters: {
@@ -63,8 +133,8 @@ class LocalVisualizationRepositoryImpl implements LocalVisualizationRepository {
           'categoryCombo[categoryOptionCombos[id,displayName]]]',
     });
     final data = res.data as Map<String, dynamic>;
-    final elements =
-        (data['dataElements'] as List? ?? const []).cast<Map<String, dynamic>>();
+    final elements = (data['dataElements'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
     final result = <DataElementWithCocs>[
       for (final de in elements)
         if (de['domainType'] != 'TRACKER')
@@ -90,20 +160,33 @@ class LocalVisualizationRepositoryImpl implements LocalVisualizationRepository {
   }
 
   @override
-  Future<List<ChartItemRef>> getDataSets() =>
-      _refList('/api/dataSets.json', 'dataSets');
+  Future<List<ChartItemRef>> getDataSets() async {
+    try {
+      return await _refList('/api/dataSets.json', 'dataSets');
+    } catch (e) {
+      final rows = await _db.select(_db.dataSetsTable).get();
+      if (rows.isEmpty) rethrow;
+      log.w('[charts] live dataSets fetch failed ($e) — '
+          'using locally synced metadata');
+      final refs = [
+        for (final r in rows) ChartItemRef(id: r.uid, name: r.displayName),
+      ];
+      refs.sort((a, b) => a.name.compareTo(b.name));
+      return refs;
+    }
+  }
 
   Future<List<ChartItemRef>> _refList(String path, String key) async {
     final res = await _api.get(path, queryParameters: {
       'fields': 'id,displayName',
       'paging': 'false',
     });
-    final items = ((res.data as Map<String, dynamic>)[key] as List? ??
-            const [])
+    final items = ((res.data as Map<String, dynamic>)[key] as List? ?? const [])
         .cast<Map<String, dynamic>>();
     final refs = [
       for (final i in items)
-        ChartItemRef(id: i['id'] as String, name: (i['displayName'] ?? '') as String),
+        ChartItemRef(
+            id: i['id'] as String, name: (i['displayName'] ?? '') as String),
     ];
     refs.sort((a, b) => a.name.compareTo(b.name));
     return refs;
@@ -113,12 +196,12 @@ class LocalVisualizationRepositoryImpl implements LocalVisualizationRepository {
     final res = await _api.get(path, queryParameters: {
       'fields': '$key[id,displayName]',
     });
-    final items = ((res.data as Map<String, dynamic>)[key] as List? ??
-            const [])
+    final items = ((res.data as Map<String, dynamic>)[key] as List? ?? const [])
         .cast<Map<String, dynamic>>();
     final refs = [
       for (final i in items)
-        ChartItemRef(id: i['id'] as String, name: (i['displayName'] ?? '') as String),
+        ChartItemRef(
+            id: i['id'] as String, name: (i['displayName'] ?? '') as String),
     ];
     refs.sort((a, b) => a.name.compareTo(b.name));
     return refs;
@@ -130,19 +213,20 @@ class LocalVisualizationRepositoryImpl implements LocalVisualizationRepository {
   /// org unit in the full hierarchy, unlike Capture's own org unit
   /// tree, which is intentionally depth-bounded to root + direct
   /// children to keep offline storage small (see OrgUnitResource).
-  /// The builder is already online-only end to end, so there's no
-  /// offline case to support here.
-  Future<List<OrgUnitTreeNode>> getOrgUnitChildrenLive(
-      String parentId) async {
+  /// Only called while online — see ChartBuilderView._pickOrgUnit,
+  /// which falls back to OrgUnitFilterPage's own default (that same
+  /// depth-bounded local tree) when offline, so a draft chart can
+  /// still pick an org unit from what's already on the device.
+  Future<List<OrgUnitTreeNode>> getOrgUnitChildrenLive(String parentId) async {
     final res = await _api.get('/api/organisationUnits.json', queryParameters: {
       'filter': 'parent.id:eq:$parentId',
       'fields': 'id,displayName,path,level,children[id]',
       'paging': 'false',
     });
-    final items = ((res.data as Map<String, dynamic>)['organisationUnits']
-                as List? ??
-            const [])
-        .cast<Map<String, dynamic>>();
+    final items =
+        ((res.data as Map<String, dynamic>)['organisationUnits'] as List? ??
+                const [])
+            .cast<Map<String, dynamic>>();
     final nodes = [
       for (final ou in items)
         OrgUnitTreeNode(
@@ -216,7 +300,8 @@ class LocalVisualizationRepositoryImpl implements LocalVisualizationRepository {
           series: const []);
     } else {
       // Server order where provided; the request order otherwise.
-      final dxOrder = (dimOrder['dx'] as List? ?? config.dxItems).cast<String>();
+      final dxOrder =
+          (dimOrder['dx'] as List? ?? config.dxItems).cast<String>();
       final peOrder = (dimOrder['pe'] as List? ?? const []).cast<String>();
       final periods = peOrder.isNotEmpty
           ? peOrder
@@ -333,6 +418,22 @@ class LocalVisualizationRepositoryImpl implements LocalVisualizationRepository {
     final charts = await getSavedCharts();
     await _writeAll([...charts.where((c) => c.id != id)]);
     await _db.setSyncInfo(_cacheKey(id), ''); // drop its cached result too
+  }
+
+  @override
+  Future<int> promotePendingDrafts() async {
+    final charts = await getSavedCharts();
+    var promoted = 0;
+    for (final draft in charts.where((c) => c.isDraft)) {
+      try {
+        await runChart(draft); // live query; caches the result too
+        await saveChart(draft.copyWith(isDraft: false));
+        promoted++;
+      } catch (e) {
+        log.w('[charts] draft ${draft.id} still cannot run ($e)');
+      }
+    }
+    return promoted;
   }
 
   Future<void> _writeAll(List<ChartConfig> charts) => _db.setSyncInfo(

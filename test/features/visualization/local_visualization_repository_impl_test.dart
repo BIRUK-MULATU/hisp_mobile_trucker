@@ -29,8 +29,8 @@ class _CannedAdapter implements HttpClientAdapter {
   Uri? lastUri;
 
   @override
-  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? _,
-      Future<void>? __) async {
+  Future<ResponseBody> fetch(
+      RequestOptions options, Stream<Uint8List>? _, Future<void>? __) async {
     lastUri = options.uri;
     return ResponseBody.fromString(
       jsonEncode(body),
@@ -48,8 +48,8 @@ class _CannedAdapter implements HttpClientAdapter {
 /// Every request fails as if the server were unreachable.
 class _ThrowingAdapter implements HttpClientAdapter {
   @override
-  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? _,
-      Future<void>? __) async {
+  Future<ResponseBody> fetch(
+      RequestOptions options, Stream<Uint8List>? _, Future<void>? __) async {
     throw DioException(
         requestOptions: options, type: DioExceptionType.connectionError);
   }
@@ -152,7 +152,8 @@ void main() {
       expect([for (final c in charts) c.id], ['a']);
     });
 
-    test('saving a config with an existing id overwrites it in place '
+    test(
+        'saving a config with an existing id overwrites it in place '
         '(this is how editing persists)', () async {
       final repo = LocalVisualizationRepositoryImpl(session: _TestSession(db));
       await repo.saveChart(config(id: 'a'));
@@ -195,8 +196,7 @@ void main() {
           ChartItemRef(id: 'ind02', name: 'B'),
         ],
       ));
-      expect(params.dimensions,
-          ['dx:ind01;ind02', 'pe:LAST_3_MONTHS']);
+      expect(params.dimensions, ['dx:ind01;ind02', 'pe:LAST_3_MONTHS']);
       expect(params.filter, 'ou:orgUnit0001');
     });
 
@@ -277,8 +277,7 @@ void main() {
       expect(result.data.series.single.values, [25.0]);
     });
 
-    test('loadChart with skipLiveAttempt reads the cache directly',
-        () async {
+    test('loadChart with skipLiveAttempt reads the cache directly', () async {
       final client = ApiClient.withBasicAuth(
           baseUrl: 'https://example.invalid', username: 'u', password: 'p');
       client.dio.httpClientAdapter = _CannedAdapter(body: cannedBody());
@@ -286,14 +285,12 @@ void main() {
           session: _TestSession(db), api: client);
       await repo.runChart(config());
 
-      final result =
-          await repo.loadChart(config(), skipLiveAttempt: true);
+      final result = await repo.loadChart(config(), skipLiveAttempt: true);
       expect(result.isFromCache, isTrue);
       expect(result.data.categories, ['Hamle 2018']);
     });
 
-    test('loadChart throws when offline and nothing is cached yet',
-        () async {
+    test('loadChart throws when offline and nothing is cached yet', () async {
       final client = ApiClient.withBasicAuth(
           baseUrl: 'https://example.invalid', username: 'u', password: 'p');
       client.dio.httpClientAdapter = _ThrowingAdapter();
@@ -325,7 +322,8 @@ void main() {
   });
 
   group('getOrgUnitChildrenLive', () {
-    test('queries the server directly, filtered to the parent, not the '
+    test(
+        'queries the server directly, filtered to the parent, not the '
         'local (depth-bounded) capture tree', () async {
       final adapter = _CannedAdapter(body: {
         'organisationUnits': [
@@ -359,13 +357,201 @@ void main() {
       expect(adapter.lastUri!.path, '/api/organisationUnits.json');
       expect(adapter.lastUri!.queryParameters['filter'], 'parent.id:eq:phcuA');
       // Alphabetical, and childCount derived from the nested children.
-      expect(children.map((c) => c.name),
-          ['Health Center A', 'Health Center B']);
-      expect(children.firstWhere((c) => c.id == 'healthCenter1').childCount,
-          2);
-      expect(children.firstWhere((c) => c.id == 'healthCenter2').childCount,
-          0);
+      expect(
+          children.map((c) => c.name), ['Health Center A', 'Health Center B']);
+      expect(children.firstWhere((c) => c.id == 'healthCenter1').childCount, 2);
+      expect(children.firstWhere((c) => c.id == 'healthCenter2').childCount, 0);
       expect(children.first.parentId, 'phcuA');
+    });
+  });
+
+  group('offline pickers fall back to locally synced metadata', () {
+    test(
+        'getAllIndicatorsLocal reads straight from the synced table — no '
+        'live call at all (indicator groups aren\'t synced, so this is '
+        'the offline substitute)', () async {
+      await db.into(db.indicatorsTable).insert(IndicatorsTableCompanion.insert(
+            uid: 'indicator01',
+            name: 'ANC 1st visit',
+            displayName: 'ANC 1st visit',
+            numerator: '#{de1}',
+            denominator: '1',
+          ));
+      final repo = LocalVisualizationRepositoryImpl(session: _TestSession(db));
+
+      final indicators = await repo.getAllIndicatorsLocal();
+
+      expect(indicators.single.id, 'indicator01');
+      expect(indicators.single.name, 'ANC 1st visit');
+    });
+
+    test(
+        'getIndicatorGroups/getIndicatorsInGroup stay online-only — no '
+        'local table backs them', () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
+
+      expect(() => repo.getIndicatorGroups(), throwsA(isA<DioException>()));
+      expect(() => repo.getIndicatorsInGroup('grp1'),
+          throwsA(isA<DioException>()));
+    });
+
+    test(
+        'getDataElementGroups falls back to the locally synced groups '
+        'when the live call fails', () async {
+      await db.into(db.dataElementGroupsTable).insert(
+            DataElementGroupsTableCompanion.insert(
+                uid: 'deGroup0001', name: 'RMNCH', displayName: 'RMNCH'),
+          );
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
+
+      final groups = await repo.getDataElementGroups();
+
+      expect(groups.single.id, 'deGroup0001');
+      expect(groups.single.name, 'RMNCH');
+    });
+
+    test(
+        'getDataElementsInGroup falls back to the local group membership '
+        'and expands each element\'s category option combos', () async {
+      await db.into(db.categoryOptionCombosTable).insert(
+            CategoryOptionCombosTableCompanion.insert(
+                uid: 'catOptCoc01',
+                name: 'Female',
+                categoryComboUid: 'catCombo001'),
+          );
+      await db.into(db.dataElementsTable).insert(
+            DataElementsTableCompanion.insert(
+              uid: 'dataElem001',
+              name: 'ANC visits',
+              displayName: 'ANC visits',
+              formName: 'ANC visits',
+              valueType: 'NUMBER',
+              categoryComboUid: 'catCombo001',
+            ),
+          );
+      await db.into(db.dataElementGroupsTable).insert(
+            DataElementGroupsTableCompanion.insert(
+                uid: 'deGroup0001', name: 'RMNCH', displayName: 'RMNCH'),
+          );
+      await db.into(db.dataElementGroupMembersTable).insert(
+            DataElementGroupMembersTableCompanion.insert(
+                dataElementGroupUid: 'deGroup0001',
+                dataElementUid: 'dataElem001'),
+          );
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
+
+      final elements = await repo.getDataElementsInGroup('deGroup0001');
+
+      expect(elements.single.ref.id, 'dataElem001');
+      expect(elements.single.cocs.single.id, 'catOptCoc01');
+      expect(elements.single.cocs.single.name, 'Female');
+    });
+
+    test(
+        'getDataSets falls back to the locally synced data sets when the '
+        'live call fails', () async {
+      await db.into(db.dataSetsTable).insert(
+            DataSetsTableCompanion.insert(
+              uid: 'dataSet0001',
+              name: 'HMIS Monthly',
+              displayName: 'HMIS Monthly',
+              periodType: 'Monthly',
+              categoryComboUid: 'catCombo001',
+            ),
+          );
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
+
+      final sets = await repo.getDataSets();
+
+      expect(sets.single.id, 'dataSet0001');
+      expect(sets.single.name, 'HMIS Monthly');
+    });
+
+    test(
+        'getDataElementGroups still throws when nothing is synced locally '
+        'either', () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
+
+      expect(() => repo.getDataElementGroups(), throwsA(isA<DioException>()));
+    });
+  });
+
+  group('draft charts', () {
+    Map<String, dynamic> cannedBody() => {
+          'headers': [
+            {'name': 'dx'},
+            {'name': 'pe'},
+            {'name': 'value'},
+          ],
+          'metaData': {
+            'items': {
+              'indicator01': {'name': 'ANC 1st visit'},
+              '201811': {'name': 'Hamle 2018'},
+            },
+            'dimensions': {
+              'dx': ['indicator01'],
+              'pe': ['201811'],
+            },
+          },
+          'rows': [
+            ['indicator01', '201811', '25.0'],
+          ],
+        };
+
+    test(
+        'promotePendingDrafts runs the query and clears isDraft once '
+        'online', () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
+      await repo.saveChart(config().copyWith(isDraft: true));
+
+      // Still offline: nothing to promote.
+      expect(await repo.promotePendingDrafts(), 0);
+      expect((await repo.getSavedCharts()).single.isDraft, isTrue);
+
+      // Back online: the draft's query succeeds, so it graduates.
+      client.dio.httpClientAdapter = _CannedAdapter(body: cannedBody());
+      expect(await repo.promotePendingDrafts(), 1);
+      final promoted = (await repo.getSavedCharts()).single;
+      expect(promoted.isDraft, isFalse);
+
+      // Its result is cached too, same as any other successful run.
+      final result = await repo.loadChart(promoted, skipLiveAttempt: true);
+      expect(result.data.series.single.values, [25.0]);
+    });
+
+    test('promotePendingDrafts leaves non-draft charts untouched', () async {
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _CannedAdapter(body: cannedBody());
+      final repo = LocalVisualizationRepositoryImpl(
+          session: _TestSession(db), api: client);
+      await repo.saveChart(config()); // isDraft: false by default
+
+      expect(await repo.promotePendingDrafts(), 0);
     });
   });
 }

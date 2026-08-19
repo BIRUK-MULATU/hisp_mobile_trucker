@@ -12,6 +12,21 @@ class DataElementWithCocs {
   final List<ChartItemRef> cocs;
 
   const DataElementWithCocs({required this.ref, required this.cocs});
+
+  Map<String, dynamic> toJson() => {
+        'ref': ref.toJson(),
+        'cocs': [for (final c in cocs) c.toJson()]
+      };
+
+  factory DataElementWithCocs.fromJson(Map<String, dynamic> json) =>
+      DataElementWithCocs(
+        ref:
+            ChartItemRef.fromJson((json['ref'] as Map).cast<String, dynamic>()),
+        cocs: [
+          for (final c in (json['cocs'] as List? ?? const []))
+            ChartItemRef.fromJson((c as Map).cast<String, dynamic>()),
+        ],
+      );
 }
 
 /// Visualizations built and stored entirely on this device — never a
@@ -34,6 +49,12 @@ abstract class LocalVisualizationRepository {
 
   Future<List<ChartItemRef>> getDataSets();
 
+  /// Every indicator already synced to this device, flat. Indicator
+  /// GROUPS aren't synced locally (only indicators themselves are —
+  /// see MetadataSyncService), so this is what the builder falls back
+  /// to offline instead of the normal group → indicators picker.
+  Future<List<ChartItemRef>> getAllIndicatorsLocal();
+
   // ── Saved visualizations (local device storage) ──────────────────
 
   /// Every saved visualization, newest first.
@@ -46,6 +67,13 @@ abstract class LocalVisualizationRepository {
 
   /// Permanently removes a saved visualization and its cached result.
   Future<void> deleteChart(String id);
+
+  /// Tries every saved chart with [ChartConfig.isDraft] set (built
+  /// while offline, never successfully queried yet) and clears the
+  /// flag on each one that runs successfully now. Returns how many
+  /// were promoted. Safe to call anytime — no-ops when offline or
+  /// when there are no drafts.
+  Future<int> promotePendingDrafts();
 
   // ── Running / viewing ──────────────────────────────────────────
 
