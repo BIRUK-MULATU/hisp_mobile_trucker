@@ -22,7 +22,7 @@ class _OnboardingSlide {
 const _slides = [
   _OnboardingSlide(
     icon: Icons.local_hospital_rounded,
-    title: 'Welcome to RDHIS2 Mobile Tracker',
+    title: 'Welcome to RDHIS2 Mobile App',
     description: "The official DHIS2 data collection app for health "
         "facilities — record and report your facility's health data "
         'straight from your phone.',

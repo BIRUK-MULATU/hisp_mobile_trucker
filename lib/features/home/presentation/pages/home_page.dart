@@ -431,7 +431,7 @@ class _HomeDrawer extends StatelessWidget {
                       .copyWith(color: AppColors.textSecondary)),
               const SizedBox(height: AppDimensions.spaceLG),
               const Text(
-                'RDHIS2 Mobile Tracker is the official mobile data '
+                'RDHIS2 Mobile App is the official mobile data '
                 'collection and reporting application of the Ministry '
                 'of Health, built on the DHIS2 Health Management '
                 'Information System. It enables health workers to '
@@ -447,14 +447,6 @@ class _HomeDrawer extends StatelessWidget {
                 'a connection is available, helping keep facility '
                 'reports timely, complete, and accurate.',
                 style: AppTextStyles.bodyMedium,
-              ),
-              const SizedBox(height: AppDimensions.spaceLG),
-              Text(
-                'Developed by HISP Ethiopia in collaboration with the '
-                'Ministry of Health. For assistance, please contact '
-                'your system administrator or district health office.',
-                style: AppTextStyles.bodySmall
-                    .copyWith(color: AppColors.textSecondary),
               ),
             ],
           ),
