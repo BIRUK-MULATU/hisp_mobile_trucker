@@ -2,7 +2,7 @@ class AppConstants {
   AppConstants._();
 
   // ── App Info ───────────────────────────────────────────────
-  static const String appName = 'RDHIS2 Mobile Tracker';
+  static const String appName = 'RDHIS2 Mobile App';
   static const String appVersion = '1.0.0';
 
   // ── Storage Keys ───────────────────────────────────────────
