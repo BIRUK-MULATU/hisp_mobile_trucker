@@ -1,12 +1,12 @@
-# HISP Mobile Tracker — Executive Summary
+# RDHIS2 Mobile Tracker — Executive Summary
 
 **Prepared for:** Federal Ministry of Health, Ethiopia
 **Prepared by:** HISP Ethiopia
-**Subject:** Architecture, Security & Readiness Review of the HISP Mobile Tracker Flutter application
+**Subject:** Architecture, Security & Readiness Review of the RDHIS2 Mobile Tracker Flutter application
 
 ## What it is
 
-HISP Mobile Tracker is an offline-first mobile application for capturing aggregate health
+RDHIS2 Mobile Tracker is an offline-first mobile application for capturing aggregate health
 data into DHIS2 (version 2.40), built for health facility staff working under Ethiopia's
 real connectivity conditions — intermittent or absent network access at the point of care.
 The app is developed by HISP Ethiopia in collaboration with the Federal Ministry of Health,

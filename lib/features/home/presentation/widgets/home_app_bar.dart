@@ -145,7 +145,7 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
         _showcase(
           searchShowcaseKey,
           'Search',
-          'Search organisation units in Capture, or your saved charts '
+          'Search organisation units in Capture, or dashboards '
               'in Visualization.',
           IconButton(
             icon: Icon(

@@ -28,9 +28,9 @@ class CaptureOrgUnitView extends StatefulWidget {
   final String? orgUnitQuery;
 
   /// Filter-panel SYNC selections (labels from the panel:
-  /// 'Synced' / 'UnSynced' / 'Sync Error' / 'SMS Synced'). Non-empty
-  /// switches the tree to a flat list of org units whose local work
-  /// is in one of those states.
+  /// 'Synced' / 'UnSynced' / 'Sync Error'). Non-empty switches the
+  /// tree to a flat list of org units whose local work is in one of
+  /// those states.
   final Set<String> syncFilters;
 
   /// Filter-panel DATE window (start inclusive, end exclusive) over
@@ -133,20 +133,14 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
           SyncState.draft,
         ] else if (label == 'Sync Error')
           SyncState.error,
-      // 'SMS Synced' has no local counterpart (the app does not sync
-      // over SMS) — it contributes no state and alone matches nothing.
     };
-    var flat = const <OrgUnitTreeNode>[];
-    final smsOnly = widget.syncFilters.isNotEmpty && states.isEmpty;
-    if (!smsOnly) {
-      final ids =
-          await DataValueStore(AppSession.instance.service.db).orgUnitsWithWork(
-        states: states,
-        from: widget.dateRange?.start,
-        to: widget.dateRange?.end,
-      );
-      flat = await _repository.getOrgUnitsByIds(ids);
-    }
+    final ids =
+        await DataValueStore(AppSession.instance.service.db).orgUnitsWithWork(
+      states: states,
+      from: widget.dateRange?.start,
+      to: widget.dateRange?.end,
+    );
+    final flat = await _repository.getOrgUnitsByIds(ids);
     if (mounted) setState(() => _filteredFlat = flat);
   }
 
@@ -415,18 +409,25 @@ class _CaptureOrgUnitViewState extends State<CaptureOrgUnitView> {
         ),
       );
     }
-    return ListView.builder(
-      itemCount: nodes.length,
-      itemBuilder: (context, index) {
-        final item = nodes[index];
-        return _TreeTile(
-          node: item.node,
-          depth: item.depth,
-          isSelected: item.node.id == _selected?.id,
-          onExpand: () => _toggleExpand(item.node),
-          onSelect: () => _select(item.node),
-        );
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: () async {
+        await _loadRoots();
+        await _applyDataFilters();
       },
+      child: ListView.builder(
+        itemCount: nodes.length,
+        itemBuilder: (context, index) {
+          final item = nodes[index];
+          return _TreeTile(
+            node: item.node,
+            depth: item.depth,
+            isSelected: item.node.id == _selected?.id,
+            onExpand: () => _toggleExpand(item.node),
+            onSelect: () => _select(item.node),
+          );
+        },
+      ),
     );
   }
 }

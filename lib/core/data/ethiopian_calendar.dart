@@ -247,6 +247,14 @@ class EthiopianCalendar {
   }
 
   // ── Monthly periods ───────────────────────────────────────
+  //
+  // No distinct Pagume (month 13) period on this server: confirmed
+  // live against staging — an analytics query for `pe:LAST_12_MONTHS`
+  // resolves straight from Nehase (…12) to the following Meskerem
+  // (…01), never emitting a "…13" id. Pagume's ~5-6 intercalary days
+  // report under the UPCOMING Meskerem instead, so monthly period
+  // generation treats the calendar as 12 months, skipping 13 both
+  // when normalizing "today" and when walking backward.
   static List<EthiopianPeriod> _generateMonthlyPeriods({
     int count = 24,
   }) {
@@ -254,6 +262,12 @@ class EthiopianCalendar {
     final periods = <EthiopianPeriod>[];
     int year = ethToday.year;
     int month = ethToday.month;
+    if (month == 13) {
+      // Actually within Pagume right now — those days belong to the
+      // Meskerem that's about to start.
+      month = 1;
+      year += 1;
+    }
 
     for (int i = 0; i < count; i++) {
       // DHIS2 monthly period ID: yyyyMM
@@ -275,7 +289,7 @@ class EthiopianCalendar {
 
       month--;
       if (month < 1) {
-        month = 13;
+        month = 12;
         year--;
       }
     }

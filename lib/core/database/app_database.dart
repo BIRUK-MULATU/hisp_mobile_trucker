@@ -183,6 +183,7 @@ class CompleteDataSetRegistrationsTable extends Table {
   ValidationRulesTable,
   // links (all in core/metadata/links.dart)
   DataSetElementsTable,
+  CompulsoryDataElementOperandsTable,
   DataSetOrgUnitsTable,
   SectionDataElementsTable,
   SectionIndicatorsTable,
@@ -215,7 +216,7 @@ class AppDatabase extends _$AppDatabase {
       raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -264,6 +265,24 @@ class AppDatabase extends _$AppDatabase {
                 'ELSE 1 END',
               );
             },
+            // DHIS2 `dataSetElement.compulsory` — required-field
+            // support. Same column-existence guard as step 3: a device
+            // that crashed mid-migration must not hit "duplicate
+            // column name" forever on retry.
+            4: (m) async {
+              final columns = await customSelect(
+                "SELECT name FROM pragma_table_info('data_set_elements_table')",
+              ).get();
+              final hasCompulsory =
+                  columns.any((r) => r.read<String>('name') == 'compulsory');
+              if (!hasCompulsory) {
+                await m.addColumn(
+                    dataSetElementsTable, dataSetElementsTable.compulsory);
+              }
+            },
+            // DHIS2 `dataSet.compulsoryDataElementOperands` — the
+            // element+combo-pair sibling of dataSetElement.compulsory.
+            5: (m) => m.createTable(compulsoryDataElementOperandsTable),
           };
           for (var target = from + 1; target <= to; target++) {
             final step = steps[target];

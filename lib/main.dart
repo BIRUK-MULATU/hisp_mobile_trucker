@@ -9,6 +9,7 @@ import 'core/storage/secure_storage.dart';
 import 'core/sync/sync_coordinator.dart';
 import 'core/sync/drift_sync_manager.dart';
 import 'core/network/connectivity_service.dart';
+import 'features/visualization/data/chart_draft_coordinator.dart';
 import 'shared/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
 
@@ -46,6 +47,10 @@ void main() async {
 
   // Server reachability probe behind the online/offline indicator.
   ConnectivityService.instance;
+
+  // Finishes any chart drafts saved offline the moment connectivity
+  // returns (see ChartBuilderView._saveDraft).
+  ChartDraftCoordinator.instance.start();
 
   runApp(const HispMobileTrackerApp());
 }

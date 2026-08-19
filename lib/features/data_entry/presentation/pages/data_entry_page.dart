@@ -12,6 +12,7 @@ import '../../../../core/data/validation_service.dart';
 import '../../../../core/metadata/data_set.dart';
 import '../../../../core/onboarding/tour_helper.dart';
 import '../../../../core/storage/secure_storage.dart';
+import '../../../../core/utils/app_logger.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -331,7 +332,18 @@ class _DataEntryViewState extends State<_DataEntryView> {
   }
 
   // ── Sync tapped — reload values from the server ───────────
-  void _onSyncTapped() {
+  // Fire-and-forget wrapper around [_reloadFromServer] for the app-bar
+  // icon, which doesn't need to know when the reload finishes.
+  void _onSyncTapped() => _reloadFromServer();
+
+  /// Shared by the app-bar sync icon and pull-to-refresh: re-dispatches
+  /// [DataEntryLoad], which already does a live server pull + push
+  /// when connected (see DataEntryRepositoryImpl.getDataValues) before
+  /// re-reading local values — so this is a genuine reload, not just a
+  /// local re-render. Awaits the resulting state so a caller (the
+  /// RefreshIndicator) knows when the real work is actually done,
+  /// instead of just when the event was enqueued.
+  Future<void> _reloadFromServer() async {
     final bloc = context.read<DataEntryBloc>();
     final state = bloc.state;
     // A reload replaces every cell — don't wipe unsaved edits.
@@ -345,6 +357,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
       );
       return;
     }
+    final done = bloc.stream
+        .firstWhere((s) => s is DataEntryLoaded || s is DataEntryError);
     bloc.add(DataEntryLoad(
       dataSetId: widget.dataSetId,
       orgUnitId: widget.orgUnitId,
@@ -352,6 +366,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
       sectionId: widget.sectionId,
       attributeOptionComboUid: widget.attributeOptionComboUid,
     ));
+    await done;
   }
 
   // Shared by Print and Download: the loaded form's state, or null
@@ -637,6 +652,28 @@ class _DataEntryViewState extends State<_DataEntryView> {
     if (!mounted) return;
     final hasViolations = violations.isNotEmpty;
 
+    // Compulsory dataSetElement fields. Unlike validation rules above,
+    // this DOES block completing (see missingMandatoryFields doc) — a
+    // fetch failure is still treated as "nothing missing" so a single
+    // bad query can't permanently strand the user, but it's logged so
+    // real metadata corruption doesn't go unnoticed.
+    var missing = const <String>[];
+    try {
+      missing = await context
+          .read<DataEntryBloc>()
+          .repository
+          .missingMandatoryFields(
+            dataSetId: widget.dataSetId,
+            orgUnitId: widget.orgUnitId,
+            period: widget.period,
+            attributeOptionComboUid: widget.attributeOptionComboUid,
+          );
+    } catch (e) {
+      log.e('missingMandatoryFields failed: $e');
+    }
+    if (!mounted) return;
+    final hasMissingMandatory = missing.isNotEmpty;
+
     final result = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.white,
@@ -663,13 +700,18 @@ class _DataEntryViewState extends State<_DataEntryView> {
             children: [
               // ── Title ──────────────────────────────
               Text(
-                hasViolations
-                    ? '${violations.length} validation '
-                        'issue${violations.length == 1 ? '' : 's'} found'
-                    : 'Everything looks good',
+                hasMissingMandatory
+                    ? '${missing.length} required '
+                        'field${missing.length == 1 ? '' : 's'} missing'
+                    : hasViolations
+                        ? '${violations.length} validation '
+                            'issue${violations.length == 1 ? '' : 's'} found'
+                        : 'Everything looks good',
                 style: AppTextStyles.headingMedium.copyWith(
                   fontWeight: FontWeight.w600,
-                  color: hasViolations ? AppColors.error : null,
+                  color: (hasMissingMandatory || hasViolations)
+                      ? AppColors.error
+                      : null,
                 ),
               ),
 
@@ -677,19 +719,39 @@ class _DataEntryViewState extends State<_DataEntryView> {
 
               // ── Message ────────────────────────────
               Text(
-                hasViolations
-                    ? 'The values below conflict with this data set\'s '
-                        'validation rules. Review them, or complete '
-                        'anyway if the data is correct.'
-                    : 'Complete the data set to send it to the server, or '
-                        'keep it as a draft on this device to finish later.',
+                hasMissingMandatory
+                    ? 'Fill in the required fields marked with * before '
+                        'completing. You can still save this as a draft '
+                        'and finish later.'
+                    : hasViolations
+                        ? 'The values below conflict with this data set\'s '
+                            'validation rules. Review them, or complete '
+                            'anyway if the data is correct.'
+                        : 'Complete the data set to send it to the server, '
+                            'or keep it as a draft on this device to '
+                            'finish later.',
                 style: AppTextStyles.bodyMedium.copyWith(
                   color: AppColors.textSecondary,
                   height: 1.5,
                 ),
               ),
 
-              if (hasViolations) ...[
+              if (hasMissingMandatory) ...[
+                const SizedBox(height: AppDimensions.spaceMD),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(ctx).size.height * 0.35,
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: missing.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppDimensions.spaceSM),
+                    itemBuilder: (_, i) =>
+                        _MandatoryFieldTile(fieldName: missing[i]),
+                  ),
+                ),
+              ] else if (hasViolations) ...[
                 const SizedBox(height: AppDimensions.spaceMD),
                 ConstrainedBox(
                   constraints: BoxConstraints(
@@ -711,62 +773,92 @@ class _DataEntryViewState extends State<_DataEntryView> {
               const SizedBox(height: AppDimensions.spaceXL),
 
               // ── Buttons ────────────────────────────
-              Row(
-                children: [
-                  // With violations: back to the form. Clean: keep as a
-                  // device-only draft.
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () =>
-                          Navigator.pop(ctx, hasViolations ? null : false),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                        side: const BorderSide(
-                          color: AppColors.primary,
-                          width: 1.5,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(AppDimensions.radiusFull),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: AppDimensions.spaceMD),
+              // Missing mandatory fields is a HARD block — unlike
+              // validation rules, there's no "complete anyway" escape:
+              // only a single button back to the form.
+              if (hasMissingMandatory)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx, null),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(
+                        color: AppColors.primary,
+                        width: 1.5,
                       ),
-                      child: Text(
-                        hasViolations ? 'Review data' : 'Incomplete',
-                        style: AppTextStyles.buttonMedium
-                            .copyWith(color: AppColors.primary),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppDimensions.radiusFull),
                       ),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spaceMD),
+                    ),
+                    child: Text(
+                      'Review data',
+                      style: AppTextStyles.buttonMedium
+                          .copyWith(color: AppColors.primary),
                     ),
                   ),
-
-                  const SizedBox(width: AppDimensions.spaceMD),
-
-                  // Complete
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            hasViolations ? AppColors.error : AppColors.primary,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(AppDimensions.radiusFull),
+                )
+              else
+                Row(
+                  children: [
+                    // With violations: back to the form. Clean: keep as
+                    // a device-only draft.
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () =>
+                            Navigator.pop(ctx, hasViolations ? null : false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(
+                            color: AppColors.primary,
+                            width: 1.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                                AppDimensions.radiusFull),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: AppDimensions.spaceMD),
                         ),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: AppDimensions.spaceMD),
-                      ),
-                      child: Text(
-                        hasViolations ? 'Complete anyway' : 'Complete',
-                        style: AppTextStyles.buttonMedium
-                            .copyWith(color: Colors.white),
+                        child: Text(
+                          hasViolations ? 'Review data' : 'Incomplete',
+                          style: AppTextStyles.buttonMedium
+                              .copyWith(color: AppColors.primary),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+
+                    const SizedBox(width: AppDimensions.spaceMD),
+
+                    // Complete
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: hasViolations
+                              ? AppColors.error
+                              : AppColors.primary,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                                AppDimensions.radiusFull),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: AppDimensions.spaceMD),
+                        ),
+                        child: Text(
+                          hasViolations ? 'Complete anyway' : 'Complete',
+                          style: AppTextStyles.buttonMedium
+                              .copyWith(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),
@@ -1138,23 +1230,31 @@ class _DataEntryViewState extends State<_DataEntryView> {
                     );
                   }
                   if (state is DataEntryLoaded) {
-                    return widget.isDiseaseRegistration
-                        ? DiseaseEntryList(
-                            dataElements: state.dataElements,
-                            dataValues: state.dataValues,
-                            orgUnitId: widget.orgUnitId,
-                            period: widget.period,
-                            readOnly: _isPeriodClosed,
-                            searchShowcaseKey: _diseaseSearchShowcaseKey,
-                          )
-                        : DataEntryTable(
-                            dataElements: state.dataElements,
-                            dataValues: state.dataValues,
-                            orgUnitId: widget.orgUnitId,
-                            period: widget.period,
-                            searchQuery: _searchQuery,
-                            readOnly: _isPeriodClosed,
-                          );
+                    // Guarded the same way as the app-bar sync icon —
+                    // dragging down with unsaved edits shows the
+                    // "save first" snackbar instead of silently
+                    // discarding them.
+                    return RefreshIndicator(
+                      color: AppColors.primary,
+                      onRefresh: _reloadFromServer,
+                      child: widget.isDiseaseRegistration
+                          ? DiseaseEntryList(
+                              dataElements: state.dataElements,
+                              dataValues: state.dataValues,
+                              orgUnitId: widget.orgUnitId,
+                              period: widget.period,
+                              readOnly: _isPeriodClosed,
+                              searchShowcaseKey: _diseaseSearchShowcaseKey,
+                            )
+                          : DataEntryTable(
+                              dataElements: state.dataElements,
+                              dataValues: state.dataValues,
+                              orgUnitId: widget.orgUnitId,
+                              period: widget.period,
+                              searchQuery: _searchQuery,
+                              readOnly: _isPeriodClosed,
+                            ),
+                    );
                   }
                   // Initial state (load event not processed yet) —
                   // keep the spinner up instead of a blank page.
@@ -1347,6 +1447,43 @@ class _ErrorView extends StatelessWidget {
 }
 
 // ── Validation violation tile (complete bottom sheet) ────────────
+// One compulsory field with no value yet — simpler than
+// _ValidationViolationTile since there's no rule detail/instruction,
+// just the element (and combo, when disaggregated) that's missing.
+class _MandatoryFieldTile extends StatelessWidget {
+  final String fieldName;
+
+  const _MandatoryFieldTile({required this.fieldName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppDimensions.spaceMD),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              size: AppDimensions.iconSM, color: AppColors.error),
+          const SizedBox(width: AppDimensions.spaceSM),
+          Expanded(
+            child: Text(
+              fieldName,
+              style: AppTextStyles.bodySmall.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ValidationViolationTile extends StatelessWidget {
   final ValidationViolation violation;
 

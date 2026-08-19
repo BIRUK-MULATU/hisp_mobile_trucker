@@ -413,6 +413,45 @@ class _DataEntryTableState extends State<DataEntryTable> {
     return true;
   }
 
+  // Element display name, with a red "*" appended when ANY of its
+  // cells is required — dataSetElement.compulsory (whole element) or
+  // compulsoryDataElementOperands (specific combos, see
+  // DataElementEntity.hasCompulsoryCell) — must be filled before the
+  // data set can be marked complete.
+  static Widget _elementNameText(DataElementEntity element, TextStyle style) {
+    if (!element.hasCompulsoryCell) {
+      return Text(element.displayName, style: style);
+    }
+    return Text.rich(
+      TextSpan(style: style, children: [
+        TextSpan(text: element.displayName),
+        const TextSpan(text: ' *', style: TextStyle(color: AppColors.error)),
+      ]),
+    );
+  }
+
+  // Combo display name, with the same "*" — only meaningfully
+  // different from the element-level one when just SOME combos of a
+  // disaggregated element are individually compulsory.
+  static Widget _comboNameText(CategoryOptionCombo combo, TextStyle style) {
+    if (!combo.isCompulsory) {
+      return Text(
+        combo.displayName,
+        style: style,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+    return Text.rich(
+      TextSpan(style: style, children: [
+        TextSpan(text: combo.displayName),
+        const TextSpan(text: ' *', style: TextStyle(color: AppColors.error)),
+      ]),
+      maxLines: 3,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
   Widget _buildSection(DataElementEntity element) {
     final combos = _combosFor(element);
 
@@ -491,9 +530,9 @@ class _DataEntryTableState extends State<DataEntryTable> {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    element.displayName,
-                    style: AppTextStyles.bodySmall.copyWith(
+                  child: _elementNameText(
+                    element,
+                    AppTextStyles.bodySmall.copyWith(
                       color: AppColors.primary,
                       fontWeight: FontWeight.w600,
                       fontSize: 12,
@@ -582,9 +621,9 @@ class _DataEntryTableState extends State<DataEntryTable> {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              element.displayName,
-              style: AppTextStyles.bodySmall.copyWith(
+            child: _elementNameText(
+              element,
+              AppTextStyles.bodySmall.copyWith(
                 color: AppColors.primary,
                 fontWeight: FontWeight.w600,
                 fontSize: 12,
@@ -664,11 +703,9 @@ class _DataEntryTableState extends State<DataEntryTable> {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              combo.displayName,
-              style: AppTextStyles.bodySmall.copyWith(fontSize: 12),
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
+            child: _comboNameText(
+              combo,
+              AppTextStyles.bodySmall.copyWith(fontSize: 12),
             ),
           ),
           InkWell(

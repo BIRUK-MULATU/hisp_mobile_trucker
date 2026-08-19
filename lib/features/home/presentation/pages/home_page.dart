@@ -238,10 +238,12 @@ class _HomePageState extends State<HomePage> {
         showFilterButton: _mode == HomeMode.capture,
         isSyncing: _isSyncing,
         // Search targets whichever mode is active: org units in
-        // Capture, saved charts in Visualization.
+        // Capture, or whichever side of the Dashboards tab's own
+        // Server/Local toggle is showing in Visualization (Create New
+        // has no list to filter).
         searchHint: _mode == HomeMode.capture
             ? 'Search organisation units...'
-            : 'Search charts...',
+            : 'Search dashboards or charts...',
         onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
         onSyncTap: _onSyncTapped,
         onListViewTap: () => setState(() => _showFilters = !_showFilters),
@@ -345,21 +347,29 @@ class _HomePageState extends State<HomePage> {
               ),
               Expanded(
                 child: ResponsiveContent(
-                  child: _mode == HomeMode.visualization
-                      ? VisualizationView(
-                          searchQuery: _searchActive ? _searchQuery : null,
-                        )
-                      : CaptureOrgUnitView(
-                          key: ValueKey('capture-$_syncTick'),
-                          keyboardOpen: keyboardOpen,
-                          searchQuery: _searchActive ? _searchQuery : null,
-                          orgUnitQuery: _orgUnitFilter?.label,
-                          syncFilters: _syncFilter?.label.split(', ').toSet() ??
-                              const {},
-                          dateRange: _dateFilter == null
-                              ? null
-                              : resolveDateFilter(_dateFilter!, DateTime.now()),
-                        ),
+                  // IndexedStack keeps both modes' state alive across
+                  // toggles — a plain ternary here would destroy and
+                  // recreate CaptureOrgUnitView on every switch back,
+                  // re-triggering its full org-unit reload each time.
+                  child: IndexedStack(
+                    index: _mode.index,
+                    children: [
+                      VisualizationView(
+                        searchQuery: _searchActive ? _searchQuery : null,
+                      ),
+                      CaptureOrgUnitView(
+                        key: ValueKey('capture-$_syncTick'),
+                        keyboardOpen: keyboardOpen,
+                        searchQuery: _searchActive ? _searchQuery : null,
+                        orgUnitQuery: _orgUnitFilter?.label,
+                        syncFilters: _syncFilter?.label.split(', ').toSet() ??
+                            const {},
+                        dateRange: _dateFilter == null
+                            ? null
+                            : resolveDateFilter(_dateFilter!, DateTime.now()),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -421,7 +431,7 @@ class _HomeDrawer extends StatelessWidget {
                       .copyWith(color: AppColors.textSecondary)),
               const SizedBox(height: AppDimensions.spaceLG),
               const Text(
-                'HISP Mobile Tracker is the official mobile data '
+                'RDHIS2 Mobile Tracker is the official mobile data '
                 'collection and reporting application of the Ministry '
                 'of Health, built on the DHIS2 Health Management '
                 'Information System. It enables health workers to '

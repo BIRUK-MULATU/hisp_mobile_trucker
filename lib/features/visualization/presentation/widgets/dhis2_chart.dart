@@ -6,9 +6,15 @@ import '../../../../shared/theme/app_text_styles.dart';
 import '../../domain/entities/analytics_data.dart';
 
 /// Renders one DHIS2 visualization natively. The DHIS2 type decides
-/// the chart: COLUMN/BAR families → bars, LINE/AREA → lines,
-/// PIE → pie, SINGLE_VALUE/GAUGE → the number, everything else
-/// (PIVOT_TABLE, unknown types) → a plain data table.
+/// the chart: COLUMN/BAR families (incl. YEAR_OVER_YEAR_COLUMN) →
+/// bars, LINE/AREA (incl. YEAR_OVER_YEAR_LINE) → lines, PIE → pie,
+/// SINGLE_VALUE/GAUGE → the number, everything else (PIVOT_TABLE,
+/// SCATTER, RADAR, unknown types) → a plain data table — every
+/// visualization type is at least representable this way, never
+/// dropped, since [AnalyticsData] already generalizes to N series ×
+/// N categories regardless of how many dimensions the source
+/// visualization actually varies (see
+/// ChartRepositoryImpl._reshapeGenericGrid for remote visualizations).
 class Dhis2Chart extends StatelessWidget {
   final AnalyticsData data;
 
@@ -61,13 +67,16 @@ class Dhis2Chart extends StatelessWidget {
           case 'LINE':
           case 'AREA':
           case 'STACKED_AREA':
+          case 'YEAR_OVER_YEAR_LINE':
             return _Lines(
               data: data,
-              filled: data.type.toUpperCase() != 'LINE',
+              filled: data.type.toUpperCase() != 'LINE' &&
+                  data.type.toUpperCase() != 'YEAR_OVER_YEAR_LINE',
               scale: scale,
             );
           case 'COLUMN':
           case 'STACKED_COLUMN':
+          case 'YEAR_OVER_YEAR_COLUMN':
             return _Bars(data: data, scale: scale);
           case 'BAR':
           case 'STACKED_BAR':
@@ -292,6 +301,62 @@ class _HBars extends StatelessWidget {
   final double scale;
   const _HBars({required this.data, this.scale = 1.0});
 
+  // Past this many categories the list is bounded to a fixed-height,
+  // internally-scrollable capsule instead of stretching the page —
+  // e.g. a disease-by-disease breakdown can run into the hundreds of
+  // rows, which would otherwise force every row to be built eagerly.
+  static const _scrollThreshold = 8;
+
+  Widget _row(int c, double maxValue) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppDimensions.spaceSM),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            data.categories[c],
+            style:
+                AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          for (var s = 0; s < data.series.length; s++)
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        minHeight: 10 * scale,
+                        value: maxValue == 0
+                            ? 0
+                            : (data.series[s].values[c] ?? 0).abs() / maxValue,
+                        backgroundColor: AppColors.backgroundGrey,
+                        color: Dhis2Chart.colorOf(s),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 52 * scale,
+                    child: Text(
+                      data.series[s].values[c] == null
+                          ? ''
+                          : _compact(data.series[s].values[c]!),
+                      textAlign: TextAlign.right,
+                      style: AppTextStyles.labelSmall
+                          .copyWith(color: AppColors.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final maxValue = [
@@ -300,60 +365,24 @@ class _HBars extends StatelessWidget {
           if (v != null) v.abs(),
     ].fold<double>(0, (a, b) => a > b ? a : b);
 
+    final rows = data.categories.length;
+    final list = rows > _scrollThreshold
+        ? ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: 360 * scale),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: rows,
+              itemBuilder: (_, c) => _row(c, maxValue),
+            ),
+          )
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [for (var c = 0; c < rows; c++) _row(c, maxValue)],
+          );
+
     return Column(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var c = 0; c < data.categories.length; c++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppDimensions.spaceSM),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.categories[c],
-                  style: AppTextStyles.labelSmall
-                      .copyWith(color: AppColors.textSecondary),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                for (var s = 0; s < data.series.length; s++)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: LinearProgressIndicator(
-                              minHeight: 10 * scale,
-                              value: maxValue == 0
-                                  ? 0
-                                  : (data.series[s].values[c] ?? 0).abs() /
-                                      maxValue,
-                              backgroundColor: AppColors.backgroundGrey,
-                              color: Dhis2Chart.colorOf(s),
-                            ),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 52 * scale,
-                          child: Text(
-                            data.series[s].values[c] == null
-                                ? ''
-                                : _compact(data.series[s].values[c]!),
-                            textAlign: TextAlign.right,
-                            style: AppTextStyles.labelSmall
-                                .copyWith(color: AppColors.textPrimary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        _Legend(data: data, scale: scale),
-      ],
+      children: [list, _Legend(data: data, scale: scale)],
     );
   }
 }

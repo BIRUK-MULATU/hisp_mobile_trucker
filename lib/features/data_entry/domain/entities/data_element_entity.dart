@@ -37,6 +37,11 @@ class DataElementEntity {
   /// directly above this element, computed live — never entered.
   final List<DisplayIndicator> displayIndicators;
 
+  /// DHIS2 `dataSetElement.compulsory` for the data set this entity
+  /// was loaded for — must be filled before the data set can be
+  /// marked complete (see DataEntryRepository.missingMandatoryFields).
+  final bool compulsory;
+
   const DataElementEntity({
     required this.id,
     required this.name,
@@ -48,11 +53,21 @@ class DataElementEntity {
     this.controlledElementIds = const [],
     this.label,
     this.displayIndicators = const [],
+    this.compulsory = false,
   });
 
   String get displayName => shortName ?? name;
 
   bool get isController => controlledElementIds.isNotEmpty;
+
+  /// True when ANY cell of this element is required — either the
+  /// whole element (dataSetElement.compulsory) or at least one combo
+  /// individually (compulsoryDataElementOperands, see
+  /// CategoryOptionCombo.isCompulsory). Drives the "*" shown on the
+  /// element's row/header — the specific combo rows carry their own
+  /// finer-grained flag for when only some combos are required.
+  bool get hasCompulsoryCell =>
+      compulsory || categoryOptionCombos.any((c) => c.isCompulsory);
 }
 
 /// One choice of a data element's option set. [code] is what gets
@@ -79,11 +94,18 @@ class CategoryOptionCombo {
   /// just "closed period, temporarily view-only".
   final bool isGreyed;
 
+  /// DHIS2 `compulsoryDataElementOperands` — this exact (element,
+  /// combo) cell is individually required, independent of whether the
+  /// owning element is dataSetElement.compulsory. See
+  /// DataElementEntity.hasCompulsoryCell.
+  final bool isCompulsory;
+
   const CategoryOptionCombo({
     required this.id,
     required this.name,
     this.shortName,
     this.isGreyed = false,
+    this.isCompulsory = false,
   });
 
   String get displayName => shortName ?? name;

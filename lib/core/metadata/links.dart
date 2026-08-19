@@ -17,8 +17,31 @@ class DataSetElementsTable extends Table {
   TextColumn get categoryComboUid => text().withLength(min: 11, max: 11)();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 
+  /// DHIS2 `dataSetElement.compulsory` — must be filled before this
+  /// data set can be marked complete. A link-table property: the same
+  /// element can be compulsory in one data set and optional in another.
+  BoolColumn get compulsory => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {dataSetUid, dataElementUid};
+}
+
+/// DHIS2 `dataSet.compulsoryDataElementOperands` — a finer-grained
+/// sibling of DataSetElementsTable.compulsory: instead of requiring
+/// EVERY combo of an element, this marks specific (element, combo)
+/// PAIRS as required, independent of whether the element itself is
+/// flagged dataSetElement.compulsory. An instance may use either
+/// mechanism, or both, per dataset.
+@DataClassName('CompulsoryDataElementOperand')
+class CompulsoryDataElementOperandsTable extends Table {
+  TextColumn get dataSetUid => text().withLength(min: 11, max: 11)();
+  TextColumn get dataElementUid => text().withLength(min: 11, max: 11)();
+  TextColumn get categoryOptionComboUid =>
+      text().withLength(min: 11, max: 11)();
+
+  @override
+  Set<Column> get primaryKey =>
+      {dataSetUid, dataElementUid, categoryOptionComboUid};
 }
 
 @DataClassName('DataSetOrgUnit')

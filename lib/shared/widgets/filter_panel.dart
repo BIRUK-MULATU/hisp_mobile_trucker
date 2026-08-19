@@ -205,7 +205,6 @@ class _SyncFilterList extends StatelessWidget {
     _SyncOption('Synced', Icons.sync_rounded, Color(0xFF4CAF50)),
     _SyncOption('UnSynced', Icons.sync_rounded, Color(0xFFBDBDBD)),
     _SyncOption('Sync Error', Icons.priority_high_rounded, Color(0xFFE53935)),
-    _SyncOption('SMS Synced', null, Color(0xFF37474F)),
   ];
 
   void _toggle(String label) {
@@ -243,7 +242,7 @@ class _SyncFilterList extends StatelessWidget {
 
 class _SyncOption {
   final String label;
-  final IconData? icon;
+  final IconData icon;
   final Color color;
   const _SyncOption(this.label, this.icon, this.color);
 }
@@ -276,16 +275,7 @@ class _SyncOptionTile extends StatelessWidget {
                   child: CircleAvatar(
                     radius: 16,
                     backgroundColor: Colors.white,
-                    child: option.icon != null
-                        ? Icon(option.icon, color: option.color, size: 18)
-                        : Text(
-                            'sms',
-                            style: TextStyle(
-                              color: option.color,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                    child: Icon(option.icon, color: option.color, size: 18),
                   ),
                 ),
                 const SizedBox(width: AppDimensions.spaceMD),

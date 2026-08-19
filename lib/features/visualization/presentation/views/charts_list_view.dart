@@ -5,15 +5,22 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
-import '../../data/repositories/chart_repository_impl.dart';
+import '../../data/chart_draft_coordinator.dart';
+import '../../data/repositories/local_visualization_repository_impl.dart';
 import '../../domain/entities/chart_config.dart';
+import '../../domain/usecases/delete_visualization_usecase.dart';
+import '../../domain/usecases/get_saved_visualizations_usecase.dart';
+import '../pages/chart_edit_page.dart';
 import '../pages/chart_view_page.dart';
 import '../widgets/chart_type_selector.dart';
 
-/// The Charts tab: every chart the user has built and saved, newest
-/// first. Tapping opens the chart; the bin deletes it after a
-/// confirmation. The list itself is local — only opening a chart
-/// needs the server.
+/// The Local Dashboard tab: every chart the user has built and saved
+/// on THIS device (see [LocalVisualizationRepositoryImpl]) — kept
+/// entirely separate from the Server Dashboard tab. Tapping opens the
+/// chart; the pencil edits it in place; the bin deletes it after
+/// confirmation. The list itself is local-only and instant — only
+/// opening a chart needs the server (and even that falls back to a
+/// cached result offline).
 class ChartsListView extends StatefulWidget {
   final String? searchQuery;
 
@@ -28,7 +35,10 @@ class ChartsListView extends StatefulWidget {
 }
 
 class ChartsListViewState extends State<ChartsListView> {
-  final _repository = ChartRepositoryImpl();
+  final _repository = LocalVisualizationRepositoryImpl();
+  late final _getSavedVisualizations =
+      GetSavedVisualizationsUseCase(_repository);
+  late final _deleteVisualization = DeleteVisualizationUseCase(_repository);
 
   List<ChartConfig>? _charts;
 
@@ -36,11 +46,41 @@ class ChartsListViewState extends State<ChartsListView> {
   void initState() {
     super.initState();
     reload();
+    // A background promotion pass (ChartDraftCoordinator, on
+    // reconnect) doesn't touch this widget directly — reload picks up
+    // whichever drafts it just finished.
+    ChartDraftCoordinator.instance.tick.addListener(reload);
+  }
+
+  @override
+  void dispose() {
+    ChartDraftCoordinator.instance.tick.removeListener(reload);
+    super.dispose();
   }
 
   Future<void> reload() async {
-    final charts = await _repository.getSavedCharts();
+    final charts = await _getSavedVisualizations();
     if (mounted) setState(() => _charts = charts);
+  }
+
+  Future<void> _open(ChartConfig chart) async {
+    // A draft has no result to view yet — go straight to the form
+    // that can still edit/complete it instead of a chart page with
+    // nothing to show.
+    if (chart.isDraft) return _edit(chart);
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => ChartViewPage(config: chart)),
+    );
+    if (changed == true) await reload();
+  }
+
+  Future<void> _edit(ChartConfig chart) async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => ChartEditPage(config: chart)),
+    );
+    if (changed == true) await reload();
   }
 
   Future<void> _confirmDelete(ChartConfig chart) async {
@@ -64,7 +104,7 @@ class ChartsListViewState extends State<ChartsListView> {
       ),
     );
     if (confirmed != true) return;
-    await _repository.deleteChart(chart.id);
+    await _deleteVisualization(chart.id);
     await reload();
   }
 
@@ -100,7 +140,7 @@ class ChartsListViewState extends State<ChartsListView> {
                 color: AppColors.textSecondary,
               ),
               const SizedBox(height: AppDimensions.spaceLG),
-              Text(query.isEmpty ? 'No charts yet' : 'No results',
+              Text(query.isEmpty ? 'No local charts yet' : 'No results',
                   style: AppTextStyles.headingSmall,
                   textAlign: TextAlign.center),
               const SizedBox(height: AppDimensions.spaceSM),
@@ -157,12 +197,7 @@ class ChartsListViewState extends State<ChartsListView> {
                 side: const BorderSide(color: AppColors.divider),
               ),
               child: InkWell(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChartViewPage(config: chart),
-                  ),
-                ),
+                onTap: () => _open(chart),
                 borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -174,13 +209,19 @@ class ChartsListViewState extends State<ChartsListView> {
                       Container(
                         width: 44,
                         height: 44,
-                        decoration: const BoxDecoration(
-                          color: AppColors.primarySurface,
+                        decoration: BoxDecoration(
+                          color: chart.isDraft
+                              ? AppColors.warningLight
+                              : AppColors.primarySurface,
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
-                          chartTypeIcon(chart.chartType),
-                          color: AppColors.primary,
+                          chart.isDraft
+                              ? Icons.cloud_off_rounded
+                              : chartTypeIcon(chart.chartType),
+                          color: chart.isDraft
+                              ? AppColors.warning
+                              : AppColors.primary,
                         ),
                       ),
                       const SizedBox(width: AppDimensions.spaceMD),
@@ -188,16 +229,46 @@ class ChartsListViewState extends State<ChartsListView> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              chart.name,
-                              style: AppTextStyles.bodyLarge
-                                  .copyWith(fontWeight: FontWeight.w600),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    chart.name,
+                                    style: AppTextStyles.bodyLarge
+                                        .copyWith(fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (chart.isDraft) ...[
+                                  const SizedBox(width: AppDimensions.spaceXS),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AppDimensions.spaceXS,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.warningLight,
+                                      borderRadius: BorderRadius.circular(
+                                          AppDimensions.radiusSM),
+                                    ),
+                                    child: Text(
+                                      'DRAFT',
+                                      style: AppTextStyles.labelSmall.copyWith(
+                                        color: AppColors.warning,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             const SizedBox(height: AppDimensions.spaceXS),
                             Text(
-                              chart.summary,
+                              chart.isDraft
+                                  ? "Saved offline — will finish building "
+                                      'once back online'
+                                  : chart.summary,
                               style: AppTextStyles.bodySmall
                                   .copyWith(color: AppColors.textSecondary),
                               maxLines: 2,
@@ -206,11 +277,16 @@ class ChartsListViewState extends State<ChartsListView> {
                           ],
                         ),
                       ),
-                      if (chart.syncState != ChartSyncState.synced)
-                        _SyncStatusIcon(chart: chart),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined,
+                            color: AppColors.textSecondary),
+                        tooltip: 'Edit chart',
+                        onPressed: () => _edit(chart),
+                      ),
                       IconButton(
                         icon: const Icon(Icons.delete_outline_rounded,
                             color: AppColors.textSecondary),
+                        tooltip: 'Delete chart',
                         onPressed: () => _confirmDelete(chart),
                       ),
                     ],
@@ -220,40 +296,6 @@ class ChartsListViewState extends State<ChartsListView> {
             );
           },
         ),
-      ),
-    );
-  }
-}
-
-/// Not-yet-on-the-server state for one chart card — quiet by design
-/// (synced is the common case and shows nothing); long-press an error
-/// icon to read why the server rejected it, same pattern as the
-/// data-entry cell's rejected-value tooltip.
-class _SyncStatusIcon extends StatelessWidget {
-  const _SyncStatusIcon({required this.chart});
-
-  final ChartConfig chart;
-
-  @override
-  Widget build(BuildContext context) {
-    if (chart.syncState == ChartSyncState.error) {
-      return Tooltip(
-        message: chart.syncError ?? 'Rejected by the server',
-        triggerMode: TooltipTriggerMode.longPress,
-        child: const Padding(
-          padding: EdgeInsets.all(AppDimensions.spaceXS),
-          child: Icon(Icons.error_outline_rounded,
-              color: AppColors.error, size: AppDimensions.iconSM),
-        ),
-      );
-    }
-    return const Tooltip(
-      message: 'Not yet on the server — syncs once online',
-      triggerMode: TooltipTriggerMode.longPress,
-      child: Padding(
-        padding: EdgeInsets.all(AppDimensions.spaceXS),
-        child: Icon(Icons.cloud_upload_outlined,
-            color: AppColors.textSecondary, size: AppDimensions.iconSM),
       ),
     );
   }

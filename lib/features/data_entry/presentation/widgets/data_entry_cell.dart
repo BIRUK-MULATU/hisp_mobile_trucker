@@ -89,8 +89,14 @@ class _DataEntryCellState extends State<DataEntryCell> {
         // Decimals allowed; the server validates the full format.
         return [FilteringTextInputFormatter.allow(RegExp(r'[0-9.\-]'))];
       case 'INTEGER':
+      case 'INTEGER_NEGATIVE':
         return [FilteringTextInputFormatter.allow(RegExp(r'[0-9\-]'))];
+      // Decimals allowed, no sign — validateDataValue rejects <0 (and
+      // >100/>1) itself, so the formatter only needs to keep out
+      // non-numeric characters, not enforce the range.
       case 'PERCENTAGE':
+      case 'UNIT_INTERVAL':
+        return [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))];
       case 'INTEGER_POSITIVE':
       case 'INTEGER_ZERO_OR_POSITIVE':
         return [FilteringTextInputFormatter.digitsOnly];
@@ -99,12 +105,20 @@ class _DataEntryCellState extends State<DataEntryCell> {
     }
   }
 
+  // Deliberately never `signed: true`. Many OEM keyboards (Samsung's
+  // default IME confirmed) don't reliably honor it — the "-" key is
+  // either missing or silently swallowed via a composing-region reset.
+  // Negative entry for INTEGER/INTEGER_NEGATIVE/NUMBER instead goes
+  // through the explicit ± toggle (see _canBeNegative/_toggleSign),
+  // which is IME-independent.
   TextInputType get _keyboardType {
     switch (widget.valueType.toUpperCase()) {
       case 'NUMBER':
+      case 'PERCENTAGE':
+      case 'UNIT_INTERVAL':
         return const TextInputType.numberWithOptions(decimal: true);
       case 'INTEGER':
-      case 'PERCENTAGE':
+      case 'INTEGER_NEGATIVE':
       case 'INTEGER_POSITIVE':
       case 'INTEGER_ZERO_OR_POSITIVE':
         return TextInputType.number;
@@ -162,6 +176,23 @@ class _DataEntryCellState extends State<DataEntryCell> {
     _controller.text = value;
     setState(() {});
     widget.onChanged(value);
+  }
+
+  static const _negativeCapableTypes = {'NUMBER', 'INTEGER', 'INTEGER_NEGATIVE'};
+
+  bool get _canBeNegative =>
+      _negativeCapableTypes.contains(widget.valueType.toUpperCase());
+
+  bool get _isNegative => _controller.text.trim().startsWith('-');
+
+  // IME-independent negative toggle — see _keyboardType for why this
+  // exists instead of relying on the keyboard's own sign key. Works
+  // whether the cell is empty (types just "-", ready for digits) or
+  // already has a value (flips its sign in place).
+  void _toggleSign() {
+    if (widget.isReadOnly) return;
+    final v = _controller.text;
+    _setValue(v.startsWith('-') ? v.substring(1) : '-$v');
   }
 
   Future<void> _applyChange(String value) async {
@@ -358,12 +389,20 @@ class _DataEntryCellState extends State<DataEntryCell> {
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w500,
         ),
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
           focusedBorder: InputBorder.none,
           contentPadding: EdgeInsets.zero,
           isDense: true,
+          prefixIcon: _canBeNegative ? _signToggleButton() : null,
+          // tightFor (not a bare minWidth) — a min-only constraint lets
+          // Flutter hand the prefix MORE than 28px whenever the field
+          // itself needs less (e.g. empty/unfocused), which silently ate
+          // the entire cell's tap area and made the field untappable.
+          prefixIconConstraints: _canBeNegative
+              ? const BoxConstraints.tightFor(width: 28, height: 24)
+              : null,
         ),
         onChanged: (value) {
           setState(() {}); // repaint the validity border live
@@ -371,5 +410,25 @@ class _DataEntryCellState extends State<DataEntryCell> {
         },
       ),
     ));
+  }
+
+  // "-" typed via the OS keyboard still works when the IME cooperates
+  // (the formatter allows it) — this button is the guaranteed fallback
+  // for every device, tap-driven so it never depends on the IME.
+  Widget _signToggleButton() {
+    return InkWell(
+      onTap: widget.isReadOnly ? null : _toggleSign,
+      borderRadius: BorderRadius.circular(AppDimensions.radiusSM),
+      child: Container(
+        alignment: Alignment.center,
+        child: Text(
+          '±',
+          style: AppTextStyles.bodyMedium.copyWith(
+            fontWeight: FontWeight.w700,
+            color: _isNegative ? AppColors.primary : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
   }
 }

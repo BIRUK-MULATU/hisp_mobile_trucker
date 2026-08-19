@@ -8,11 +8,22 @@ import '../../domain/entities/org_unit_tree_node.dart';
 import '../../domain/usecases/get_org_unit_children_usecase.dart';
 
 /// Full-page organisation unit tree opened from the filter panel's
-/// tree icon. The user browses the same lazily-loaded hierarchy as
-/// the capture workflow, picks a node, and the page pops with it so
-/// the caller can apply it as the ORG. UNIT filter.
+/// tree icon (and reused by the chart builder's org unit picker). The
+/// user browses a lazily-loaded hierarchy, picks a node, and the page
+/// pops with it so the caller can apply it (as the ORG. UNIT filter,
+/// or as a chart's org unit).
+///
+/// By default children come from the local capture database (offline
+/// tree, intentionally depth-bounded to root + direct children — see
+/// OrgUnitResource). Pass [fetchChildren] to source children from
+/// somewhere else instead — the chart builder uses this to browse the
+/// FULL live hierarchy, since building a chart is already online-only
+/// and isn't bound by what's kept for offline capture.
 class OrgUnitFilterPage extends StatefulWidget {
-  const OrgUnitFilterPage({super.key});
+  final Future<List<OrgUnitTreeNode>> Function(String parentId)?
+      fetchChildren;
+
+  const OrgUnitFilterPage({super.key, this.fetchChildren});
 
   @override
   State<OrgUnitFilterPage> createState() => _OrgUnitFilterPageState();
@@ -20,8 +31,8 @@ class OrgUnitFilterPage extends StatefulWidget {
 
 class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
   final _secureStorage = SecureStorage();
-  late final CaptureRepositoryImpl _repository;
-  late final GetOrgUnitChildrenUseCase _getChildren;
+  late final Future<List<OrgUnitTreeNode>> Function(String parentId)
+      _fetchChildren;
 
   List<OrgUnitTreeNode> _roots = [];
   List<_DisplayNode> _displayNodes = [];
@@ -32,8 +43,9 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
   @override
   void initState() {
     super.initState();
-    _repository = CaptureRepositoryImpl();
-    _getChildren = GetOrgUnitChildrenUseCase(_repository);
+    final defaultUseCase = GetOrgUnitChildrenUseCase(CaptureRepositoryImpl());
+    _fetchChildren = widget.fetchChildren ??
+        (parentId) => defaultUseCase.call(parentId: parentId);
     _loadRoots();
   }
 
@@ -60,7 +72,7 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
         );
         // The stored assignment has no child count — resolve the
         // first level now so the root renders correctly expanded.
-        root.children.addAll(await _getChildren.call(parentId: id));
+        root.children.addAll(await _fetchChildren(id));
         root.childrenLoaded = true;
         roots.add(root);
       }
@@ -104,7 +116,7 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
     if (!node.childrenLoaded) {
       setState(() => node.isLoadingChildren = true);
       try {
-        final children = await _getChildren.call(parentId: node.id);
+        final children = await _fetchChildren(node.id);
         node.children.addAll(children);
         node.childrenLoaded = true;
       } catch (_) {
@@ -247,102 +259,106 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
         ),
       );
     }
-    return ListView.builder(
-      itemCount: _displayNodes.length,
-      itemBuilder: (context, index) {
-        final item = _displayNodes[index];
-        final node = item.node;
-        final isSelected = node.id == _selected?.id;
-        return InkWell(
-          onTap: node.hasChildren
-              ? () => _toggleExpand(node)
-              : () => setState(() => _selected = node),
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: AppDimensions.spaceSM + (item.depth * 16.0),
-              right: AppDimensions.space,
-              top: AppDimensions.spaceSM,
-              bottom: AppDimensions.spaceSM,
-            ),
-            child: Row(
-              children: [
-                // ── Arrow / loading spinner ────────────
-                SizedBox(
-                  width: 24,
-                  child: node.isLoadingChildren
-                      ? const Padding(
-                          padding: EdgeInsets.all(3),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.primary,
-                          ),
-                        )
-                      : node.hasChildren
-                          ? GestureDetector(
-                              onTap: () => _toggleExpand(node),
-                              child: AnimatedRotation(
-                                turns: node.isExpanded ? 0.25 : 0,
-                                duration: const Duration(milliseconds: 150),
-                                child: const Icon(
-                                  Icons.chevron_right_rounded,
-                                  size: 20,
-                                  color: AppColors.textSecondary,
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: _loadRoots,
+      child: ListView.builder(
+        itemCount: _displayNodes.length,
+        itemBuilder: (context, index) {
+          final item = _displayNodes[index];
+          final node = item.node;
+          final isSelected = node.id == _selected?.id;
+          return InkWell(
+            onTap: node.hasChildren
+                ? () => _toggleExpand(node)
+                : () => setState(() => _selected = node),
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: AppDimensions.spaceSM + (item.depth * 16.0),
+                right: AppDimensions.space,
+                top: AppDimensions.spaceSM,
+                bottom: AppDimensions.spaceSM,
+              ),
+              child: Row(
+                children: [
+                  // ── Arrow / loading spinner ────────────
+                  SizedBox(
+                    width: 24,
+                    child: node.isLoadingChildren
+                        ? const Padding(
+                            padding: EdgeInsets.all(3),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary,
+                            ),
+                          )
+                        : node.hasChildren
+                            ? GestureDetector(
+                                onTap: () => _toggleExpand(node),
+                                child: AnimatedRotation(
+                                  turns: node.isExpanded ? 0.25 : 0,
+                                  duration: const Duration(milliseconds: 150),
+                                  child: const Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 20,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                  ),
+                  const SizedBox(width: 4),
+
+                  // ── Radio (every node is selectable) ───
+                  GestureDetector(
+                    onTap: () => setState(() => _selected = node),
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.border,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: isSelected
+                          ? Center(
+                              child: Container(
+                                width: 10,
+                                height: 10,
+                                decoration: const BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
                                 ),
                               ),
                             )
-                          : const SizedBox.shrink(),
-                ),
-                const SizedBox(width: 4),
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: AppDimensions.spaceSM),
 
-                // ── Radio (every node is selectable) ───
-                GestureDetector(
-                  onTap: () => setState(() => _selected = node),
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
+                  // ── Name ───────────────────────────────
+                  Expanded(
+                    child: Text(
+                      node.name,
+                      style: AppTextStyles.bodyMedium.copyWith(
                         color: isSelected
                             ? AppColors.primary
-                            : AppColors.border,
-                        width: 1.5,
+                            : AppColors.textPrimary,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w400,
                       ),
                     ),
-                    child: isSelected
-                        ? Center(
-                            child: Container(
-                              width: 10,
-                              height: 10,
-                              decoration: const BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          )
-                        : null,
                   ),
-                ),
-                const SizedBox(width: AppDimensions.spaceSM),
-
-                // ── Name ───────────────────────────────
-                Expanded(
-                  child: Text(
-                    node.name,
-                    style: AppTextStyles.bodyMedium.copyWith(
-                      color: isSelected
-                          ? AppColors.primary
-                          : AppColors.textPrimary,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

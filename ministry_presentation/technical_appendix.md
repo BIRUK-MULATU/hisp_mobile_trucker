@@ -1,4 +1,4 @@
-# HISP Mobile Tracker — Technical Appendix
+# RDHIS2 Mobile Tracker — Technical Appendix
 
 Supporting detail for the Ministry of Health presentation. All facts below were verified
 directly against the codebase at `/home/biruk/hisp_mobile_trucker` (branch:
