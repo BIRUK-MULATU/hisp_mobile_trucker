@@ -377,11 +377,20 @@ class _HomePageState extends State<HomePage> {
                         key: ValueKey('reports-$_syncTick'),
                         searchQuery: _searchActive ? _searchQuery : null,
                         orgUnitQuery: _orgUnitFilter?.label,
-                        syncFilters: _syncFilter?.label.split(', ').toSet() ??
-                            const {},
+                        syncFilters:
+                            _syncFilter?.label.split(', ').toSet() ?? const {},
                         dateRange: _dateFilter == null
                             ? null
                             : resolveDateFilter(_dateFilter!, DateTime.now()),
+                        // Same underlying state the filter panel's SYNC
+                        // row edits — tapping a dashboard card and
+                        // ticking a checkbox stay in sync with each
+                        // other automatically.
+                        onSyncFilterChanged: (labels) => setState(() {
+                          _syncFilter = labels.isEmpty
+                              ? null
+                              : AppliedFilter(labels.join(', '));
+                        }),
                       ),
                     ],
                   ),

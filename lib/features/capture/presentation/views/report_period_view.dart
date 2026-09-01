@@ -24,12 +24,18 @@ class ReportPeriodView extends StatefulWidget {
   /// Filter-panel DATE window over each report's last local change.
   final DateTimeRange? dateRange;
 
+  /// Fired when a sync dashboard card is tapped — same shape as the
+  /// filter panel's own sync selection, so the parent can keep both
+  /// in sync from one piece of state (see HomePage).
+  final ValueChanged<Set<String>>? onSyncFilterChanged;
+
   const ReportPeriodView({
     super.key,
     this.searchQuery,
     this.orgUnitQuery,
     this.syncFilters = const {},
     this.dateRange,
+    this.onSyncFilterChanged,
   });
 
   @override
@@ -65,39 +71,62 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
   String get _query => widget.searchQuery?.toLowerCase() ?? '';
   String get _orgUnitQuery => widget.orgUnitQuery?.toLowerCase() ?? '';
 
-  List<ReportInstanceEntity> _applyFilters(List<ReportInstanceEntity> all) {
-    return all.where((r) {
-      final name = r.dataSetName.toLowerCase();
-      final org = r.orgUnitName.toLowerCase();
-      if (_query.isNotEmpty && !name.contains(_query) && !org.contains(_query)) {
+  static bool _matchesSync(ReportInstanceEntity r, String label) {
+    switch (label) {
+      case 'Synced':
+        return r.synced;
+      case 'Sync Error':
+        return r.syncError != null;
+      case 'UnSynced':
+        return !r.synced && r.syncError == null;
+      default:
         return false;
-      }
-      if (_orgUnitQuery.isNotEmpty && !org.contains(_orgUnitQuery)) {
-        return false;
-      }
-      if (widget.syncFilters.isNotEmpty) {
-        final matches = widget.syncFilters.any((label) {
-          switch (label) {
-            case 'Synced':
-              return r.synced;
-            case 'Sync Error':
-              return r.syncError != null;
-            case 'UnSynced':
-              return !r.synced && r.syncError == null;
-            default:
-              return false;
-          }
-        });
-        if (!matches) return false;
-      }
-      final range = widget.dateRange;
-      if (range != null &&
-          (r.lastModified.isBefore(range.start) ||
-              !r.lastModified.isBefore(range.end))) {
-        return false;
-      }
-      return true;
-    }).toList();
+    }
+  }
+
+  bool _matchesScope(ReportInstanceEntity r) {
+    final name = r.dataSetName.toLowerCase();
+    final org = r.orgUnitName.toLowerCase();
+    if (_query.isNotEmpty && !name.contains(_query) && !org.contains(_query)) {
+      return false;
+    }
+    if (_orgUnitQuery.isNotEmpty && !org.contains(_orgUnitQuery)) {
+      return false;
+    }
+    final range = widget.dateRange;
+    if (range != null &&
+        (r.lastModified.isBefore(range.start) ||
+            !r.lastModified.isBefore(range.end))) {
+      return false;
+    }
+    return true;
+  }
+
+  /// Search/org-unit/date only — the pool the sync dashboard's counts
+  /// are drawn from, so every card keeps its own true number no
+  /// matter which (if any) sync group is currently selected.
+  List<ReportInstanceEntity> _applyScopeFilters(
+          List<ReportInstanceEntity> all) =>
+      all.where(_matchesScope).toList();
+
+  /// The scoped pool narrowed by the active sync filter — what the
+  /// list itself shows.
+  List<ReportInstanceEntity> _applySyncFilter(
+      List<ReportInstanceEntity> scoped) {
+    if (widget.syncFilters.isEmpty) return scoped;
+    return scoped
+        .where((r) => widget.syncFilters.any((label) => _matchesSync(r, label)))
+        .toList();
+  }
+
+  /// Dashboard card tap: drills down into that single group, or — if
+  /// it's already the only thing selected — clears back to "all".
+  void _onSyncCardTapped(String label) {
+    final current = widget.syncFilters;
+    final next = current.length == 1 && current.contains(label)
+        ? const <String>{}
+        : {label};
+    widget.onSyncFilterChanged?.call(next);
   }
 
   /// Straight into the whole-dataset form — a report already carries
@@ -140,27 +169,201 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
             'Tap the + button to start one.',
       );
     }
-    final reports = _applyFilters(all);
-    if (reports.isEmpty) {
-      return const _EmptyView(
-        icon: Icons.search_off_rounded,
-        title: 'No results',
-        message: 'No reports match the current search or filters.',
-      );
-    }
-    return RefreshIndicator(
-      color: AppColors.primary,
-      onRefresh: _load,
-      child: ListView.builder(
-        padding: const EdgeInsets.only(
-          top: AppDimensions.spaceMD,
-          // Extra room so the last card never sits under the FAB.
-          bottom: AppDimensions.spaceGiant + AppDimensions.spaceXXL,
+    final scoped = _applyScopeFilters(all);
+    final counts = _SyncCounts.fromReports(scoped);
+    final reports = _applySyncFilter(scoped);
+
+    return Column(
+      children: [
+        _SyncSummaryBar(
+          counts: counts,
+          selected: widget.syncFilters,
+          onSelect: _onSyncCardTapped,
         ),
-        itemCount: reports.length,
-        itemBuilder: (context, index) => _ReportCard(
-          report: reports[index],
-          onTap: () => _openReport(reports[index]),
+        Expanded(
+          child: reports.isEmpty
+              ? const _EmptyView(
+                  icon: Icons.search_off_rounded,
+                  title: 'No results',
+                  message: 'No reports match the current search or filters.',
+                )
+              : RefreshIndicator(
+                  color: AppColors.primary,
+                  onRefresh: _load,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(
+                      top: AppDimensions.spaceMD,
+                      // Extra room so the last card never sits under the FAB.
+                      bottom: AppDimensions.spaceGiant + AppDimensions.spaceXXL,
+                    ),
+                    itemCount: reports.length,
+                    itemBuilder: (context, index) => _ReportCard(
+                      report: reports[index],
+                      onTap: () => _openReport(reports[index]),
+                    ),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Sync dashboard ─────────────────────────────────────────────
+class _SyncCounts {
+  final int synced;
+  final int unsynced;
+  final int error;
+
+  const _SyncCounts({
+    required this.synced,
+    required this.unsynced,
+    required this.error,
+  });
+
+  /// Buckets are mutually exclusive by construction — a completion
+  /// row only carries a sync error once it's no longer counted as
+  /// synced (see ReportInstanceEntity/_ReportFacts.synced) — so every
+  /// report lands in exactly one bucket and the three counts always
+  /// sum to `reports.length`.
+  factory _SyncCounts.fromReports(List<ReportInstanceEntity> reports) {
+    var synced = 0, unsynced = 0, error = 0;
+    for (final r in reports) {
+      if (r.syncError != null) {
+        error++;
+      } else if (r.synced) {
+        synced++;
+      } else {
+        unsynced++;
+      }
+    }
+    return _SyncCounts(synced: synced, unsynced: unsynced, error: error);
+  }
+}
+
+/// Three tappable stat cards — Synced / Unsynced / Sync Error — each
+/// showing how many of the currently scoped reports fall into that
+/// group. Tapping one drills the list below into just that group
+/// (see ReportPeriodView._onSyncCardTapped); tapping the active one
+/// again clears back to "all".
+class _SyncSummaryBar extends StatelessWidget {
+  final _SyncCounts counts;
+  final Set<String> selected;
+  final ValueChanged<String> onSelect;
+
+  const _SyncSummaryBar({
+    required this.counts,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppDimensions.space,
+        AppDimensions.spaceMD,
+        AppDimensions.space,
+        AppDimensions.spaceSM,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _SyncStatCard(
+              label: 'Synced',
+              count: counts.synced,
+              icon: Icons.cloud_done_rounded,
+              color: AppColors.success,
+              selected: selected.contains('Synced'),
+              onTap: () => onSelect('Synced'),
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spaceSM),
+          Expanded(
+            child: _SyncStatCard(
+              label: 'Unsynced',
+              count: counts.unsynced,
+              icon: Icons.cloud_upload_rounded,
+              color: AppColors.textDisabled,
+              selected: selected.contains('UnSynced'),
+              onTap: () => onSelect('UnSynced'),
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spaceSM),
+          Expanded(
+            child: _SyncStatCard(
+              label: 'Sync Error',
+              count: counts.error,
+              icon: Icons.error_rounded,
+              color: AppColors.error,
+              selected: selected.contains('Sync Error'),
+              onTap: () => onSelect('Sync Error'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SyncStatCard extends StatelessWidget {
+  final String label;
+  final int count;
+  final IconData icon;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SyncStatCard({
+    required this.label,
+    required this.count,
+    required this.icon,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppDimensions.radiusLG),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spaceSM,
+          vertical: AppDimensions.spaceMD,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.12) : Colors.white,
+          borderRadius: BorderRadius.circular(AppDimensions.radiusLG),
+          border: Border.all(
+            color: selected ? color : AppColors.divider,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: AppDimensions.iconMD),
+            const SizedBox(height: AppDimensions.spaceXS),
+            Text(
+              '$count',
+              style: AppTextStyles.headingMedium.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: AppTextStyles.labelSmall.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
     );
@@ -187,7 +390,8 @@ class _EmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: AppDimensions.iconHuge, color: AppColors.textSecondary),
+            Icon(icon,
+                size: AppDimensions.iconHuge, color: AppColors.textSecondary),
             const SizedBox(height: AppDimensions.spaceLG),
             Text(title, style: AppTextStyles.headingSmall),
             const SizedBox(height: AppDimensions.spaceSM),
