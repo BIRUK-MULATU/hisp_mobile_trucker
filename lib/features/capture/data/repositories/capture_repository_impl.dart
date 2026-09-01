@@ -82,15 +82,26 @@ class CaptureRepositoryImpl implements CaptureRepository {
     if (api != null) {
       final parent = await OrgUnitResource(_db).getById(parentId);
       if (parent?.isUserCaptureRoot ?? false) {
-        for (final c in children) {
-          if ((childCounts[c.uid] ?? 0) == 0) {
-            try {
-              childCounts[c.uid] = await _hasLiveChildren(api, c.uid) ? 1 : 0;
-            } catch (_) {
-              // Offline mid-loop (or any other failure) — leave this
-              // child's count at its local (0) value; the arrow just
-              // won't show until a later successful check.
+        final uncounted = [
+          for (final c in children)
+            if ((childCounts[c.uid] ?? 0) == 0) c.uid,
+        ];
+        // One batched request for every zero-count child instead of
+        // one live round trip PER child — the previous sequential
+        // per-child loop is what made opening a capture root with
+        // many direct children (the common case, since only root +
+        // direct children are ever synced) take one network round
+        // trip's worth of time for EACH one, in serial.
+        if (uncounted.isNotEmpty) {
+          try {
+            final withChildren = await _liveChildrenExistence(api, uncounted);
+            for (final uid in uncounted) {
+              childCounts[uid] = withChildren.contains(uid) ? 1 : 0;
             }
+          } catch (_) {
+            // Offline (or any other failure) — leave these children's
+            // counts at their local (0) value; the arrow just won't
+            // show until a later successful check.
           }
         }
       }
@@ -120,10 +131,10 @@ class CaptureRepositoryImpl implements CaptureRepository {
       'fields': 'id,displayName,path,children[id]',
       'paging': 'false',
     });
-    final items = ((res.data as Map<String, dynamic>)['organisationUnits']
-                as List? ??
-            const [])
-        .cast<Map<String, dynamic>>();
+    final items =
+        ((res.data as Map<String, dynamic>)['organisationUnits'] as List? ??
+                const [])
+            .cast<Map<String, dynamic>>();
     final nodes = [
       for (final ou in items)
         OrgUnitTreeNode(
@@ -139,19 +150,27 @@ class CaptureRepositoryImpl implements CaptureRepository {
     return nodes;
   }
 
-  /// Cheap existence check: does [uid] have at least one child on the
-  /// server? Used only to decide whether a capture root's direct
-  /// child gets an expand arrow (see [getOrgUnitChildren]) — a
-  /// pageSize of 1 keeps this a minimal request, not a full fetch.
-  Future<bool> _hasLiveChildren(ApiClient api, String uid) async {
+  /// Batched existence check: which of [uids] have at least one child
+  /// on the server? One request for the whole set — used only to
+  /// decide which of a capture root's direct children get an expand
+  /// arrow (see [getOrgUnitChildren]) — `fields=parent[id]` keeps the
+  /// response to one row per matching child, not a full fetch.
+  Future<Set<String>> _liveChildrenExistence(
+      ApiClient api, List<String> uids) async {
     final res = await api.get('/api/organisationUnits.json', queryParameters: {
-      'filter': 'parent.id:eq:$uid',
-      'fields': 'id',
-      'pageSize': '1',
+      'filter': 'parent.id:in:[${uids.join(',')}]',
+      'fields': 'parent[id]',
+      'paging': 'false',
     });
     final items =
-        (res.data as Map<String, dynamic>)['organisationUnits'] as List?;
-    return items != null && items.isNotEmpty;
+        ((res.data as Map<String, dynamic>)['organisationUnits'] as List? ??
+                const [])
+            .cast<Map<String, dynamic>>();
+    return {
+      for (final ou in items)
+        if ((ou['parent'] as Map<String, dynamic>?)?['id'] is String)
+          (ou['parent'] as Map<String, dynamic>)['id'] as String,
+    };
   }
 
   @override
@@ -212,15 +231,15 @@ class CaptureRepositoryImpl implements CaptureRepository {
   /// has) and the facility's own row are missing locally.
   Future<List<DataSet>> _fetchAndCacheVisitedOrgUnit(
       ApiClient api, String orgUnitId) async {
-    final res = await api.get('/api/organisationUnits/$orgUnitId.json',
-        queryParameters: {
-          'fields': 'id,name,displayName,parent[id,name],path,code,'
-              'openingDate,closedDate,lastUpdated,dataSets[id]',
-        });
+    final res = await api
+        .get('/api/organisationUnits/$orgUnitId.json', queryParameters: {
+      'fields': 'id,name,displayName,parent[id,name],path,code,'
+          'openingDate,closedDate,lastUpdated,dataSets[id]',
+    });
     final json = res.data as Map<String, dynamic>;
     final dataSetUids = [
-      for (final ds
-          in (json['dataSets'] as List? ?? const []).cast<Map<String, dynamic>>())
+      for (final ds in (json['dataSets'] as List? ?? const [])
+          .cast<Map<String, dynamic>>())
         ds['id'] as String,
     ];
 
@@ -272,7 +291,8 @@ class CaptureRepositoryImpl implements CaptureRepository {
     final completions =
         await (_db.select(cdr)..where((t) => t.completed.equals(true))).get();
     for (final r in completions) {
-      factsFor((r.dataSetUid, r.period, r.orgUnitUid, r.attributeOptionComboUid))
+      factsFor(
+          (r.dataSetUid, r.period, r.orgUnitUid, r.attributeOptionComboUid))
         ..completed = true
         ..completionSynced = r.syncState == SyncState.synced
         ..completionError = r.syncState == SyncState.error ? r.syncError : null
@@ -349,10 +369,10 @@ class CaptureRepositoryImpl implements CaptureRepository {
             syncError: v.completionError,
             isDiseaseRegistration: diseaseDataSets.contains(k.$1),
             attributeOptionComboUid: k.$4,
-            attributeOptionComboLabel: aocNames[k.$4] == null ||
-                    aocNames[k.$4] == 'default'
-                ? null
-                : aocNames[k.$4],
+            attributeOptionComboLabel:
+                aocNames[k.$4] == null || aocNames[k.$4] == 'default'
+                    ? null
+                    : aocNames[k.$4],
           ),
     ]..sort((a, b) => b.lastModified.compareTo(a.lastModified));
   }
