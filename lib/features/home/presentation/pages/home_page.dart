@@ -19,16 +19,20 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/filter_panel.dart';
 import '../../../../shared/widgets/segmented_toggle.dart';
+import '../../../../shared/widgets/squircle_fab.dart';
 import '../../../../shared/widgets/sync_snackbar.dart';
 import '../../../capture/domain/entities/org_unit_tree_node.dart';
+import '../../../capture/presentation/pages/new_report_page.dart';
 import '../../../capture/presentation/pages/org_unit_filter_page.dart';
-import '../../../capture/presentation/views/capture_org_unit_view.dart';
+import '../../../capture/presentation/views/report_period_view.dart';
 import '../../../visualization/presentation/views/visualization_view.dart';
 import '../widgets/home_app_bar.dart';
 
 /// Home is a shell with two modes behind a toggle:
-/// Visualization (left) and Capture (right). Capture starts the
-/// org unit → dataset → section → period → data entry workflow.
+/// Visualization (left) and Capture (right). Capture shows every
+/// report the user has worked on (drafts and completed, across all
+/// org units) — the FAB starts a new one via the
+/// org unit → dataset → period → section → data entry workflow.
 enum HomeMode { visualization, capture }
 
 class HomePage extends StatefulWidget {
@@ -139,10 +143,22 @@ class _HomePageState extends State<HomePage> {
   AppliedFilter? _orgUnitFilter;
   AppliedFilter? _syncFilter;
 
-  // Bumped after a sync — remounts the capture view so the sync
-  // chips and org unit tree reflect the new local state.
+  // Bumped after a sync, or after returning from the "new report"
+  // flow — remounts ReportPeriodView so its list and sync chips
+  // reflect the new local state.
   int _syncTick = 0;
   bool _isSyncing = false;
+
+  /// FAB action: the org unit → dataset → period → section → data
+  /// entry workflow, on its own page. Reload the report list on
+  /// return in case a new report was saved or completed.
+  Future<void> _startNewReport() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NewReportPage()),
+    );
+    if (mounted) setState(() => _syncTick++);
+  }
 
   Future<void> _onSyncTapped() async {
     if (_isSyncing) return;
@@ -237,12 +253,12 @@ class _HomePageState extends State<HomePage> {
         filtersShown: _showFilters,
         showFilterButton: _mode == HomeMode.capture,
         isSyncing: _isSyncing,
-        // Search targets whichever mode is active: org units in
-        // Capture, or whichever side of the Dashboards tab's own
-        // Server/Local toggle is showing in Visualization (Create New
-        // has no list to filter).
+        // Search targets whichever mode is active: reports (by
+        // dataset or org unit name) in Capture, or whichever side of
+        // the Dashboards tab's own Server/Local toggle is showing in
+        // Visualization (Create New has no list to filter).
         searchHint: _mode == HomeMode.capture
-            ? 'Search organisation units...'
+            ? 'Search reports...'
             : 'Search dashboards or charts...',
         onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
         onSyncTap: _onSyncTapped,
@@ -349,17 +365,16 @@ class _HomePageState extends State<HomePage> {
                 child: ResponsiveContent(
                   // IndexedStack keeps both modes' state alive across
                   // toggles — a plain ternary here would destroy and
-                  // recreate CaptureOrgUnitView on every switch back,
-                  // re-triggering its full org-unit reload each time.
+                  // recreate ReportPeriodView on every switch back,
+                  // re-triggering its full reload each time.
                   child: IndexedStack(
                     index: _mode.index,
                     children: [
                       VisualizationView(
                         searchQuery: _searchActive ? _searchQuery : null,
                       ),
-                      CaptureOrgUnitView(
-                        key: ValueKey('capture-$_syncTick'),
-                        keyboardOpen: keyboardOpen,
+                      ReportPeriodView(
+                        key: ValueKey('reports-$_syncTick'),
                         searchQuery: _searchActive ? _searchQuery : null,
                         orgUnitQuery: _orgUnitFilter?.label,
                         syncFilters: _syncFilter?.label.split(', ').toSet() ??
@@ -376,6 +391,11 @@ class _HomePageState extends State<HomePage> {
           );
         },
       ),
+      // "New report" — Capture mode only, and hidden while the
+      // keyboard is up so it never overlaps a focused filter field.
+      floatingActionButton: _mode == HomeMode.capture && !keyboardOpen
+          ? SquircleFab(onPressed: _startNewReport)
+          : null,
     );
   }
 }

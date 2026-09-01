@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/constants/api_constants.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/router/app_router.dart';
@@ -8,7 +7,6 @@ import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
-import '../../../../shared/widgets/server_url_dialog.dart';
 import '../../../auth/data/datasources/auth_remote_datasource.dart';
 import '../../../auth/data/repositories/auth_repository_impl.dart';
 import '../../../auth/domain/usecases/logout_usecase.dart';
@@ -25,7 +23,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String? _username;
   String? _orgUnitName;
-  String _serverUrl = ApiConstants.baseUrl;
 
   @override
   void initState() {
@@ -36,30 +33,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _load() async {
     final username = await _secureStorage.getUsername();
     final orgUnit = await _secureStorage.getPrimaryOrgUnit();
-    final storedUrl = await _secureStorage.getBaseUrl();
     if (!mounted) return;
     setState(() {
       _username = username;
       _orgUnitName = orgUnit?['displayName'] as String? ??
           orgUnit?['name'] as String? ??
           orgUnit?['shortName'] as String?;
-      _serverUrl = (storedUrl != null && storedUrl.isNotEmpty)
-          ? storedUrl
-          : ApiConstants.baseUrl;
     });
-  }
-
-  Future<void> _editServerUrl() async {
-    final url = await showServerUrlDialog(context);
-    if (url == null || !mounted) return;
-    setState(() => _serverUrl = url);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Server URL updated'),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   Future<void> _logout() async {
@@ -149,17 +129,6 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _SectionHeader('Server'),
-                _SettingsCard(children: [
-                  _SettingsTile(
-                    icon: Icons.dns_rounded,
-                    color: AppColors.primary,
-                    title: 'DHIS2 server URL',
-                    subtitle: _serverUrl,
-                    onTap: _editServerUrl,
-                  ),
-                ]),
-
                 const _SectionHeader('About'),
                 const _SettingsCard(children: [
                   _SettingsTile(

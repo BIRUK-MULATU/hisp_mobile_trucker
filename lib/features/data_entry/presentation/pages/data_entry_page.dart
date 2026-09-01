@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:showcaseview/showcaseview.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
@@ -24,6 +25,7 @@ import '../../domain/entities/data_element_entity.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
 import '../bloc/data_entry_bloc.dart';
+import '../utils/data_entry_excel.dart';
 import '../utils/data_entry_pdf.dart';
 import '../widgets/data_entry_table.dart';
 import '../widgets/disease_entry_list.dart';
@@ -141,6 +143,8 @@ class _DataEntryView extends StatefulWidget {
   @override
   State<_DataEntryView> createState() => _DataEntryViewState();
 }
+
+enum _DownloadFormat { pdf, excel }
 
 class _DataEntryViewState extends State<_DataEntryView> {
   bool _isSaving = false;
@@ -539,7 +543,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
   // instead of going through the print/preview flow. Uses the
   // system share sheet (already how this app depends on `printing`)
   // so "Save to Files"/Drive works without a storage permission.
-  Future<void> _onDownloadTapped() async {
+  Future<void> _onDownloadPdfTapped() async {
     final state = _formLoadedOrWarn();
     if (state == null) return;
     final elements = await _resolveExportElements(state);
@@ -554,6 +558,53 @@ class _DataEntryViewState extends State<_DataEntryView> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('PDF ready — choose where to save it.'),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Uint8List _buildFormExcel(
+      DataEntryLoaded state, List<DataElementEntity> elements) {
+    return buildDataEntryExcel(
+      title: widget.sectionName ?? widget.dataSetName,
+      orgUnitName: widget.orgUnitName,
+      periodLabel: EthiopianPeriodService.formatPeriodId(widget.period),
+      isDiseaseRegistration: widget.isDiseaseRegistration,
+      dataElements: elements,
+      dataValues: state.dataValues,
+    );
+  }
+
+  // ── Download Excel tapped — same flow as PDF download (same
+  // include-all/only-recorded choice, same system share sheet) but
+  // producing an .xlsx workbook instead, since `printing` only knows
+  // how to share PDFs.
+  Future<void> _onDownloadExcelTapped() async {
+    final state = _formLoadedOrWarn();
+    if (state == null) return;
+    final elements = await _resolveExportElements(state);
+    if (elements == null) return;
+    final bytes = _buildFormExcel(state, elements);
+    final title = widget.sectionName ?? widget.dataSetName;
+    final result = await SharePlus.instance.share(
+      ShareParams(
+        files: [
+          XFile.fromData(
+            bytes,
+            mimeType: 'application/vnd.openxmlformats-officedocument'
+                '.spreadsheetml.sheet',
+            name: '$title - ${widget.period}.xlsx',
+          ),
+        ],
+        fileNameOverrides: ['$title - ${widget.period}.xlsx'],
+      ),
+    );
+    if (result.status == ShareResultStatus.success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Excel file ready — choose where to save it.'),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
         ),
@@ -1147,10 +1198,37 @@ class _DataEntryViewState extends State<_DataEntryView> {
               onPressed: _onPrintTapped,
             ),
           ),
-          IconButton(
+          PopupMenuButton<_DownloadFormat>(
             icon: const Icon(Icons.download_rounded, color: Colors.white),
-            tooltip: 'Download PDF',
-            onPressed: _onDownloadTapped,
+            tooltip: 'Download',
+            onSelected: (format) => switch (format) {
+              _DownloadFormat.pdf => _onDownloadPdfTapped(),
+              _DownloadFormat.excel => _onDownloadExcelTapped(),
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _DownloadFormat.pdf,
+                child: Row(
+                  children: [
+                    Icon(Icons.picture_as_pdf_rounded,
+                        color: AppColors.textSecondary),
+                    SizedBox(width: AppDimensions.spaceMD),
+                    Text('Download as PDF'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: _DownloadFormat.excel,
+                child: Row(
+                  children: [
+                    Icon(Icons.grid_on_rounded,
+                        color: AppColors.textSecondary),
+                    SizedBox(width: AppDimensions.spaceMD),
+                    Text('Download as Excel'),
+                  ],
+                ),
+              ),
+            ],
           ),
           Showcase(
             key: _syncShowcaseKey,

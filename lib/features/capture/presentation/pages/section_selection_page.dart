@@ -1,27 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/data/ethiopian_period_service.dart';
 import '../../../../shared/theme/app_breakpoints.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
 import '../../../../shared/widgets/connectivity_indicator.dart';
+import '../../../data_entry/data/repositories/data_entry_repository_impl.dart';
+import '../../../data_entry/domain/usecases/get_data_elements_usecase.dart';
+import '../../../data_entry/domain/usecases/save_data_values_usecase.dart';
+import '../../../data_entry/presentation/bloc/data_entry_bloc.dart';
+import '../../../data_entry/presentation/pages/data_entry_page.dart';
 import '../../data/repositories/capture_repository_impl.dart';
 import '../../domain/entities/dataset_section_entity.dart';
 import '../../domain/usecases/get_dataset_sections_usecase.dart';
-import 'period_selection_page.dart';
 
-/// Third step of the Capture workflow: the sections of the chosen
-/// dataset. A dataset with no sections skips straight to the period
-/// step — the whole dataset is one form.
+/// Last step of the Capture workflow, for the period already picked:
+/// the sections of the chosen dataset. A dataset with no sections
+/// skips straight to the form — the whole dataset is one form.
 class SectionSelectionPage extends StatefulWidget {
   final String dataSetId;
   final String dataSetName;
   final String periodType;
   final String orgUnitId;
   final String orgUnitName;
+  final String period;
+
+  /// Resolves the data set's own category combo, if it has one —
+  /// null for the common "default combo" case.
+  final String? attributeOptionComboUid;
 
   /// Tags this dataset as Disease Registration — themes this page
-  /// and every step after it (period, form) with the disease accent.
+  /// and the form after it with the disease accent.
   final bool isDiseaseRegistration;
 
   const SectionSelectionPage({
@@ -31,6 +42,8 @@ class SectionSelectionPage extends StatefulWidget {
     required this.periodType,
     required this.orgUnitId,
     required this.orgUnitName,
+    required this.period,
+    this.attributeOptionComboUid,
     this.isDiseaseRegistration = false,
   });
 
@@ -63,19 +76,7 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
       if (!mounted) return;
       if (sections.isEmpty) {
         // No sections — the dataset is captured as one whole form.
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => PeriodSelectionPage(
-              dataSetId: widget.dataSetId,
-              dataSetName: widget.dataSetName,
-              periodType: widget.periodType,
-              orgUnitId: widget.orgUnitId,
-              orgUnitName: widget.orgUnitName,
-              isDiseaseRegistration: widget.isDiseaseRegistration,
-            ),
-          ),
-        );
+        _openForm(replace: true);
         return;
       }
       setState(() => _sections = sections);
@@ -87,21 +88,59 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
   }
 
   void _openSection(DataSetSectionEntity section) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PeriodSelectionPage(
+    _openForm(sectionId: section.id, sectionName: section.name);
+  }
+
+  /// Builds a fresh bloc, kicks off its load, and opens the form —
+  /// `replace` swaps this page out entirely for datasets with no
+  /// sections, so the back button from the form returns straight to
+  /// period pick instead of an empty section grid.
+  Future<void> _openForm({
+    String? sectionId,
+    String? sectionName,
+    bool replace = false,
+  }) async {
+    final repository = DataEntryRepositoryImpl();
+    final bloc = DataEntryBloc(
+      getDataElementsUseCase: GetDataElementsUseCase(repository),
+      saveDataValuesUseCase: SaveDataValuesUseCase(repository),
+      repository: repository,
+    );
+    bloc.add(DataEntryLoad(
+      dataSetId: widget.dataSetId,
+      orgUnitId: widget.orgUnitId,
+      period: widget.period,
+      sectionId: sectionId,
+      attributeOptionComboUid: widget.attributeOptionComboUid,
+    ));
+
+    final page = MaterialPageRoute(
+      builder: (_) => BlocProvider.value(
+        value: bloc,
+        child: DataEntryPage(
           dataSetId: widget.dataSetId,
           dataSetName: widget.dataSetName,
-          periodType: widget.periodType,
           orgUnitId: widget.orgUnitId,
           orgUnitName: widget.orgUnitName,
-          sectionId: section.id,
-          sectionName: section.name,
+          period: widget.period,
+          periodType: widget.periodType,
+          sectionId: sectionId,
+          sectionName: sectionName,
+          preloadedBloc: bloc,
           isDiseaseRegistration: widget.isDiseaseRegistration,
+          attributeOptionComboUid: widget.attributeOptionComboUid,
         ),
       ),
     );
+
+    if (replace) {
+      Navigator.pushReplacement(context, page);
+    } else {
+      // Awaiting (without relaying the result further) is what sends
+      // the user back to this section grid after a save, so they can
+      // continue with the next section.
+      await Navigator.push(context, page);
+    }
   }
 
   @override
@@ -131,7 +170,8 @@ class _SectionSelectionPageState extends State<SectionSelectionPage> {
               style: AppTextStyles.appBarTitle,
             ),
             Text(
-              widget.dataSetName,
+              '${widget.dataSetName} · '
+              '${EthiopianPeriodService.formatPeriodId(widget.period)}',
               style: AppTextStyles.bodySmall.copyWith(
                 color: Colors.white.withValues(alpha: 0.85),
               ),

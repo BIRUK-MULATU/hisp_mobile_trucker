@@ -23,7 +23,7 @@ class SyncCoordinator {
   final NetworkInfo _networkInfo;
   final SyncManager _syncManager;
 
-  static const _heartbeat = Duration(minutes: 5);
+  static const _heartbeat = Duration(days: 1);
 
   StreamSubscription<bool>? _subscription;
   Timer? _timer;
@@ -67,8 +67,8 @@ class SyncCoordinator {
       if (!await _networkInfo.isConnected) return;
       // Nothing queued — skip the foreground service entirely so its
       // notification never flashes for a no-op push (this heartbeat
-      // fires every 5 minutes regardless of whether there's anything
-      // to do).
+      // fires on every interval regardless of whether there's
+      // anything to do).
       if (!await _syncManager.hasPendingWork()) return;
       await SyncForegroundService.start();
       try {

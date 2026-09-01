@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/metadata/data_set.dart';
 import '../../../../shared/theme/app_breakpoints.dart';
@@ -9,25 +8,22 @@ import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/connectivity_indicator.dart';
 import '../../../data_entry/data/repositories/data_entry_repository_impl.dart';
 import '../../../data_entry/domain/usecases/get_data_elements_usecase.dart';
-import '../../../data_entry/domain/usecases/save_data_values_usecase.dart';
-import '../../../data_entry/presentation/bloc/data_entry_bloc.dart';
-import '../../../data_entry/presentation/pages/data_entry_page.dart';
 import '../widgets/period_selector_field.dart';
+import 'section_selection_page.dart';
 
-/// Last step before the form: pick the report period. The form
-/// metadata is prefetched in the background while the user picks,
-/// so opening the form is instant.
+/// Second-to-last step of the Capture workflow: pick the report
+/// period (and category-combo, if any) before choosing a section.
+/// The form metadata is prefetched in the background while the user
+/// picks, so opening a section is instant.
 class PeriodSelectionPage extends StatefulWidget {
   final String dataSetId;
   final String dataSetName;
   final String periodType;
   final String orgUnitId;
   final String orgUnitName;
-  final String? sectionId;
-  final String? sectionName;
 
   /// Tags this dataset as Disease Registration — themes this page
-  /// and the form after it with the disease accent.
+  /// and every step after it with the disease accent.
   final bool isDiseaseRegistration;
 
   const PeriodSelectionPage({
@@ -37,8 +33,6 @@ class PeriodSelectionPage extends StatefulWidget {
     required this.periodType,
     required this.orgUnitId,
     required this.orgUnitName,
-    this.sectionId,
-    this.sectionName,
     this.isDiseaseRegistration = false,
   });
 
@@ -53,7 +47,6 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
 
   late final DataEntryRepositoryImpl _repository;
   late final GetDataElementsUseCase _getDataElementsUseCase;
-  late final DataEntryBloc _dataEntryBloc;
 
   bool _isPrefetching = false;
   bool _isPrefetchDone = false;
@@ -69,11 +62,6 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
     super.initState();
     _repository = DataEntryRepositoryImpl();
     _getDataElementsUseCase = GetDataElementsUseCase(_repository);
-    _dataEntryBloc = DataEntryBloc(
-      getDataElementsUseCase: _getDataElementsUseCase,
-      saveDataValuesUseCase: SaveDataValuesUseCase(_repository),
-      repository: _repository,
-    );
     _prefetchDataElements();
     _loadDimensions();
   }
@@ -90,20 +78,14 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
     }
   }
 
-  @override
-  void dispose() {
-    _dataEntryBloc.close();
-    super.dispose();
-  }
-
   // ── Prefetch form metadata while the user picks ────────────
+  // Section isn't known yet at this step, so this warms the whole
+  // dataset's elements — a superset of whatever section is chosen
+  // next, which still shortens that page's own read.
   Future<void> _prefetchDataElements() async {
     setState(() => _isPrefetching = true);
     try {
-      await _getDataElementsUseCase.call(
-        dataSetId: widget.dataSetId,
-        sectionId: widget.sectionId,
-      );
+      await _getDataElementsUseCase.call(dataSetId: widget.dataSetId);
       if (mounted) {
         setState(() {
           _isPrefetching = false;
@@ -120,7 +102,7 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
     }
   }
 
-  Future<void> _openForm() async {
+  Future<void> _onContinue() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     String? attributeOptionComboUid;
@@ -145,38 +127,24 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
 
     if (!mounted) return;
 
-    _dataEntryBloc.add(DataEntryLoad(
-      dataSetId: widget.dataSetId,
-      orgUnitId: widget.orgUnitId,
-      period: _selectedPeriodId!,
-      sectionId: widget.sectionId,
-      attributeOptionComboUid: attributeOptionComboUid,
-    ));
-
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => BlocProvider.value(
-          value: _dataEntryBloc,
-          child: DataEntryPage(
-            dataSetId: widget.dataSetId,
-            dataSetName: widget.dataSetName,
-            orgUnitId: widget.orgUnitId,
-            orgUnitName: widget.orgUnitName,
-            period: _selectedPeriodId!,
-            periodType: widget.periodType,
-            sectionId: widget.sectionId,
-            sectionName: widget.sectionName,
-            preloadedBloc: _dataEntryBloc,
-            isDiseaseRegistration: widget.isDiseaseRegistration,
-            attributeOptionComboUid: attributeOptionComboUid,
-          ),
+        builder: (_) => SectionSelectionPage(
+          dataSetId: widget.dataSetId,
+          dataSetName: widget.dataSetName,
+          periodType: widget.periodType,
+          orgUnitId: widget.orgUnitId,
+          orgUnitName: widget.orgUnitName,
+          period: _selectedPeriodId!,
+          attributeOptionComboUid: attributeOptionComboUid,
+          isDiseaseRegistration: widget.isDiseaseRegistration,
         ),
       ),
     );
 
-    // The form popped after a save — return to the section list so
-    // the user can continue with the next section.
+    // The form popped after a save — return to the dataset list so
+    // the synced/unsync chips there tell the truth.
     if (result != null && mounted) {
       Navigator.pop(context, result);
     }
@@ -184,7 +152,6 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
 
   @override
   Widget build(BuildContext context) {
-    final sectionName = widget.sectionName;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -200,7 +167,7 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              sectionName ?? widget.dataSetName,
+              widget.dataSetName,
               style: AppTextStyles.appBarTitle,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
@@ -258,10 +225,6 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
                 _SummaryField(label: 'Org unit', value: widget.orgUnitName),
                 const SizedBox(height: AppDimensions.spaceXL),
                 _SummaryField(label: 'Dataset', value: widget.dataSetName),
-                if (sectionName != null) ...[
-                  const SizedBox(height: AppDimensions.spaceXL),
-                  _SummaryField(label: 'Section', value: sectionName),
-                ],
 
                 const SizedBox(height: AppDimensions.spaceXXL),
 
@@ -295,12 +258,12 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
 
                 const SizedBox(height: AppDimensions.spaceGiant),
 
-                // ── Open Form Button ──────────────────
+                // ── Continue Button ──────────────────
                 SizedBox(
                   width: double.infinity,
                   height: AppDimensions.buttonHeightLG,
                   child: ElevatedButton(
-                    onPressed: _openForm,
+                    onPressed: _onContinue,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: widget.isDiseaseRegistration
                           ? AppColors.diseaseAccent
@@ -313,7 +276,7 @@ class _PeriodSelectionPageState extends State<PeriodSelectionPage> {
                       ),
                     ),
                     child: Text(
-                      'Open Form',
+                      'Continue',
                       style: AppTextStyles.buttonLarge
                           .copyWith(color: Colors.white),
                     ),
