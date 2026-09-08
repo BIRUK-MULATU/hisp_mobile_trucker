@@ -8,6 +8,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:showcaseview/showcaseview.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
+import '../../../../core/data/outlier_config_store.dart';
+import '../../../../core/data/outlier_detection_service.dart';
 import '../../../../core/data/period_access.dart';
 import '../../../../core/data/validation_service.dart';
 import '../../../../core/metadata/data_set.dart';
@@ -22,6 +24,7 @@ import '../../../../shared/widgets/connectivity_indicator.dart';
 import '../../../../shared/widgets/search_field.dart';
 import '../../data/repositories/data_entry_repository_impl.dart';
 import '../../domain/entities/data_element_entity.dart';
+import '../../domain/entities/outlier_stats.dart';
 import '../../domain/usecases/get_data_elements_usecase.dart';
 import '../../domain/usecases/save_data_values_usecase.dart';
 import '../bloc/data_entry_bloc.dart';
@@ -29,6 +32,8 @@ import '../utils/data_entry_excel.dart';
 import '../utils/data_entry_pdf.dart';
 import '../widgets/data_entry_table.dart';
 import '../widgets/disease_entry_list.dart';
+import '../widgets/outlier_settings_sheet.dart';
+import '../widgets/outlier_warning_dialog.dart';
 
 class DataEntryPage extends StatelessWidget {
   final String dataSetId;
@@ -171,6 +176,22 @@ class _DataEntryViewState extends State<_DataEntryView> {
   bool _violationsExpanded = false;
   Timer? _validationDebounce;
 
+  // ── Live outlier check ───────────────────────────────────────
+  // A recent-history snapshot for this org unit (keyed per de_coc
+  // cell), loaded once when the form opens (online; cached for
+  // offline). The check itself is local: as the user types, each
+  // modified numeric value is judged against its cell's history and a
+  // value outside the expected range pops a warning. Informative only
+  // — "Keep value" always lets it through, like validation rules.
+  Map<String, OutlierStats> _outlierStats = const {};
+  OutlierConfig _outlierConfig = OutlierConfig.defaults;
+  Timer? _outlierDebounce;
+  bool _outlierDialogOpen = false;
+
+  /// `<de>_<coc>_<value>` keys the user has already confirmed via
+  /// "Keep value" — so the same number never re-warns.
+  final Set<String> _acknowledgedOutliers = {};
+
   void _scheduleLiveValidation(DataEntryLoaded state) {
     _validationDebounce?.cancel();
     _validationDebounce = Timer(const Duration(milliseconds: 500), () {
@@ -189,6 +210,99 @@ class _DataEntryViewState extends State<_DataEntryView> {
               );
       if (mounted) setState(() => _liveViolations = violations);
     } catch (_) {}
+  }
+
+  // ── Outlier check ────────────────────────────────────────────
+
+  Future<void> _loadOutlierConfig() async {
+    final config = await OutlierConfigStore.load();
+    if (mounted) setState(() => _outlierConfig = config);
+  }
+
+  Future<void> _loadOutlierHistory() async {
+    if (!mounted) return;
+    try {
+      final stats =
+          await context.read<DataEntryBloc>().repository.loadOutlierHistory(
+                dataSetId: widget.dataSetId,
+                orgUnitId: widget.orgUnitId,
+                attributeOptionComboUid: widget.attributeOptionComboUid,
+              );
+      if (!mounted) return;
+      setState(() => _outlierStats = stats);
+      // The snapshot may land after the user has already typed — judge
+      // what's on the form now rather than waiting for the next edit.
+      final state = context.read<DataEntryBloc>().state;
+      if (state is DataEntryLoaded) _scheduleOutlierCheck(state);
+    } catch (_) {
+      // Informative only — no history just means no check.
+    }
+  }
+
+  void _scheduleOutlierCheck(DataEntryLoaded state) {
+    _outlierDebounce?.cancel();
+    _outlierDebounce = Timer(
+        const Duration(milliseconds: 600), () => _checkOutliers(state));
+  }
+
+  /// Walk every user-edited numeric value, judge it against its cell's
+  /// history, and warn on the first not-yet-acknowledged outlier. One
+  /// dialog at a time; "Let me fix it" stops the walk so the user can
+  /// edit before the next change re-triggers it.
+  Future<void> _checkOutliers(DataEntryLoaded state) async {
+    if (!mounted ||
+        _outlierDialogOpen ||
+        _isPeriodClosed ||
+        _outlierStats.isEmpty) {
+      return;
+    }
+
+    final elementName = {
+      for (final e in state.dataElements) e.id: e.displayName,
+    };
+    final cocName = {
+      for (final e in state.dataElements)
+        for (final c in e.categoryOptionCombos) '${e.id}_${c.id}': c.displayName,
+    };
+
+    for (final v in state.dataValues.values) {
+      if (!v.isModified) continue;
+      final stats = _outlierStats[v.key];
+      if (stats == null) continue;
+      final ackKey = '${v.key}_${v.value.trim()}';
+      if (_acknowledgedOutliers.contains(ackKey)) continue;
+      final verdict =
+          OutlierDetectionService.judge(v.value, stats, _outlierConfig);
+      if (verdict == null) continue;
+
+      _outlierDialogOpen = true;
+      final kept = await showOutlierWarning(
+        context,
+        verdict: verdict,
+        elementName: elementName[v.dataElementId] ?? 'this field',
+        cocName: cocName[v.key] ?? '',
+      );
+      _outlierDialogOpen = false;
+      if (!mounted) return;
+      if (kept) {
+        _acknowledgedOutliers.add(ackKey);
+      } else {
+        return; // user wants to edit — next change re-checks
+      }
+    }
+  }
+
+  Future<void> _openOutlierSettings() async {
+    final updated = await showOutlierSettings(context, current: _outlierConfig);
+    if (updated == null || !mounted) return;
+    final state = context.read<DataEntryBloc>().state;
+    await OutlierConfigStore.save(updated);
+    if (!mounted) return;
+    setState(() {
+      _outlierConfig = updated;
+      _acknowledgedOutliers.clear();
+    });
+    if (state is DataEntryLoaded) _scheduleOutlierCheck(state);
   }
 
   Widget _buildValidationBanner() {
@@ -266,6 +380,8 @@ class _DataEntryViewState extends State<_DataEntryView> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _loadCompletionStatus();
+      _loadOutlierConfig();
+      _loadOutlierHistory();
       // Awaited (not fire-and-forget) so _isPeriodClosed is settled
       // before the tour decides whether the Save FAB — hidden once
       // the period is closed — belongs in its target list.
@@ -314,6 +430,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
   @override
   void dispose() {
     _validationDebounce?.cancel();
+    _outlierDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -1230,6 +1347,11 @@ class _DataEntryViewState extends State<_DataEntryView> {
               ),
             ],
           ),
+          IconButton(
+            icon: const Icon(Icons.tune_rounded, color: Colors.white),
+            tooltip: 'Outlier check',
+            onPressed: _openOutlierSettings,
+          ),
           Showcase(
             key: _syncShowcaseKey,
             title: 'Reload',
@@ -1245,7 +1367,10 @@ class _DataEntryViewState extends State<_DataEntryView> {
       ),
       body: BlocListener<DataEntryBloc, DataEntryState>(
         listener: (context, state) {
-          if (state is DataEntryLoaded) _scheduleLiveValidation(state);
+          if (state is DataEntryLoaded) {
+            _scheduleLiveValidation(state);
+            _scheduleOutlierCheck(state);
+          }
         },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

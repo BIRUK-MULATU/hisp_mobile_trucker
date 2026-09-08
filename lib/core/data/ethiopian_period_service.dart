@@ -74,6 +74,65 @@ class EthiopianPeriodService {
     return result;
   }
 
+  /// Gregorian [start, end] (both inclusive) of a DHIS2 period id — a
+  /// public wrapper over the calendar conversion the gating math uses.
+  (DateTime, DateTime) periodBounds(String periodId) =>
+      _gregorianBounds(periodId);
+
+  /// Every period of [dataSet] that is currently OPEN for entry
+  /// (not expired, not beyond the future window), most recent first,
+  /// each with its Gregorian bounds. Feeds the "expected reports"
+  /// list — same period universe and gating as [periodsFor], minor
+  /// shape difference: bounds are returned so the caller can derive
+  /// deadlines without re-converting.
+  Future<List<({
+    String id,
+    String label,
+    String labelEnglish,
+    DateTime start,
+    DateTime end,
+  })>> openReportingPeriods({
+    required DataSet dataSet,
+    int count = 14,
+  }) async {
+    final candidates = <EthiopianPeriod>[];
+    if (dataSet.periodType.toUpperCase() == 'MONTHLY') {
+      final early = _earlyOpenNextMonth();
+      if (early != null) candidates.add(early);
+    }
+    candidates.addAll(EthiopianCalendar.generatePeriods(
+      periodType: dataSet.periodType,
+      count: count,
+    ));
+
+    final out = <({
+      String id,
+      String label,
+      String labelEnglish,
+      DateTime start,
+      DateTime end,
+    })>[];
+    for (final p in candidates) {
+      final (start, end) = _gregorianBounds(p.id);
+      final status = await _access.statusOf(
+        periodStart: start,
+        periodEnd: end,
+        expiryDays: dataSet.expiryDays,
+        openFuturePeriods: dataSet.openFuturePeriods,
+        periodsAhead: 0,
+      );
+      if (status != PeriodStatus.open) continue;
+      out.add((
+        id: p.id,
+        label: p.label,
+        labelEnglish: p.labelEnglish,
+        start: start,
+        end: end,
+      ));
+    }
+    return out;
+  }
+
   /// Status of ONE already-known period id — used when a form is
   /// opened directly (new entry after picking, or reopening a report
   /// from Report Period) to decide whether editing is still allowed.

@@ -430,6 +430,69 @@ void main() {
       expect(result, isEmpty);
     });
 
+    test('online: a stale local assignment the server no longer has is '
+        'PRUNED — the dead form leaves the picker', () async {
+      // The app cached ds1 -> facility on an earlier visit; the server
+      // has since un-assigned it.
+      await db.into(db.orgUnitsTable).insert(
+            OrgUnitsTableCompanion.insert(
+              uid: facilityUid,
+              name: 'Health Center B',
+              displayName: 'Health Center B',
+              path: '/$ou1/$facilityUid',
+            ),
+          );
+      await db.into(db.dataSetOrgUnitsTable).insert(
+            DataSetOrgUnitsTableCompanion.insert(
+                dataSetUid: ds1, orgUnitUid: facilityUid),
+          );
+
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _CannedAdapter(body: {
+        'id': facilityUid,
+        'name': 'Health Center B',
+        'displayName': 'Health Center B',
+        'parent': {'id': ou1, 'name': 'Health Post A'},
+        'path': '/$ou1/$facilityUid',
+        'dataSets': <Map<String, dynamic>>[],
+      });
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final result = await repo.getDataSetsForOrgUnit(facilityUid);
+      expect(result, isEmpty, reason: 'server no longer assigns ds1 here');
+
+      final links = await (db.select(db.dataSetOrgUnitsTable)
+            ..where((t) => t.orgUnitUid.equals(facilityUid)))
+          .get();
+      expect(links, isEmpty, reason: 'the stale link must be gone locally');
+    });
+
+    test('online refresh failing (offline) keeps the cached assignment',
+        () async {
+      await db.into(db.orgUnitsTable).insert(
+            OrgUnitsTableCompanion.insert(
+              uid: facilityUid,
+              name: 'Health Center B',
+              displayName: 'Health Center B',
+              path: '/$ou1/$facilityUid',
+            ),
+          );
+      await db.into(db.dataSetOrgUnitsTable).insert(
+            DataSetOrgUnitsTableCompanion.insert(
+                dataSetUid: ds1, orgUnitUid: facilityUid),
+          );
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final result = await repo.getDataSetsForOrgUnit(facilityUid);
+      expect(result.map((d) => d.id), [ds1]);
+    });
+
     test('a CONFIGURED api that fails with a connection error (genuinely '
         'offline despite being logged in) degrades gracefully instead of '
         'throwing — regression for a real bug caught in the running app',

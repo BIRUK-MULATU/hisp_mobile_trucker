@@ -1,5 +1,6 @@
 import '../../../../core/data/validation_service.dart';
 import '../entities/data_element_entity.dart';
+import '../entities/outlier_stats.dart';
 
 abstract class DataEntryRepository {
   /// Fetch data elements and category combos for a dataset —
@@ -46,6 +47,17 @@ abstract class DataEntryRepository {
   Future<List<ValidationViolation>> validateLiveValues({
     required String dataSetId,
     required List<DataValueEntity> dataValues,
+  });
+
+  /// Recent-history statistics per `<dataElementUid>_<cocUid>` cell for
+  /// this form instance's org unit — the basis for the live outlier
+  /// check as the user types. Online: pulled fresh and cached. Offline:
+  /// the last cached snapshot. Empty map = check disabled (never an
+  /// error), same informative-only contract as [validateLiveValues].
+  Future<Map<String, OutlierStats>> loadOutlierHistory({
+    required String dataSetId,
+    required String orgUnitId,
+    String? attributeOptionComboUid,
   });
 
   /// Compulsory dataSetElement fields (DHIS2 `dataSetElement.compulsory`)

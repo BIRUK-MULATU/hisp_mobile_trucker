@@ -49,6 +49,10 @@ dependencies:
   shared_preferences: ^2.3.2
   showcaseview: ^4.0.1
 
+  # Local reminder notifications (expected-report deadlines)
+  flutter_local_notifications: ^17.2.3
+  timezone: ^0.9.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

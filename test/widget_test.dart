@@ -12,6 +12,7 @@ import 'package:hisp_mobile_trucker/features/capture/domain/entities/dataset_ent
 import 'package:hisp_mobile_trucker/features/capture/presentation/widgets/dataset_card.dart';
 import 'package:hisp_mobile_trucker/core/data/indicator_display_service.dart';
 import 'package:hisp_mobile_trucker/core/data/validation_service.dart';
+import 'package:hisp_mobile_trucker/features/data_entry/domain/entities/outlier_stats.dart';
 import 'package:hisp_mobile_trucker/core/network/connectivity_service.dart';
 import 'package:hisp_mobile_trucker/features/home/presentation/widgets/home_app_bar.dart';
 
@@ -78,6 +79,14 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required List<DataValueEntity> dataValues,
   }) async =>
       const [];
+
+  @override
+  Future<Map<String, OutlierStats>> loadOutlierHistory({
+    required String dataSetId,
+    required String orgUnitId,
+    String? attributeOptionComboUid,
+  }) async =>
+      const {};
 
   @override
   Future<List<String>> missingMandatoryFields({

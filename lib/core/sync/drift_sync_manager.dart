@@ -50,6 +50,10 @@ class DriftSyncManager implements SyncManager {
       // first so those rows land on the server under the uid it
       // actually recognizes.
       await _repairDuplicateDefaultCombos(db, api);
+      // A dataset re-assigned to an org unit on the server unblocks any
+      // work that bounced with "not assigned to organisation unit" —
+      // flip those error rows back to pending so this push carries them.
+      await requeueAssignmentRecoveredWork(db);
       final pushed = await _pushDataValues(db);
       final completions = await CompletenessSync(db, api).pushPending();
       if (pushed > 0 || completions > 0) {

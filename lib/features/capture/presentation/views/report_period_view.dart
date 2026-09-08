@@ -6,6 +6,7 @@ import '../../../../shared/widgets/app_loader.dart';
 import '../../../data_entry/presentation/pages/data_entry_page.dart';
 import '../../data/repositories/capture_repository_impl.dart';
 import '../../domain/entities/report_instance_entity.dart';
+import '../widgets/expected_reports_section.dart';
 
 /// Home's default Capture-mode body: every report the user has
 /// worked on — completed or incomplete drafts — across ALL
@@ -47,6 +48,10 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
   List<ReportInstanceEntity>? _reports;
   String? _error;
 
+  /// Bumped on every (re)load so the embedded ExpectedReportsSection
+  /// refreshes in step with this list.
+  int _tick = 0;
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +62,7 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
     setState(() {
       _reports = null;
       _error = null;
+      _tick++;
     });
     try {
       final reports = await _repository.getUserReports();
@@ -160,13 +166,26 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
     if (all == null) {
       return const AppLoader(message: 'Loading reports...');
     }
+
+    final expectedSection = ExpectedReportsSection(
+      reloadTick: _tick,
+      onReturned: _load,
+    );
+
     if (all.isEmpty) {
-      return const _EmptyView(
-        icon: Icons.event_note_rounded,
-        title: 'No reports yet',
-        message: 'Reports you save as drafts or complete will show up '
-            'here, across all your organisation units.\n'
-            'Tap the + button to start one.',
+      return Column(
+        children: [
+          expectedSection,
+          const Expanded(
+            child: _EmptyView(
+              icon: Icons.event_note_rounded,
+              title: 'No reports yet',
+              message: 'Reports you save as drafts or complete will show up '
+                  'here, across all your organisation units.\n'
+                  'Tap the + button to start one.',
+            ),
+          ),
+        ],
       );
     }
     final scoped = _applyScopeFilters(all);
@@ -175,6 +194,7 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
 
     return Column(
       children: [
+        expectedSection,
         _SyncSummaryBar(
           counts: counts,
           selected: widget.syncFilters,

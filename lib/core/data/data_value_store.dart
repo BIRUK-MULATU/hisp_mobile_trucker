@@ -28,6 +28,11 @@ class DataValueStore {
   final PeriodAccess _clock;
   final AuditLogStore _auditLog;
 
+  /// The underlying database — exposed for the push pre-flight screen
+  /// (see pushDataValueBatch), which needs element metadata to judge a
+  /// queued value before sending it.
+  AppDatabase get db => _db;
+
   // ── WRITE (local entry) ──────────────────────────────────────────────
 
   /// Save a locally-entered value. Single-row upsert (atomic).
@@ -303,6 +308,84 @@ Future<bool> hasUnsyncedLocalData(AppDatabase db) async {
   return (c.read(db.completeDataSetRegistrationsTable.dataSetUid.count()) ??
           0) >
       0;
+}
+
+/// A dataset re-assigned to an organisation unit on the server unblocks
+/// every local write that previously bounced with DHIS2 **E7629**
+/// ("Data set … is not assigned to organisation unit …"). Those rows sit
+/// in ERROR state — which the push path never retries on purpose, since
+/// most rejections are permanent — so this flips them back to PENDING
+/// once [dataSetOrgUnitsTable] shows the assignment restored. It spares
+/// the user from reopening every rejected form and re-touching each cell.
+///
+/// Call it after a metadata refresh (so the assignment table is current)
+/// and before a push. Returns how many rows were re-queued.
+Future<int> requeueAssignmentRecoveredWork(AppDatabase db) async {
+  final blocked =
+      RegExp(r'not assigned to organi[sz]ation unit', caseSensitive: false);
+  // E7629 text names the data set — "Data set: `uid` is not assigned …".
+  final dataSetInMsg = RegExp(r'data\s*set:?\s*`?([A-Za-z][A-Za-z0-9]{10})',
+      caseSensitive: false);
+
+  Future<bool> assigned(String dataSetUid, String orgUnitUid) async {
+    final row = await (db.select(db.dataSetOrgUnitsTable)
+          ..where((t) =>
+              t.dataSetUid.equals(dataSetUid) &
+              t.orgUnitUid.equals(orgUnitUid)))
+        .getSingleOrNull();
+    return row != null;
+  }
+
+  var recovered = 0;
+
+  final valueRows = await (db.select(db.dataValuesTable)
+        ..where((t) => t.syncState.equals(SyncState.error.index)))
+      .get();
+  for (final v in valueRows) {
+    final err = v.syncError;
+    if (err == null || !blocked.hasMatch(err)) continue;
+    final dsUid = dataSetInMsg.firstMatch(err)?.group(1);
+    if (dsUid == null || !await assigned(dsUid, v.orgUnitUid)) continue;
+    await (db.update(db.dataValuesTable)
+          ..where((t) =>
+              t.dataElementUid.equals(v.dataElementUid) &
+              t.period.equals(v.period) &
+              t.orgUnitUid.equals(v.orgUnitUid) &
+              t.categoryOptionComboUid.equals(v.categoryOptionComboUid) &
+              t.attributeOptionComboUid.equals(v.attributeOptionComboUid)))
+        .write(const DataValuesTableCompanion(
+      syncState: Value(SyncState.pending),
+      syncError: Value(null),
+    ));
+    recovered++;
+  }
+
+  // Completion registrations carry the data set uid directly.
+  final completionRows = await (db.select(db.completeDataSetRegistrationsTable)
+        ..where((t) => t.syncState.equals(SyncState.error.index)))
+      .get();
+  for (final c in completionRows) {
+    final err = c.syncError;
+    if (err == null || !blocked.hasMatch(err)) continue;
+    if (!await assigned(c.dataSetUid, c.orgUnitUid)) continue;
+    await (db.update(db.completeDataSetRegistrationsTable)
+          ..where((t) =>
+              t.dataSetUid.equals(c.dataSetUid) &
+              t.period.equals(c.period) &
+              t.orgUnitUid.equals(c.orgUnitUid) &
+              t.attributeOptionComboUid.equals(c.attributeOptionComboUid)))
+        .write(const CompleteDataSetRegistrationsTableCompanion(
+      syncState: Value(SyncState.pending),
+      syncError: Value(null),
+    ));
+    recovered++;
+  }
+
+  if (recovered > 0) {
+    log.i('[sync] re-queued $recovered row(s) after a dataset assignment '
+        'was restored on the server');
+  }
+  return recovered;
 }
 
 /// Rows that exist ONLY on this device: draft/pending/error data values

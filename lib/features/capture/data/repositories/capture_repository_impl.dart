@@ -2,16 +2,21 @@ import 'package:drift/drift.dart';
 
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/auth/session_service.dart';
+import '../../../../core/data/completeness.dart';
 import '../../../../core/data/data_value_store.dart';
+import '../../../../core/data/period_access.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../../../core/metadata/data_set.dart';
 import '../../../../core/metadata/organisation_unit.dart';
 import '../../../../core/metadata/section.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/connectivity_service.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
+import '../../../../core/utils/app_logger.dart';
 import '../../domain/entities/dataset_entity.dart';
 import '../../domain/entities/dataset_section_entity.dart';
+import '../../domain/entities/expected_report_entity.dart';
 import '../../domain/entities/org_unit_tree_node.dart';
 import '../../domain/entities/report_instance_entity.dart';
 import '../../domain/repositories/capture_repository.dart';
@@ -176,16 +181,21 @@ class CaptureRepositoryImpl implements CaptureRepository {
   @override
   Future<List<DataSetEntity>> getDataSetsForOrgUnit(String orgUnitId) async {
     var rows = await DataSetResource(_db).getByOrgUnit(orgUnitId);
-    if (rows.isEmpty) {
-      final api = _api;
-      if (api != null) {
-        try {
-          rows = await _fetchAndCacheVisitedOrgUnit(api, orgUnitId);
-        } catch (_) {
-          // Offline (or the request otherwise failed) — fall through
-          // to the "nothing assigned / never synced" handling below,
-          // same as if there were no api at all.
-        }
+
+    // Always re-verify the assignment against the server when online —
+    // not only when the local list is empty. A dataset UN-assigned
+    // server-side (or a stale link cached on an earlier visit) would
+    // otherwise keep a dead form in the picker forever: the user fills
+    // it in and the push comes back "Data set X is not assigned to
+    // organisation unit Y". The refresh REPLACES this org unit's links
+    // with the server's truth, so removed assignments disappear here.
+    final api = _api;
+    if (api != null) {
+      try {
+        rows = await _fetchAndCacheVisitedOrgUnit(api, orgUnitId);
+      } catch (_) {
+        // Offline (or the request otherwise failed) — keep whatever is
+        // cached locally and fall through to the handling below.
       }
     }
     if (rows.isEmpty) {
@@ -221,14 +231,14 @@ class CaptureRepositoryImpl implements CaptureRepository {
     ]..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  /// The user has genuinely opened (not just browsed past) a facility
-  /// beyond the synced depth bound — fetch its own record plus its
-  /// dataset assignments live, and CACHE both locally, so this one
-  /// facility (not the whole hierarchy) is usable offline from here
-  /// on. Dataset metadata itself needs no fetching here: DataSetResource
-  /// syncs every dataset's full definition regardless of org unit
-  /// scope already, only the ASSIGNMENT (which datasets this facility
-  /// has) and the facility's own row are missing locally.
+  /// Fetch one org unit's own record plus its dataset ASSIGNMENTS live
+  /// and mirror both locally — so the facility (not the whole
+  /// hierarchy) is usable offline, and its assignment list stays
+  /// truthful. The links are REPLACED, not merged: a dataset dropped
+  /// from this org unit server-side is dropped here too, which is what
+  /// keeps a now-unassigned form out of the capture picker. Dataset
+  /// metadata itself needs no fetching — DataSetResource syncs every
+  /// dataset's full definition regardless of org unit scope already.
   Future<List<DataSet>> _fetchAndCacheVisitedOrgUnit(
       ApiClient api, String orgUnitId) async {
     final res = await api
@@ -243,18 +253,23 @@ class CaptureRepositoryImpl implements CaptureRepository {
         ds['id'] as String,
     ];
 
-    await _db
-        .into(_db.orgUnitsTable)
-        .insertOnConflictUpdate(OrgUnitResource(_db).companionFromJson(json));
-    if (dataSetUids.isNotEmpty) {
-      await _db.batch((b) {
-        b.insertAllOnConflictUpdate(_db.dataSetOrgUnitsTable, [
-          for (final dsUid in dataSetUids)
-            DataSetOrgUnitsTableCompanion.insert(
-                dataSetUid: dsUid, orgUnitUid: orgUnitId),
-        ]);
-      });
-    }
+    await _db.transaction(() async {
+      await _db
+          .into(_db.orgUnitsTable)
+          .insertOnConflictUpdate(OrgUnitResource(_db).companionFromJson(json));
+      await (_db.delete(_db.dataSetOrgUnitsTable)
+            ..where((t) => t.orgUnitUid.equals(orgUnitId)))
+          .go();
+      if (dataSetUids.isNotEmpty) {
+        await _db.batch((b) {
+          b.insertAllOnConflictUpdate(_db.dataSetOrgUnitsTable, [
+            for (final dsUid in dataSetUids)
+              DataSetOrgUnitsTableCompanion.insert(
+                  dataSetUid: dsUid, orgUnitUid: orgUnitId),
+          ]);
+        });
+      }
+    });
 
     return DataSetResource(_db).getByIds(dataSetUids);
   }
@@ -375,6 +390,155 @@ class CaptureRepositoryImpl implements CaptureRepository {
                     : aocNames[k.$4],
           ),
     ]..sort((a, b) => b.lastModified.compareTo(a.lastModified));
+  }
+
+  @override
+  Future<List<ExpectedReportEntity>> getExpectedReports() async {
+    // "My facilities" = every org unit the app holds a dataset
+    // assignment for locally. That is exactly the user's own capture
+    // scope: the metadata sync only ever writes dataSetOrgUnits rows
+    // for the capture roots + their direct children, plus any deeper
+    // facility the user has explicitly opened (which caches its
+    // assignments — see _fetchAndCacheVisitedOrgUnit). A national /
+    // regional account with no facility-level assignment simply has
+    // nothing outstanding, which is correct.
+    final links = await _db.select(_db.dataSetOrgUnitsTable).get();
+    if (links.isEmpty) return const [];
+
+    final ouIds = {for (final l in links) l.orgUnitUid};
+    final ouRows = await (_db.select(_db.orgUnitsTable)
+          ..where((t) => t.uid.isIn(ouIds)))
+        .get();
+    final facilityNames = {for (final r in ouRows) r.uid: r.displayName};
+    if (facilityNames.isEmpty) return const [];
+
+    // ── Best-effort: reconcile server completion state first ─────
+    final api = _api;
+    if (api != null && (ConnectivityService.instance.online ?? false)) {
+      try {
+        await CompletenessSync(_db, api).pullRecent(
+          orgUnitUids: facilityNames.keys.toList(),
+          since: DateTime.now().subtract(const Duration(days: 210)),
+        );
+      } catch (_) {
+        // Local view stands — the pull is a freshness bonus, not a gate.
+      }
+    }
+
+    final dataSetIds = {for (final l in links) l.dataSetUid};
+    final dataSets = {
+      for (final ds in await DataSetResource(_db).getByIds(dataSetIds.toList()))
+        ds.uid: ds,
+    };
+    final diseaseDataSets =
+        await DataSetResource(_db).diseaseRegistrationDataSetUids();
+    final needsCombo = {
+      for (final id in dataSetIds)
+        id: (await DataSetResource(_db).categoryDimensions(id)).isNotEmpty,
+    };
+
+    final periodService = EthiopianPeriodService(_db);
+    final now = await PeriodAccess(_db).effectiveNow();
+    // Periods depend only on the dataset, not the facility — resolve once.
+    final openPeriodsByDataSet = <String, List<({
+      String id,
+      String label,
+      String labelEnglish,
+      DateTime start,
+      DateTime end,
+    })>>{};
+
+    final out = <ExpectedReportEntity>[];
+    for (final link in links) {
+      if (!facilityNames.containsKey(link.orgUnitUid)) continue;
+      final ds = dataSets[link.dataSetUid];
+      if (ds == null) continue; // dataset metadata gone
+      final open = openPeriodsByDataSet[link.dataSetUid] ??=
+          await periodService.openReportingPeriods(dataSet: ds);
+      for (final p in open) {
+        if (await _isPeriodComplete(link.dataSetUid, p.id, link.orgUnitUid)) {
+          continue;
+        }
+        final lockDate = ds.expiryDays > 0
+            ? p.end.add(Duration(days: ds.expiryDays))
+            : null;
+        final urgency = now.isAfter(p.end)
+            ? ReportUrgency.overdue
+            : p.end.difference(now).inDays <= 5
+                ? ReportUrgency.dueSoon
+                : ReportUrgency.open;
+        out.add(ExpectedReportEntity(
+          dataSetId: link.dataSetUid,
+          dataSetName: ds.displayName,
+          periodType: ds.periodType,
+          periodId: p.id,
+          periodLabel: EthiopianPeriodService.formatPeriodId(p.id),
+          orgUnitId: link.orgUnitUid,
+          orgUnitName: facilityNames[link.orgUnitUid] ?? link.orgUnitUid,
+          periodEnd: p.end,
+          lockDate: lockDate,
+          urgency: urgency,
+          isDiseaseRegistration: diseaseDataSets.contains(link.dataSetUid),
+          needsComboPick: needsCombo[link.dataSetUid] ?? false,
+          localStarted:
+              await _hasLocalWork(link.dataSetUid, p.id, link.orgUnitUid),
+        ));
+      }
+    }
+
+    int rank(ReportUrgency u) => switch (u) {
+          ReportUrgency.overdue => 0,
+          ReportUrgency.dueSoon => 1,
+          ReportUrgency.open => 2,
+        };
+    out.sort((a, b) {
+      final r = rank(a.urgency).compareTo(rank(b.urgency));
+      return r != 0 ? r : a.periodEnd.compareTo(b.periodEnd);
+    });
+    log.i('[expected] ${facilityNames.length} facility(ies), '
+        '${links.length} assignment(s) → ${out.length} outstanding report(s)');
+    return out;
+  }
+
+  /// Any completed==true registration for this (dataset, period, org
+  /// unit) — across attribute option combos and sync states.
+  Future<bool> _isPeriodComplete(
+      String dsUid, String period, String ouUid) async {
+    final row = await (_db.select(_db.completeDataSetRegistrationsTable)
+          ..where((t) =>
+              t.dataSetUid.equals(dsUid) &
+              t.period.equals(period) &
+              t.orgUnitUid.equals(ouUid) &
+              t.completed.equals(true))
+          ..limit(1))
+        .get();
+    return row.isNotEmpty;
+  }
+
+  /// True when there's already local work for this report — an
+  /// incomplete registration, or any locally-stored data value for the
+  /// dataset's elements at this (org unit, period). Drives the "resume"
+  /// vs "start" affordance.
+  Future<bool> _hasLocalWork(
+      String dsUid, String period, String ouUid) async {
+    final reg = await (_db.select(_db.completeDataSetRegistrationsTable)
+          ..where((t) =>
+              t.dataSetUid.equals(dsUid) &
+              t.period.equals(period) &
+              t.orgUnitUid.equals(ouUid))
+          ..limit(1))
+        .get();
+    if (reg.isNotEmpty) return true;
+    final elementUids = await DataSetResource(_db).dataElementUids(dsUid);
+    if (elementUids.isEmpty) return false;
+    final vals = await (_db.select(_db.dataValuesTable)
+          ..where((t) =>
+              t.period.equals(period) &
+              t.orgUnitUid.equals(ouUid) &
+              t.dataElementUid.isIn(elementUids))
+          ..limit(1))
+        .get();
+    return vals.isNotEmpty;
   }
 
   @override

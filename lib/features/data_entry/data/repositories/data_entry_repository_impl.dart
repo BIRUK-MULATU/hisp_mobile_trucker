@@ -9,6 +9,7 @@ import '../../../../core/data/data_value_store.dart';
 import '../../../../core/data/data_value_sync.dart';
 import '../../../../core/data/element_label_service.dart';
 import '../../../../core/data/indicator_display_service.dart';
+import '../../../../core/data/outlier_detection_service.dart';
 import '../../../../core/data/validation_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/errors/exceptions.dart';
@@ -23,6 +24,7 @@ import '../../../../core/network/network_info.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../../../core/utils/app_logger.dart';
 import '../../domain/entities/data_element_entity.dart' as entity;
+import '../../domain/entities/outlier_stats.dart';
 import '../../domain/repositories/data_entry_repository.dart';
 
 /// OFFLINE-FIRST data entry on the per-user SQLite database.
@@ -272,6 +274,31 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
           ),
       ],
     );
+  }
+
+  @override
+  Future<Map<String, OutlierStats>> loadOutlierHistory({
+    required String dataSetId,
+    required String orgUnitId,
+    String? attributeOptionComboUid,
+  }) async {
+    try {
+      final aoc = attributeOptionComboUid ??
+          await _defaultAttributeOptionCombo(dataSetId);
+      // Pass the live API only when it's actually reachable — the
+      // service then falls straight through to its cached snapshot
+      // instead of hanging on a dead request.
+      final api = AppSession.instance.api;
+      final reachable = api != null && await _networkInfo.isConnected;
+      return OutlierDetectionService(_db, reachable ? api : null).fetchHistory(
+        dataSetUid: dataSetId,
+        orgUnitUid: orgUnitId,
+        attributeOptionComboUid: aoc,
+      );
+    } catch (e) {
+      log.w('[dataEntry] outlier history load failed: $e');
+      return const {};
+    }
   }
 
   @override

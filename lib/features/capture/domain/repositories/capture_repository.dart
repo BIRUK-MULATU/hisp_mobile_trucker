@@ -1,5 +1,6 @@
 import '../entities/dataset_entity.dart';
 import '../entities/dataset_section_entity.dart';
+import '../entities/expected_report_entity.dart';
 import '../entities/org_unit_tree_node.dart';
 import '../entities/report_instance_entity.dart';
 
@@ -27,4 +28,12 @@ abstract class CaptureRepository {
   /// units, newest first. Routine and Disease Registration together,
   /// same merge as [getDataSetsForOrgUnit].
   Future<List<ReportInstanceEntity>> getUserReports();
+
+  /// Reports the user still OWES: every dataset assigned to one of
+  /// their own facilities (capture roots + direct children), for every
+  /// period still open for entry, that isn't already completed
+  /// (locally or on the server). Sorted most-urgent first. Best-effort
+  /// pulls the server's completion state first when online, so a
+  /// report finished on the web doesn't linger here.
+  Future<List<ExpectedReportEntity>> getExpectedReports();
 }

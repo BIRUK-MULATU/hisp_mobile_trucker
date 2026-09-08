@@ -9,6 +9,7 @@ import 'core/storage/secure_storage.dart';
 import 'core/sync/sync_coordinator.dart';
 import 'core/sync/drift_sync_manager.dart';
 import 'core/network/connectivity_service.dart';
+import 'core/notifications/report_reminder_service.dart';
 import 'features/visualization/data/chart_draft_coordinator.dart';
 import 'shared/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
@@ -51,6 +52,10 @@ void main() async {
   // Finishes any chart drafts saved offline the moment connectivity
   // returns (see ChartBuilderView._saveDraft).
   ChartDraftCoordinator.instance.start();
+
+  // On-device reminders for reports due before their lock date. Safe
+  // to await — no-ops on web, self-disables if the platform refuses.
+  await ReportReminderService.instance.init();
 
   runApp(const HispMobileTrackerApp());
 }

@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -221,4 +222,87 @@ void main() {
     });
   });
 
+  group('requeueAssignmentRecoveredWork', () {
+    const e7629 =
+        'Data set: `dataSet0001` is not assigned to organisation unit: '
+        '`orgUnit0001`';
+
+    Future<void> queueErroredValue() async {
+      await saveValue();
+      await store.markError((await store.pendingValues()).single, e7629);
+    }
+
+    test('re-queues a blocked value once the assignment is restored',
+        () async {
+      await queueErroredValue();
+      // Assignment not present yet — nothing to recover.
+      expect(await requeueAssignmentRecoveredWork(db), 0);
+
+      await db.into(db.dataSetOrgUnitsTable).insert(
+            DataSetOrgUnitsTableCompanion.insert(
+                dataSetUid: ds1, orgUnitUid: ou1),
+          );
+      expect(await requeueAssignmentRecoveredWork(db), 1);
+
+      final row = (await db.select(db.dataValuesTable).get()).single;
+      expect(row.syncState, SyncState.pending);
+      expect(row.syncError, isNull);
+      expect((await store.pendingValues()).length, 1);
+    });
+
+    test('leaves a value blocked at a DIFFERENT org unit alone', () async {
+      await queueErroredValue();
+      await db.into(db.dataSetOrgUnitsTable).insert(
+            DataSetOrgUnitsTableCompanion.insert(
+                dataSetUid: ds1, orgUnitUid: ou2), // wrong OU
+          );
+      expect(await requeueAssignmentRecoveredWork(db), 0);
+      expect((await db.select(db.dataValuesTable).get()).single.syncState,
+          SyncState.error);
+    });
+
+    test('ignores error rows rejected for other reasons', () async {
+      await saveValue();
+      await store.markError(
+          (await store.pendingValues()).single, 'Value must be a number');
+      await db.into(db.dataSetOrgUnitsTable).insert(
+            DataSetOrgUnitsTableCompanion.insert(
+                dataSetUid: ds1, orgUnitUid: ou1),
+          );
+      expect(await requeueAssignmentRecoveredWork(db), 0);
+    });
+
+    test('re-queues a blocked completion registration', () async {
+      await db.into(db.completeDataSetRegistrationsTable).insert(
+            CompleteDataSetRegistrationsTableCompanion.insert(
+              dataSetUid: ds2,
+              period: '201811',
+              orgUnitUid: ou1,
+              attributeOptionComboUid: coc,
+              completed: true,
+              date: DateTime.now(),
+              syncState: SyncState.error,
+              lastModified: DateTime.now(),
+            ),
+          );
+      await (db.update(db.completeDataSetRegistrationsTable)
+            ..where((t) => t.dataSetUid.equals(ds2)))
+          .write(const CompleteDataSetRegistrationsTableCompanion(
+        syncError: Value('Data set: `dataSet0002` is not assigned to '
+            'organisation unit: `orgUnit0001`'),
+      ));
+
+      expect(await requeueAssignmentRecoveredWork(db), 0);
+      await db.into(db.dataSetOrgUnitsTable).insert(
+            DataSetOrgUnitsTableCompanion.insert(
+                dataSetUid: ds2, orgUnitUid: ou1),
+          );
+      expect(await requeueAssignmentRecoveredWork(db), 1);
+
+      final row =
+          (await db.select(db.completeDataSetRegistrationsTable).get()).single;
+      expect(row.syncState, SyncState.pending);
+      expect(row.syncError, isNull);
+    });
+  });
 }

@@ -87,6 +87,44 @@ class CompletenessStore {
       (_db.select(_db.completeDataSetRegistrationsTable)
             ..where((t) => t.syncState.equals(SyncState.pending.index)))
           .get();
+
+  /// Apply a `completed == true` registration pulled from the server.
+  /// NEVER clobbers unsynced local work: it writes only when there is
+  /// no local row, or the local row is already `synced` — a pending or
+  /// error registration on this device stays as the source of truth
+  /// until it has had its turn to push (same rule as
+  /// DataValueSync._pullAndResolve). Returns true if a row was written.
+  Future<bool> applyServerComplete({
+    required String dataSetUid,
+    required String period,
+    required String orgUnitUid,
+    required String attributeOptionComboUid,
+    required DateTime date,
+    String? storedBy,
+  }) async {
+    final local = await statusOf(
+      dataSetUid: dataSetUid,
+      period: period,
+      orgUnitUid: orgUnitUid,
+      attributeOptionComboUid: attributeOptionComboUid,
+    );
+    if (local != null && local.syncState != SyncState.synced) return false;
+    if (local != null && local.completed) return false; // already there
+    await _db.into(_db.completeDataSetRegistrationsTable).insertOnConflictUpdate(
+          CompleteDataSetRegistrationsTableCompanion.insert(
+            dataSetUid: dataSetUid,
+            period: period,
+            orgUnitUid: orgUnitUid,
+            attributeOptionComboUid: attributeOptionComboUid,
+            completed: true,
+            storedBy: Value(storedBy),
+            date: date,
+            syncState: SyncState.synced,
+            lastModified: date,
+          ),
+        );
+    return true;
+  }
 }
 
 /// Push/pull completeness registrations. Holds the ApiClient.
@@ -161,6 +199,76 @@ class CompletenessSync {
 
   Future<Map<String, String>> _attributeParams(String aocUid) =>
       resolveCcCpParams(_db, aocUid);
+
+  /// PULL the server's completion state for [orgUnitUids] since [since]
+  /// and mirror `completed == true` rows locally (as `synced`, without
+  /// touching unsynced local work — see
+  /// [CompletenessStore.applyServerComplete]). Lets the "expected
+  /// reports" list drop a report finished on the web or another device.
+  /// Best-effort: any failure just leaves the local view as-is.
+  /// Returns how many rows were newly mirrored.
+  Future<int> pullRecent({
+    required List<String> orgUnitUids,
+    required DateTime since,
+  }) async {
+    if (orgUnitUids.isEmpty) return 0;
+    String fmt(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+
+    final duplicates = await duplicateDefaultComboUids(_db);
+    var applied = 0;
+    // Cap the org unit fan-out per request — a facility user has only a
+    // handful, but stay safe against a wide capture scope.
+    for (var i = 0; i < orgUnitUids.length; i += 40) {
+      final slice = orgUnitUids.sublist(
+          i, i + 40 > orgUnitUids.length ? orgUnitUids.length : i + 40);
+      final Response res;
+      try {
+        res = await _api.get('/api/completeDataSetRegistrations.json',
+            queryParameters: {
+              'orgUnit': slice,
+              'startDate': fmt(since),
+              'endDate': fmt(DateTime.now()),
+              'fields': 'dataSet,period,organisationUnit,attributeOptionCombo,'
+                  'completed,date',
+            });
+      } on DioException catch (e) {
+        log.w('[completeness] pullRecent failed: ${e.message}');
+        return applied;
+      }
+      final regs = ((res.data as Map<String, dynamic>)[
+                  'completeDataSetRegistrations'] as List? ??
+              const [])
+          .cast<Map<String, dynamic>>();
+      for (final r in regs) {
+        if (r['completed'] == false) continue;
+        var aoc = r['attributeOptionCombo'] as String?;
+        if (aoc == null || duplicates.contains(aoc)) {
+          aoc = canonicalDefaultComboUid;
+        }
+        final ds = r['dataSet'] as String?;
+        final pe = r['period'] as String?;
+        final ou = r['organisationUnit'] as String?;
+        if (ds == null || pe == null || ou == null) continue;
+        final date =
+            DateTime.tryParse(r['date'] as String? ?? '') ?? DateTime.now();
+        if (await _store.applyServerComplete(
+          dataSetUid: ds,
+          period: pe,
+          orgUnitUid: ou,
+          attributeOptionComboUid: aoc,
+          date: date,
+        )) {
+          applied++;
+        }
+      }
+    }
+    if (applied > 0) {
+      log.i('[completeness] mirrored $applied server completion(s)');
+    }
+    return applied;
+  }
 
   Future<void> _markSynced(CompleteDataSetRegistration r) =>
       _writeState(r, SyncState.synced);

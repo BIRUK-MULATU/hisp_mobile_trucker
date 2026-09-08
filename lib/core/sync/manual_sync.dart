@@ -73,16 +73,31 @@ Future<ManualSyncResult> runManualSync({VoidCallback? onPushStart}) async {
 
   final db = session.service.db;
   final store = DataValueStore(db);
-  final pendingValues = await store.pendingCount();
-  final pendingCompletions = (await CompletenessStore(db).pending()).length;
-  final pendingTotal = pendingValues + pendingCompletions;
 
   await ConnectivityService.instance.checkNow();
   final online = ConnectivityService.instance.online ?? false;
   if (!online) {
+    final pendingTotal = await store.pendingCount() +
+        (await CompletenessStore(db).pending()).length;
     return ManualSyncResult(ManualSyncOutcome.offline,
         pendingBefore: pendingTotal, remaining: pendingTotal);
   }
+
+  // Refresh metadata BEFORE deciding there's nothing to do: a dataset
+  // assignment restored on the server unblocks work that bounced with
+  // "not assigned to organisation unit", and that work is in ERROR
+  // state (invisible to pendingCount) until this recovery re-queues it.
+  // A metadata hiccup must not fail the sync — the push still runs.
+  try {
+    await DriftSyncManager.instance.pullLatest();
+  } catch (e) {
+    debugPrint('metadata refresh before sync failed: $e');
+  }
+  await requeueAssignmentRecoveredWork(db);
+
+  final pendingValues = await store.pendingCount();
+  final pendingCompletions = (await CompletenessStore(db).pending()).length;
+  final pendingTotal = pendingValues + pendingCompletions;
   if (pendingTotal == 0) {
     return ManualSyncResult(ManualSyncOutcome.nothingToSync,
         drafts: await store.draftCount());
@@ -91,13 +106,6 @@ Future<ManualSyncResult> runManualSync({VoidCallback? onPushStart}) async {
   onPushStart?.call();
   try {
     await DriftSyncManager.instance.pushPending();
-    // Refresh metadata too, but a metadata hiccup must not mask a
-    // successful upload.
-    try {
-      await DriftSyncManager.instance.pullLatest();
-    } catch (e) {
-      debugPrint('metadata refresh after sync failed: $e');
-    }
     final remaining = await store.pendingCount() +
         (await CompletenessStore(db).pending()).length;
     return ManualSyncResult(
