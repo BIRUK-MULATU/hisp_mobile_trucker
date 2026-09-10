@@ -96,7 +96,9 @@ final FlutterSecureStorage _storage = const FlutterSecureStorage(
 Android → EncryptedSharedPreferences (backed by the Android Keystore). iOS → Keychain.
 
 **Nothing sensitive lives in the SQLite database.** The `UsersTable` caches only `uid`,
-`username`, `displayName` from `/api/me` — no password, no token, no verifier.
+`username`, `displayName` from `/api/me` — no password, no token, no verifier. The
+database also now holds a local **audit trail** of data-value edits (`AuditLogTable` — old
+value, new value, who, when) and locally-built dashboard configs; still no credentials.
 
 ## Logout, wipe, and 401 handling
 
@@ -158,8 +160,16 @@ Android → EncryptedSharedPreferences (backed by the Android Keystore). iOS →
 
 ## Android build & manifest security
 
-- **Permissions:** only `INTERNET` and `ACCESS_NETWORK_STATE` (`AndroidManifest.xml`). No
-  storage, camera, location, or contacts permissions requested anywhere.
+- **Permissions** (`AndroidManifest.xml`): `INTERNET`, `ACCESS_NETWORK_STATE`,
+  `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_DATA_SYNC` (keep an in-flight offline-data
+  push alive once the app is backgrounded — see
+  [Offline & Sync](07-offline-and-sync.md)), `POST_NOTIFICATIONS` (report deadline
+  reminders + the sync foreground notification), `RECEIVE_BOOT_COMPLETED` (re-arm
+  reminders after a reboot — **inexact alarms only**, no `SCHEDULE_EXACT_ALARM`), and
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (let the user exempt the app from OEM
+  battery-optimisation killing; the exemption itself still needs explicit user consent via
+  the system dialog). No storage, camera, location, contacts, or exact-alarm permissions
+  requested anywhere.
 - **Release signing is enforced, not optional.** `android/app/build.gradle.kts` reads
   `android/key.properties` (gitignored) for the release keystore. If it's missing, the build
   **hard-fails** the moment a `*Release` task is scheduled, with an explanatory
@@ -180,7 +190,7 @@ Android → EncryptedSharedPreferences (backed by the Android Keystore). iOS →
 | Offline verification | ✅ Salted SHA-256, constant-time compare, server-URL-bound |
 | Secure storage | ✅ OS-level (Android Keystore-backed EncryptedSharedPreferences / iOS Keychain) |
 | Transport | ✅ HTTPS-only in release | ⚠️ No certificate pinning |
-| Local database | ⚠️ Not encrypted at rest (holds cached metadata + pending field data, never credentials) |
+| Local database | ⚠️ Not encrypted at rest (holds cached metadata + pending field data + local audit trail + local dashboard configs, never credentials) |
 | Android release build | ✅ Hard-fails without a real keystore | ⚠️ No R8/ProGuard minification | ⚠️ `allowBackup` not explicitly disabled |
 | Logging | ✅ Authorization header redacted; release suppresses debug/info logs |
 | SQL injection | ✅ Eliminated by construction (Drift only, no raw string interpolation) |

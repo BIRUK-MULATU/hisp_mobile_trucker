@@ -41,14 +41,27 @@ all (network happens later, inside data_entry, when a form actually opens).
 - **`getUserReports()`** — the "Report Period" view: every report (completed or in-progress)
   the user has touched, across **all** organisation units, built by scanning
   `CompleteDataSetRegistrationsTable` and any non-synced `DataValuesTable` rows and joining
-  them through `DataSetElementsTable`. A report whose completion is done but still has
-  drafts is reported as `ReportStatus.incomplete` — reopening a completed form for
-  corrections un-finishes it in this view, which is intentional.
+  them through `DataSetElementsTable`. Routine and Disease Registration reports are merged
+  into one list; each `ReportInstanceEntity` carries its `attributeOptionComboUid` (two
+  reports can share dataset/period/org unit but differ by combo and must not be conflated),
+  a `syncError` for a rejected completion push, and an `isDiseaseRegistration` flag. A
+  report whose completion is done but still has drafts is `ReportStatus.incomplete` —
+  reopening a completed form for corrections un-finishes it here, which is intentional.
+- **`getExpectedReports()`** — the "To-do" band (Capture mode): every report the user still
+  *owes* — datasets assigned to their facilities (capture roots + direct children), for
+  every open period, not already completed locally or on the server. Best-effort pulls the
+  server's completion state first when online. Sorted most-urgent first
+  (`ReportUrgency.overdue` / `dueSoon` / `open`). See
+  [Reminders & Onboarding](18-reminders-onboarding-background.md#expected-reports--the-to-do-band).
+- **Disease Registration datasets** are surfaced in the same `getDataSetsForOrgUnit` list,
+  flagged `isDiseaseRegistration`; opening one routes through a **category-combo picker**
+  (e.g. Department × Outcome) before the form, and the form is themed accordingly.
 
-Pages: `OrgUnitFilterPage`, `DatasetSelectionPage` (also hosts the Report Period tab),
-`PeriodSelectionPage`, `SectionSelectionPage`. View: `CaptureOrgUnitView` (the tree browser
-embedded in Home's Capture mode — at 794 lines, the largest hand-written file in the app; a
-natural candidate to split if you're touching it significantly).
+Pages: `OrgUnitFilterPage`, `DatasetSelectionPage`, `PeriodSelectionPage`,
+`SectionSelectionPage`, `NewReportPage` (the "+" / create-new-record entry point).
+Views: `CaptureOrgUnitView` (the tree browser embedded in Home's Capture mode),
+`ReportPeriodView` (the Report Period overview, which also embeds dashboards). Widgets:
+`ExpectedReportsSection`, `DatasetCard`, `PeriodSelectorField`.
 
 ## data_entry (`lib/features/data_entry/`)
 
@@ -63,15 +76,22 @@ online, that never blocks or fails the read); `saveDataValues` always writes loc
 `uncompleteDataSet` reopens a completed form for further edits (drafts stay drafts — that's
 exactly the state a reopened form should be in).
 
-One detail worth knowing if you're debugging a "why didn't this get pushed" question: the
-UI does **not** support non-default attribute category combos — every value is stored under
-the dataset instance's default `attributeOptionCombo`
-(`DataEntryRepositoryImpl._defaultAttributeOptionCombo()`), matching the old remote-only
-flow's behavior of letting the server default it.
+One detail worth knowing if you're debugging a "why didn't this get pushed" question:
+**Routine** datasets store every value under the dataset instance's default
+`attributeOptionCombo` (`DataEntryRepositoryImpl._defaultAttributeOptionCombo()`).
+**Disease Registration** datasets do use a real combo, picked before the form opens and
+threaded through `getDataValues`/`saveDataValues` as `attributeOptionComboUid`.
 
-Widgets: `DataEntryTable` (renders data elements as rows, category option combos as
-columns), `DataEntryCell` (individual cell — shows the red rejected state with the server's
-reason when `syncError != null`).
+The repository also owns the data-quality checks — `validateDataSet` / `validateLiveValues`
+(validation rules), `missingMandatoryFields` (compulsory fields, blocks completion), and
+`loadOutlierHistory` (the outlier snapshot). See **[Data Quality](17-data-quality.md)** for
+all of it, plus grey fields, controller elements, and the audit trail.
+
+Widgets: `DataEntryTable` (data elements as rows, category option combos as columns, with
+per-element summation rows and inline indicators), `DataEntryCell` (shows the red rejected
+state with the server's reason when `syncError != null`), `DiseaseEntryList` (the
+case/disease list layout), `OutlierWarningDialog`, `OutlierSettingsSheet`. Utils:
+`data_entry_pdf.dart`, `data_entry_excel.dart` (form export).
 
 ## home (`lib/features/home/`)
 
@@ -106,30 +126,40 @@ confirm — an honest, reassuring statement backed by the actual logout behavior
 
 ## visualization (`lib/features/visualization/`)
 
-DHIS2 dashboards rendered natively with `fl_chart`, via the same `/api/dashboards` →
-`/api/visualizations/{id}` → `/api/analytics` pipeline the DHIS2 web app itself uses.
+DHIS2 analytics rendered natively with `fl_chart`. `VisualizationView` presents **three
+flat tabs** (flat top-level tabs, not nested sub-toggles):
 
-**Online-only by design** — `VisualizationRepositoryImpl._api` throws `NetworkException`
-immediately if `AppSession.instance.api` is null (not logged in / no session API client).
-The doc comment is explicit about why there's no local cache yet: *"caching analytics
-locally needs new tables, which is blocked on the migration strategy (schemaVersion is
-still 1)"* — see [Database](06-database.md#migrations) and
-[Roadmap](15-roadmap-and-known-issues.md).
+| Tab | What it is | Connectivity |
+|---|---|---|
+| **Server Dashboard** | DHIS2 server dashboards via the `/api/dashboards` → `/api/visualizations/{id}` → `/api/analytics` pipeline the web app uses. `ChartRepositoryImpl`. Each visualization on a dashboard is fetched/drawn **independently**, so one broken chart never blocks the rest. | Online to load; last successful result cached (per chart) for offline viewing — an `OfflineCacheBanner` shows when data is stale. |
+| **Local Dashboard** | Charts the user built on this device. `LocalVisualizationRepositoryImpl` stores each `ChartConfig` as JSON under the `savedCharts` key in `SyncInfoTable` (**no schema change**), and every successful query result under `chartCache_<id>`. Full CRUD — create / view / edit / delete — **never pushed to the server**. | Online to (re)run a chart; cached result offline. |
+| **Create New** | The chart builder (`ChartBuilderView`): pick indicators or data elements (by group when online, flat from local metadata when offline), an org unit, a period, a chart type. Saving lands the chart in Local Dashboard. A chart saved offline is finished later by `ChartDraftCoordinator` (see [Reminders & Onboarding](18-reminders-onboarding-background.md#chart-draft-coordinator)). | Dimension pickers prefer live, fall back to local metadata. |
 
-Notable defensive logic: `getVisualizationData()` refuses to query analytics for a
-visualization with no period dimension configured anywhere (columns/rows/filters) — DHIS2
-would otherwise answer such a query with a permanent HTTP 409 no matter how many times it's
-retried — and throws a specific `MisconfiguredVisualizationException` with a message the
-dashboard card can display, rather than a generic network error. Relative period flags
-(`last12Months` etc.) are translated to their analytics dimension IDs
-(`LAST_12_MONTHS`) mechanically via camelCase→UPPER_SNAKE conversion. Each visualization on
-a dashboard is fetched and rendered **independently**, so one slow or broken chart never
-blocks the rest of the dashboard from rendering.
+Notable defensive logic (`ChartRepositoryImpl` / `LocalVisualizationRepositoryImpl`): a
+visualization with **no period dimension** anywhere (columns/rows/filters) is refused before
+the analytics call — DHIS2 would answer it with a permanent HTTP 409 — and a specific
+`MisconfiguredVisualizationException` with a displayable message is thrown instead of a
+generic network error. Relative-period flags (`last12Months` …) are translated to analytics
+dimension IDs (`LAST_12_MONTHS`) mechanically. A dashboard tracks how many item types it
+can't render yet (MAP/TEXT/EVENT_CHART …) so the UI can say "2 items not supported".
 
-Domain entities: `DashboardEntity` (tracks `unsupportedItems` — a count of dashboard item
-types this app can't render yet, like MAP/TEXT/EVENT_CHART, so the UI can say "2 items not
-supported" rather than silently dropping them), `DashboardVisualizationRef`, `AnalyticsData`/
-`AnalyticsSeries`.
+Pages: `DashboardDetailPage`, `ChartViewPage`, `ChartEditPage`, `RemoteChartViewPage`.
+Domain: `ChartConfig`, `ChartLoadResult`, `DashboardRef`, `RemoteVisualization`,
+`AnalyticsData`/`AnalyticsSeries`; use cases `save`/`load`/`delete`/`getSaved`.
+
+## audit_log (`lib/features/audit_log/`)
+
+Presentation-only. `CellHistorySheet` — the per-cell "history" bottom sheet — merges the
+**local** edit trail (`AuditLogStore` / `AuditLogTable`, works offline) with **DHIS2's own
+server audit trail** (`ServerAuditService` → `GET /api/audits/dataValue`) into one timeline.
+See [Data Quality — Audit trail](17-data-quality.md#audit-trail).
+
+## onboarding (`lib/features/onboarding/`)
+
+Presentation-only. `OnboardingPage` — the first-run carousel, gated by
+`OnboardingService` (plain `SharedPreferences`). Per-screen spotlight tours (`showcaseview`)
+are wired separately, one `tourId` per screen. See
+[Reminders & Onboarding](18-reminders-onboarding-background.md#onboarding--the-app-tour).
 
 ## debug (`lib/debug/`) — dev-only, not for end users
 
@@ -151,4 +181,5 @@ supported" rather than silently dropping them), `DashboardVisualizationRef`, `An
   `ConnectivityService.instance.online` as a visible badge), `FilterPanel` (the date/org
   unit/sync-state filter UI shared by Home's Capture mode), `SegmentedToggle` (the
   Visualization/Capture pill switch), `ServerUrlDialog`, `SyncSnackbar` (renders a
-  `ManualSyncResult` as a `SnackBar`).
+  `ManualSyncResult` as a `SnackBar`), `SearchField`, `OptionGrid` (option-set picker),
+  `SquircleFab` (the "+" create-new-record button).

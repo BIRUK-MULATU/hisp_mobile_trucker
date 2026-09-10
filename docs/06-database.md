@@ -41,9 +41,9 @@ user B's session, because they're not in the same database.
 
 ## Schema — every table
 
-Defined via `@DriftDatabase(tables: [...])` in `app_database.dart`. 25 tables in four groups:
+Defined via `@DriftDatabase(tables: [...])` in `app_database.dart`. 30 tables in four groups.
 
-### Metadata tables (11) — mirror DHIS2 configuration, refreshed by sync
+### Metadata tables (13) — mirror DHIS2 configuration, refreshed by sync
 
 | Table | Key columns | Notes |
 |---|---|---|
@@ -57,13 +57,16 @@ Defined via `@DriftDatabase(tables: [...])` in `app_database.dart`. 25 tables in
 | `DataElementGroupsTable` | | |
 | `ValidationRulesTable` | | server-side validation rule definitions, synced last (they reference elements via expressions) |
 
-### Link / join tables (9) — n:n relationships
+### Link / join tables (10) — n:n relationships
 
-`DataSetElementsTable` (dataset↔element, carries `sortOrder` and an effective
-`categoryCombo` override), `DataSetOrgUnitsTable`, `SectionDataElementsTable`,
-`SectionIndicatorsTable`, `SectionGreyFieldsTable` (disabled cells per section),
-`DataElementGroupMembersTable`, `CategoryCategoryOptionsTable`,
-`CategoryComboCategoriesTable`, `CategoryOptionComboOptionsTable`.
+`DataSetElementsTable` (dataset↔element, carries `sortOrder`, the `compulsory`
+mandatory-field flag, and an effective `categoryCombo` override),
+`CompulsoryDataElementOperandsTable` (the element+combo-pair sibling of
+`dataSetElement.compulsory` — DHIS2 `dataSet.compulsoryDataElementOperands`),
+`DataSetOrgUnitsTable`, `SectionDataElementsTable`, `SectionIndicatorsTable`,
+`SectionGreyFieldsTable` (disabled cells per section), `DataElementGroupMembersTable`,
+`CategoryCategoryOptionsTable`, `CategoryComboCategoriesTable`,
+`CategoryOptionComboOptionsTable`.
 
 ### Global / control tables (4)
 
@@ -72,11 +75,14 @@ Defined via `@DriftDatabase(tables: [...])` in `app_database.dart`. 25 tables in
 - `AttributesTable` / `AttributeValuesTable` — a **generic** custom-attribute mechanism:
   `AttributeValuesTable`'s primary key is `(objectType, objectUid, attributeUid)`, so it can
   hold attribute values for any metadata object type without a table-per-type explosion.
-- `SyncInfoTable` — a plain key-value store (`key`, `value`) used for sync bookkeeping:
-  `lastMetadataSync` timestamp, `clockHighWaterMark`, `clockTamperedAt` (see
-  [Offline & Sync](07-offline-and-sync.md#the-tamper-resistant-clock)).
+- `SyncInfoTable` — a plain key-value store (`key`, `value`) used for sync bookkeeping
+  (`lastMetadataSync` timestamp, `clockHighWaterMark`, `clockTamperedAt` — see
+  [Offline & Sync](07-offline-and-sync.md#the-tamper-resistant-clock)), the outlier
+  history cache (`outlierHistory_*`), and the local-dashboard configs and per-chart
+  result caches (`savedCharts`, `chartCache_*` — see
+  [Features — visualization](10-features.md)).
 
-### Data / write-queue tables (2) — the only tables NOT cleared by a metadata sync
+### Data / write-queue tables (3) — the only tables NOT cleared by a metadata sync
 
 - **`DataValuesTable`** — composite primary key
   `(dataElementUid, period, orgUnitUid, categoryOptionComboUid, attributeOptionComboUid)`;
@@ -85,6 +91,11 @@ Defined via `@DriftDatabase(tables: [...])` in `app_database.dart`. 25 tables in
 - **`CompleteDataSetRegistrationsTable`** — composite primary key
   `(dataSetUid, period, orgUnitUid, attributeOptionComboUid)`; `completed` (bool),
   `syncState`, `syncError`, `date`, `lastModified`.
+- **`AuditLogTable`** — an append-only local trail of edits to data values and
+  completion registrations (`entityType`, `auditType` = CREATE/UPDATE/DELETE, the
+  entity keys, `previousValue`, `newValue`, `modifiedBy`, `modifiedAt`). Written by
+  `DataValueStore.setValue` / `CompletenessStore.setComplete` themselves, so every write
+  path is covered. See [Data Quality](17-data-quality.md#audit-trail).
 
 ### The `SyncState` enum
 
@@ -104,38 +115,31 @@ remove existing ones, or every stored row's meaning silently changes.
 
 ## Migrations
 
-```dart
-@override
-int get schemaVersion => 1;
+`schemaVersion` is **5**. `onUpgrade` runs one ordered step per version bump; a missing
+step throws `UnsupportedError` rather than opening a field device's database against a
+schema it doesn't match (which would corrupt real, possibly irreplaceable, data). `v1` is
+the frozen baseline.
 
-@override
-MigrationStrategy get migration => MigrationStrategy(
-  onCreate: (m) async => m.createAll(),
-  beforeOpen: (details) async {
-    await customStatement('PRAGMA foreign_keys = ON');
-    await customStatement('PRAGMA journal_mode = WAL');
-  },
-  onUpgrade: (m, from, to) async {
-    const steps = <int, Future<void> Function(Migrator)>{};   // EMPTY today
-    for (var target = from + 1; target <= to; target++) {
-      final step = steps[target];
-      if (step == null) {
-        throw UnsupportedError('No migration step for schema v$target ...');
-      }
-      await step(m);
-    }
-  },
-);
-```
+| Version | Change |
+|---|---|
+| 1 | Frozen baseline. |
+| 2 | Create `AuditLogTable` (local edit history). |
+| 3 | Add `AuditLogTable.auditType` (explicit CREATE/UPDATE/DELETE); backfill existing rows from `previousValue`/`newValue` nullness. |
+| 4 | Add `DataSetElementsTable.compulsory` — mandatory-field support. |
+| 5 | Create `CompulsoryDataElementOperandsTable` — the element+combo-pair sibling of `dataSetElement.compulsory`. |
 
-`schemaVersion` is frozen at **1**. `onUpgrade` is **intentionally empty** and will throw
-`UnsupportedError` the moment `schemaVersion` is bumped without a matching entry added to
-`steps`. This is a deliberate fail-loud guard, not an oversight: silently opening a field
-device's database against a schema it doesn't match would corrupt real, possibly
-irreplaceable, field data. **If you change a table definition, you must:**
+Steps 3 and 4 check column existence **before** `addColumn`, so a device that crashed
+mid-migration (column added but `user_version` not yet advanced) doesn't hit a permanent
+"duplicate column name" on retry.
+
+**If you change a table definition, you must:**
 1. Bump `schemaVersion`.
-2. Add a `target: (m) => m.addColumn(...)` (or equivalent) entry to `steps`.
-3. Regenerate (`dart run build_runner build --delete-conflicting-outputs`).
+2. Add a `target: (m) => m.addColumn(...)` / `m.createTable(...)` entry to the `steps` map
+   in `AppDatabase.migration.onUpgrade` (guard `addColumn` with a `pragma_table_info`
+   existence check, following steps 3–4).
+3. If the new table is metadata, add it to `MetadataSyncService._clearMetadata()`'s
+   explicit list.
+4. Regenerate (`dart run build_runner build --delete-conflicting-outputs`).
 
 Skipping step 2 means the app will refuse to open any existing installed database — this is
 correct behavior, not a bug to work around.
@@ -150,12 +154,13 @@ destroy field work that hasn't confirmed as synced.
 
 ## Full metadata wipe vs. targeted clear
 
-`MetadataSyncService._clearMetadata()` deletes **all 20 metadata + link tables** (an
+`MetadataSyncService._clearMetadata()` deletes every metadata + link table (an
 explicit list, not derived from `allTables`, specifically so adding a new metadata table
 requires a conscious decision to add it here too) before every **full** sync — a full sync
 mirrors the server exactly, including deletions. It explicitly excludes `DataValuesTable`,
-`CompleteDataSetRegistrationsTable`, `UsersTable`, and `SyncInfoTable` — field data, the
-offline-login cache, and sync bookkeeping are never touched by a metadata refresh.
+`CompleteDataSetRegistrationsTable`, `AuditLogTable`, `UsersTable`, and `SyncInfoTable` —
+field data, the local audit trail, the offline-login cache, and sync bookkeeping are never
+touched by a metadata refresh.
 
 ## Helper queries worth knowing about
 

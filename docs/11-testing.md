@@ -12,7 +12,7 @@ Both run in CI on every push to `main`/`integration*` and every pull request
 
 ## What exists today
 
-11 test files, ~1,450 lines, mirroring `lib/` under `test/`:
+24 test files, ~5,200 lines, mirroring `lib/` under `test/`:
 
 ```
 test/
@@ -22,23 +22,31 @@ test/
 │   │   ├── data_value_store_test.dart
 │   │   ├── data_value_sync_test.dart
 │   │   ├── data_value_push_test.dart
-│   │   ├── completeness_test.dart
-│   │   ├── ethiopian_calendar_test.dart
-│   │   ├── ethiopian_period_service_test.dart
+│   │   ├── completeness_test.dart  /  completeness_pull_test.dart
+│   │   ├── validation_service_test.dart          (rule evaluation)
+│   │   ├── outlier_detection_service_test.dart
+│   │   ├── controller_element_service_test.dart
+│   │   ├── element_label_service_test.dart  /  indicator_display_service_test.dart
+│   │   ├── ethiopian_calendar_test.dart  /  ethiopian_period_service_test.dart
 │   │   └── value_type_validator_test.dart
-│   └── database/
-│       └── data_element_roundtrip_test.dart
-├── features/capture/
-│   └── capture_repository_impl_test.dart
+│   ├── database/
+│   │   └── data_element_roundtrip_test.dart
+│   └── metadata/
+│       ├── data_set_test.dart  /  organisation_unit_test.dart  /  section_test.dart
+├── features/
+│   ├── capture/  (capture_repository_impl_test, expected_reports_test)
+│   ├── data_entry/  (data_entry_pdf_test, disease_entry_list_test)
+│   └── visualization/  (local_visualization_repository_impl_test)
 └── shared/
     └── resolve_date_filter_test.dart
 ```
 
 **Coverage is deliberately weighted toward the offline-critical core** — the sync engine,
-conflict resolution, completeness tracking, value validation, the Ethiopian calendar, and
-Drift round-tripping — exactly the code where a bug would silently corrupt or lose field
-data. This is the right prioritization for an app at this stage: it's also the code that's
-hardest to manually verify by clicking through the UI.
+conflict resolution, completeness tracking, the data-quality suite (value validation,
+validation rules, outlier detection, controller elements, labels), the Ethiopian calendar,
+metadata round-tripping, and expected-reports computation — exactly the code where a bug
+would silently corrupt or lose field data, and the code hardest to verify by clicking
+through the UI.
 
 **What's thin:** Bloc-level tests (`AuthBloc`, `DataEntryBloc` have no dedicated test files)
 and full widget/integration tests beyond `widget_test.dart`'s smoke-level rendering checks.

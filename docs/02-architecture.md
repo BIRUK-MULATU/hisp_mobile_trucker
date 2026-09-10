@@ -13,15 +13,20 @@ lib/
 ├── core/                    # Cross-cutting infrastructure, shared by every feature
 │   ├── auth/                #   AppSession, SessionService, CredentialStore
 │   ├── constants/           #   ApiConstants, AppConstants
-│   ├── data/                #   DataValueStore/Sync/Push, CompletenessStore/Sync,
-│   │                        #   Ethiopian calendar + period service, PeriodAccess, validator
+│   ├── data/                #   DataValueStore/Sync/Push, CompletenessStore/Sync, AuditLogStore,
+│   │                        #   ServerAuditService, ValidationService, OutlierDetectionService,
+│   │                        #   ControllerElementService, label services, Ethiopian calendar +
+│   │                        #   period service, PeriodAccess, value-type validator
 │   ├── database/            #   Drift schema (app_database.dart) + platform connections
 │   ├── errors/               #   AppException hierarchy (data layer) + Failure hierarchy (domain layer)
 │   ├── metadata/             #   MetadataResource base class + one file per DHIS2 metadata type
 │   ├── network/               #   ApiClient (Dio), interceptors, connectivity detection
+│   ├── notifications/         #   ReportReminderService (deadline reminders)
+│   ├── onboarding/            #   OnboardingService, TourHelper (first-run flags)
 │   ├── router/                #   go_router config + auth guard
 │   ├── storage/               #   SecureStorage wrapper
-│   ├── sync/                  #   SyncManager contract, DriftSyncManager, SyncCoordinator, manual sync
+│   ├── sync/                  #   SyncManager, DriftSyncManager, SyncCoordinator, manual sync,
+│   │                          #   SyncForegroundService, BatteryOptimization
 │   └── utils/                  #   Shared logger, HTTP date parsing
 ├── debug/                    # Dev-only screens: sync debug, in-app DB viewer, quick test login
 ├── features/
@@ -157,8 +162,12 @@ next step — see [Roadmap](15-roadmap-and-known-issues.md).
 ```dart
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations([...]);        // lock portrait
-  SystemChrome.setSystemUIOverlayStyle(...);                  // transparent status bar
+
+  await OnboardingService.load();                             // load tour flags SYNC into
+                                                              // memory — the router's sync
+                                                              // redirect reads them
+  await SystemChrome.setPreferredOrientations([...]);         // lock portrait
+  SystemChrome.setSystemUIOverlayStyle(...);                   // transparent status bar
 
   final storedBaseUrl = await SecureStorage().getBaseUrl();   // Settings override wins
   if (storedBaseUrl != null && storedBaseUrl.isNotEmpty) {
@@ -171,6 +180,8 @@ void main() async {
   ).start();
 
   ConnectivityService.instance;                                // starts the online/offline probe
+  ChartDraftCoordinator.instance.start();                      // finish offline chart drafts
+  await ReportReminderService.instance.init();                 // deadline reminders (no-op on web)
 
   runApp(const HispMobileTrackerApp());
 }
@@ -178,9 +189,11 @@ void main() async {
 
 `HispMobileTrackerApp` is a thin `MaterialApp.router` wrapper: app name/theme from
 `AppConstants`/`AppTheme`, routing delegated entirely to `AppRouter.router` (see
-[Routing](09-routing.md)). There is no splash screen or explicit auth check here — that's
-handled by the router's `redirect` combined with `AuthBloc`'s `AuthCheckRequested` event
-fired from `LoginPage`.
+[Routing](09-routing.md)), and a `ShowCaseWidget` builder wrapping the whole tree so any
+screen can run its spotlight tour (see
+[Reminders & Onboarding](18-reminders-onboarding-background.md#onboarding--the-app-tour)).
+There is no splash screen or explicit auth check here — that's handled by the router's
+`redirect` combined with `AuthBloc`'s `AuthCheckRequested` event fired from `LoginPage`.
 
 ## Repository pattern and use cases
 
@@ -200,15 +213,17 @@ class LoginUseCase {
 
 | Feature | Interface (domain) | Implementation (data) | Notable use cases |
 |---|---|---|---|
-| auth | `AuthRepository` (4 methods) | `AuthRepositoryImpl` | `LoginUseCase`, `LogoutUseCase` |
-| capture | `CaptureRepository` (5 methods) | `CaptureRepositoryImpl` | `GetOrgUnitChildrenUseCase`, `GetOrgUnitDataSetsUseCase`, `GetDataSetSectionsUseCase` |
-| data_entry | `DataEntryRepository` (6 methods) | `DataEntryRepositoryImpl` | `GetDataElementsUseCase`, `SaveDataValuesUseCase` |
-| visualization | *(no interface — single impl)* | `VisualizationRepositoryImpl` | *(none — called directly from the view)* |
+| auth | `AuthRepository` | `AuthRepositoryImpl` | `LoginUseCase`, `LogoutUseCase` |
+| capture | `CaptureRepository` (6 methods) | `CaptureRepositoryImpl` | `GetOrgUnitChildrenUseCase`, `GetOrgUnitDataSetsUseCase`, `GetDataSetSectionsUseCase` |
+| data_entry | `DataEntryRepository` (~12 methods) | `DataEntryRepositoryImpl` | `GetDataElementsUseCase`, `SaveDataValuesUseCase` |
+| visualization (server) | *(no interface — single impl)* | `ChartRepositoryImpl` | *(called directly from the view)* |
+| visualization (local) | `LocalVisualizationRepository` | `LocalVisualizationRepositoryImpl` | `Save`/`Load`/`Delete`/`GetSavedVisualizationUseCase` |
 
-`visualization` skips the interface because it has exactly one implementation and is
-online-only by design (see [Features](10-features.md#visualization-libfeaturesvisualization)) — there's no second
-implementation to substitute, so the extra abstraction wasn't worth it. This is a useful
-signal for when *not* to apply the pattern.
+The **server** dashboard path skips the interface — one implementation, called directly.
+The **local**-dashboard path *does* define an interface: it has real domain entities
+(`ChartConfig`), full CRUD use cases, and a genuine substitution point for tests. Same
+feature, two answers, for a real reason — a useful signal for when to and when not to apply
+the pattern.
 
 ## Models, DTOs, and Entities
 
@@ -227,12 +242,12 @@ entirely inside a Model's `fromJson`, without touching a use case, Bloc, or scre
 
 ## Code quality snapshot
 
-- **118 Dart files, ~32,000 lines** of production code (excluding the generated
-  `app_database.g.dart`, ~15,400 lines).
-- Largest hand-written files: `capture_org_unit_view.dart` (794 lines),
-  `data_entry_page.dart` (780 lines), `ethiopian_calendar.dart` (647 lines — legitimately
-  dense domain logic), `filter_panel.dart` (606 lines). The first two are reasonable
-  refactor targets if you're looking to split UI state from layout.
+- **~160 Dart files, ~29,000 lines** of production code (excluding the generated
+  `app_database.g.dart`, ~16,900 lines).
+- The heaviest hand-written files are the two big builders — `chart_builder_view.dart` and
+  `report_period_view.dart` — plus `data_entry_page.dart`, `capture_org_unit_view.dart`,
+  and `ethiopian_calendar.dart` (legitimately dense domain logic). The presentation files
+  are reasonable refactor targets if you're splitting UI state from layout.
 - Lint: `package:flutter_lints/flutter.yaml` via `analysis_options.yaml`, no project-specific
   rule overrides currently enabled. `flutter analyze` must be clean — it's a CI gate.
 - SOLID: repository interfaces are small and focused (4–6 methods); use cases are

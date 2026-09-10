@@ -73,6 +73,17 @@ Release builds are **HTTPS-only** — there is no `usesCleartextTraffic` overrid
 manifest. Plain `http://` servers only work in **debug** builds (see
 `android/app/src/debug/AndroidManifest.xml`), for pointing at a local dev DHIS2 instance.
 
+### Native Android code
+
+Beyond the Flutter engine, `android/app/src/main/kotlin/.../` carries `MainActivity.kt` and
+**`SyncForegroundService.kt`** — a `foregroundServiceType="dataSync"` service declared in
+the manifest and driven over a `MethodChannel` by `SyncForegroundService` /
+`BatteryOptimization` (see [Offline & Sync](07-offline-and-sync.md#background-kill-protection-android)).
+It requires the `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `POST_NOTIFICATIONS`,
+`RECEIVE_BOOT_COMPLETED`, and `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permissions now present
+in `AndroidManifest.xml` (see
+[Authentication & Security](04-authentication-and-security.md#android-build--manifest-security)).
+
 ### Not yet configured
 
 - **ProGuard/R8 minification** — `minifyEnabled` is not set, no `proguard-rules.pro` exists.

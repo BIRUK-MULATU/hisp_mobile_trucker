@@ -19,21 +19,33 @@ engineering-investment items.
 
 ## Engineering investment (next)
 
-5. **Offline caching for the Visualization tab.** Blocked on the database migration
-   strategy — `schemaVersion` is frozen at 1 with no migration steps defined yet (see
-   [Database — Migrations](06-database.md#migrations)). Adding analytics-cache tables means
-   writing the *first* real migration, which is worth doing carefully and deliberately
-   rather than as a side effect of an unrelated change.
-6. **Bloc and widget test coverage.** The offline-critical core (sync, conflict resolution,
+5. **Bloc and widget test coverage.** The offline-critical core (sync, conflict resolution,
    validation) is well tested; `AuthBloc`/`DataEntryBloc` and most widgets are not. See
    [Testing](11-testing.md).
-7. **A lightweight service locator (`get_it`)** to remove the repeated manual-DI wiring
+6. **A lightweight service locator (`get_it`)** to remove the repeated manual-DI wiring
    snippets across pages (`AuthRepositoryImpl` alone is reconstructed identically in at
    least three places) — see
    [Architecture — Dependency Injection](02-architecture.md#dependency-injection).
-8. **A real, exercised schema migration** — the current `onUpgrade` is an empty map that
-   throws on any bump. The first non-trivial schema change (likely the analytics-cache
-   tables above) should be the one that proves the migration path actually works.
+7. **Crash and performance monitoring** — there is still no automated crash reporting.
+
+## Done since this doc was first written (2026-08 → 2026-09)
+
+- **Schema migrations exist.** `schemaVersion` is now **5** with four real, ordered
+  migration steps (audit table, `auditType` column, `dataSetElement.compulsory`,
+  compulsory operand table). See [Database — Migrations](06-database.md#migrations). The
+  empty-`onUpgrade` fail-loud guard is still there for the *next* bump.
+- **Offline caching for visualization.** Local-dashboard configs and per-chart result
+  caches are stored as JSON under `SyncInfoTable` keys — no schema change needed. Server
+  dashboards also cache their last successful result. See
+  [Features — visualization](10-features.md).
+- **On-device notifications.** Report-deadline reminders (`flutter_local_notifications`) —
+  see [Reminders & Onboarding](18-reminders-onboarding-background.md). Sync-outcome push
+  notifications are still not built.
+- **Data-quality suite.** Validation rules (offline), mandatory fields, grey fields,
+  controller elements, and statistical outlier detection — see
+  [Data Quality](17-data-quality.md).
+- **A local + server audit trail** per data-value cell — see
+  [Data Quality — Audit trail](17-data-quality.md#audit-trail).
 
 ## Product roadmap (longer-term, depends on Ministry/HISP Ethiopia priorities)
 
@@ -41,7 +53,8 @@ engineering-investment items.
 - Push notifications for sync outcomes.
 - Crash and performance monitoring (e.g. Sentry or Firebase Crashlytics) — there is
   currently no automated crash reporting in the app.
-- Role-based dashboards, an audit log, and a move from Basic Auth to OAuth2/PAT
+- Role-based dashboards, a fuller in-app audit view (the per-cell trail exists — see
+  [Data Quality](17-data-quality.md#audit-trail)), and a move from Basic Auth to OAuth2/PAT
   token-based authentication once the target DHIS2 deployment supports it.
 - Multi-language support (Amharic, Afaan Oromo, Tigrinya) — the app is currently
   English-only.

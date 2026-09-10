@@ -23,10 +23,21 @@ class ExpectedReportsSection extends StatefulWidget {
   /// parent can refresh its own "reports worked on" list too.
   final VoidCallback? onReturned;
 
+  /// Emitted whenever the outstanding set is recomputed —
+  /// `(total, overdue)` — so a parent (e.g. the drawer) can show a
+  /// count without loading the list itself.
+  final void Function(int total, int overdue)? onCounts;
+
+  /// When true, the list starts expanded (e.g. arrived here from the
+  /// drawer's "Reports to fill" item).
+  final bool startExpanded;
+
   const ExpectedReportsSection({
     super.key,
     this.reloadTick = 0,
     this.onReturned,
+    this.onCounts,
+    this.startExpanded = false,
   });
 
   @override
@@ -36,7 +47,7 @@ class ExpectedReportsSection extends StatefulWidget {
 class _ExpectedReportsSectionState extends State<ExpectedReportsSection> {
   final _repository = CaptureRepositoryImpl();
   List<ExpectedReportEntity>? _reports;
-  bool _expanded = false;
+  late bool _expanded = widget.startExpanded;
 
   @override
   void initState() {
@@ -54,13 +65,22 @@ class _ExpectedReportsSectionState extends State<ExpectedReportsSection> {
     try {
       final reports = await _repository.getExpectedReports();
       if (mounted) setState(() => _reports = reports);
+      _emitCounts(reports);
       // Keep the on-device deadline reminders in step with what's
       // actually outstanding — recomputed here, so they never drift.
       unawaited(ReportReminderService.instance.reschedule(reports));
     } catch (_) {
       // Non-fatal — the band just stays hidden.
       if (mounted) setState(() => _reports = const []);
+      _emitCounts(const []);
     }
+  }
+
+  void _emitCounts(List<ExpectedReportEntity> reports) {
+    widget.onCounts?.call(
+      reports.length,
+      reports.where((r) => r.urgency == ReportUrgency.overdue).length,
+    );
   }
 
   Future<void> _open(ExpectedReportEntity r) async {

@@ -22,6 +22,10 @@ decision documented below exists to make that true.
 | `CompletenessStore` / `CompletenessSync` | `core/data/completeness.dart` | Same pattern for dataset completion registrations |
 | `MetadataSyncService` | `core/metadata/metadata_sync_service.dart` | Full/delta download of DHIS2 configuration |
 | `PeriodAccess` | `core/data/period_access.dart` | Tamper-resistant clock + period-open gating |
+| `SyncForegroundService` | `core/sync/sync_foreground_service.dart` | Native Android foreground service kept alive around each push |
+| `BatteryOptimization` | `core/sync/battery_optimization.dart` | One-time OEM battery-optimisation exemption prompt |
+| `ChartDraftCoordinator` | `features/visualization/data/chart_draft_coordinator.dart` | Finishes offline-saved local-dashboard charts when connectivity returns |
+| `AuditLogStore` | `core/data/audit_log_store.dart` | Append-only local edit trail (written by the stores themselves) |
 
 ## Auto-sync: three doors, one push
 
@@ -41,6 +45,23 @@ triggers**, any of which calls the same idempotent `_pushIfOnline()`:
 and no-ops while logged out, so firing it from all three doors is safe by design. Failures
 are swallowed with a debug print — a background sync must never crash the app; failed rows
 simply stay queued for the next attempt.
+
+### Background-kill protection (Android)
+
+Once the app is backgrounded, Android's execution limits — and, more aggressively, several
+OEM battery managers — will kill the process mid-push. Two mitigations, both under
+`core/sync/`:
+
+- **`SyncForegroundService`** — a native Android foreground service
+  (`android/.../SyncForegroundService.kt`, `foregroundServiceType="dataSync"`) started and
+  stopped by `SyncCoordinator` **around each push attempt**, so the notification only shows
+  when there's work to protect. Best-effort; no-op on iOS. Needs `FOREGROUND_SERVICE` +
+  `FOREGROUND_SERVICE_DATA_SYNC` + `POST_NOTIFICATIONS`.
+- **`BatteryOptimization`** — a one-time-ever prompt after login asking the user to exempt
+  the app from OEM battery optimisation via the OS's own dialog. Fails open (doesn't nag)
+  if the check errors. Needs `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+
+See [Reminders, Onboarding & Background Sync](18-reminders-onboarding-background.md#background-kill-protection-android).
 
 ## Manual sync
 
@@ -166,6 +187,14 @@ so by construction it cannot reach the network on its own.
    indicators → data element groups → (fetch the user's own capture-root org units from
    `/api/me`, then sync org units **scoped to that subtree only** — a facility user never
    pulls the national ~38,000-unit tree) → data sets → sections → validation rules.
+   - **Offline org-unit depth bound.** DHIS2's filter API can't bound depth server-side
+     while OR-combining multiple capture roots, so the org-unit fetch is unbounded but a
+     **client-side depth check is applied after the fetch**: offline storage keeps the
+     capture roots **plus their direct children only** (a woreda-assigned user stores the
+     woreda and its PHCUs, not every health post beneath them). Delta sync prunes any
+     deeper rows a device stored before this bound existed. Online, the full subtree stays
+     reachable via a live fallback (Capture caches what it visits; the Visualizer runs
+     fully live).
 3. Writes `lastMetadataSync` **only after the full pass succeeds** — an interrupted download
    leaves that timestamp `null`, so the *next* online login retries a full sync rather than
    getting stuck on the delta path with half-empty metadata forever.

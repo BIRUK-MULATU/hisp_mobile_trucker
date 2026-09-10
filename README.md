@@ -43,10 +43,20 @@ Developed by **HISP Ethiopia** in collaboration with the Ministry of Health.
   set before anything is sent.
 - **Filters** — capture list filterable by date window, organisation unit
   (typed or picked from a full-page tree), and sync state.
-- **Dashboards** — the Visualization tab renders DHIS2 dashboards natively
-  with `fl_chart` (online only for now).
-- **Report Period view** — every report the user has worked on, across all
-  organisation units, complete or draft.
+- **Data quality at entry** — client-side value-type checks, offline
+  evaluation of the server's validation rules (warn), mandatory-field
+  enforcement (block completion), grey fields, controller-element gating,
+  and a statistical outlier check against each cell's recent history.
+- **Audit trail** — per-cell history combining this device's local edit
+  log with DHIS2's own server-side audit log.
+- **Dashboards** — the Visualization tab renders DHIS2 **server dashboards**
+  natively with `fl_chart`, lets users build and save **local dashboards**
+  on the device, and caches results for offline viewing.
+- **Report Period & To-do** — every report the user has worked on across all
+  organisation units, plus a "To-do" band of reports still owed, with
+  on-device reminders before each locks.
+- **Ethiopian-calendar deadline reminders**, a first-run onboarding tour,
+  and PDF / Excel export of any form.
 
 ## Tech stack
 
@@ -61,6 +71,9 @@ Developed by **HISP Ethiopia** in collaboration with the Ministry of Health.
 | Offline credential check | `crypto` ^3.0.5 (SHA-256) |
 | Connectivity | `connectivity_plus` ^7.2.0 |
 | Charts | `fl_chart` ^1.2.0 |
+| Reminders | `flutter_local_notifications` ^17.2.3 + `timezone` ^0.9.4 |
+| Onboarding | `showcaseview` ^4.0.1 + `shared_preferences` ^2.3.2 |
+| Export | `pdf` ^3.11.1 + `printing` ^5.13.3 + `excel` ^4.0.6 + `share_plus` ^12.0.2 |
 | Dates / logging | `intl` ^0.19.0, `logger` ^2.4.0 |
 | Dev tools | `build_runner` ^2.4.12, `drift_dev` ^2.20.0, `flutter_lints` ^4.0.0, `drift_db_viewer` (in-app DB browser) |
 
@@ -82,18 +95,22 @@ lib/
 │   ├── errors/            #   Exceptions & Failures
 │   ├── metadata/          #   Resource-based DHIS2 metadata sync
 │   ├── network/           #   Dio ApiClient, connectivity service
+│   ├── notifications/     #   Report deadline reminders
+│   ├── onboarding/        #   First-run / app-tour flags
 │   ├── router/            #   GoRouter setup + auth guard
 │   ├── storage/           #   Secure storage wrapper
-│   ├── sync/              #   DriftSyncManager, SyncCoordinator (auto-sync)
+│   ├── sync/              #   DriftSyncManager, SyncCoordinator, foreground service
 │   └── utils/             #   Logger, HTTP date parsing
 ├── debug/                 # Dev-only screens (sync debug, DB viewer)
 ├── features/
 │   ├── auth/              # Login page + repository (online/offline)
-│   ├── capture/           # Org unit tree → dataset → section → period
-│   ├── data_entry/        # The entry form (bloc, collapsible table, cells)
+│   ├── capture/           # Org unit tree → dataset → section → period; To-do; reports
+│   ├── data_entry/        # The entry form (bloc, table, cells, validation, outliers)
+│   ├── audit_log/         # Per-cell history sheet (local + server audit)
 │   ├── home/              # Home shell: Visualization/Capture toggle, filters
+│   ├── onboarding/        # First-run carousel
 │   ├── settings/          # Settings incl. server URL dialog
-│   └── visualization/     # DHIS2 dashboards rendered with fl_chart
+│   └── visualization/     # Server + local dashboards, chart builder
 ├── shared/
 │   ├── theme/             # Colors, text styles, dimensions, breakpoints
 │   └── widgets/           # FilterPanel, dialogs, loaders, toggles...
@@ -116,8 +133,13 @@ lib/
 A deeper write-up is in [`OFFLINE_INTEGRATION.md`](OFFLINE_INTEGRATION.md).
 
 **Full developer documentation** — architecture, security, the sync engine, database
-schema, every feature module, testing, release process, and conventions — lives in
-[`docs/`](docs/README.md). Start there if you're new to this codebase.
+schema, every feature module, data quality, testing, release process, and conventions —
+lives in [`docs/`](docs/README.md). Start there if you're new to this codebase.
+
+**Consolidated technical documentation** (single Word / PDF document, for stakeholders and
+technical reviewers) is in
+[`technical_documentation/`](technical_documentation/RDHIS2_Mobile_Technical_Documentation.pdf);
+regenerate it with `python3 scripts/build_technical_doc.py`.
 
 ## Prerequisites
 

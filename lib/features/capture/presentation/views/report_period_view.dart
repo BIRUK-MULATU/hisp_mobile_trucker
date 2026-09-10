@@ -30,6 +30,14 @@ class ReportPeriodView extends StatefulWidget {
   /// in sync from one piece of state (see HomePage).
   final ValueChanged<Set<String>>? onSyncFilterChanged;
 
+  /// `(total, overdue)` outstanding-report counts, bubbled up from the
+  /// embedded ExpectedReportsSection so the drawer can badge them.
+  final void Function(int total, int overdue)? onExpectedCounts;
+
+  /// Start the "reports to fill" band expanded (set when the user
+  /// arrived from the drawer's shortcut).
+  final bool expandExpected;
+
   const ReportPeriodView({
     super.key,
     this.searchQuery,
@@ -37,6 +45,8 @@ class ReportPeriodView extends StatefulWidget {
     this.syncFilters = const {},
     this.dateRange,
     this.onSyncFilterChanged,
+    this.onExpectedCounts,
+    this.expandExpected = false,
   });
 
   @override
@@ -170,6 +180,8 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
     final expectedSection = ExpectedReportsSection(
       reloadTick: _tick,
       onReturned: _load,
+      onCounts: widget.onExpectedCounts,
+      startExpanded: widget.expandExpected,
     );
 
     if (all.isEmpty) {

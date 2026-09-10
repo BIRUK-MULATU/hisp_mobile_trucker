@@ -36,6 +36,18 @@ If you are completely new to the project, read in this order:
 14. **[Troubleshooting & FAQ](14-troubleshooting-faq.md)** — known gotchas and how to resolve them.
 15. **[Roadmap & Known Issues](15-roadmap-and-known-issues.md)** — what's intentionally not built yet, and why.
 16. **[Performance Notes](16-performance.md)** — the network/database/UI decisions made for weak-connection, mid-range devices.
+17. **[Data Quality](17-data-quality.md)** — value validation, validation rules, mandatory fields, grey fields, controller elements, outlier detection, the audit trail.
+18. **[Reminders, Onboarding & Background Sync](18-reminders-onboarding-background.md)** — the "To-do" band, deadline reminders, the app tour, Android background-kill protection.
+19. **[DHIS2 API Reference](19-api-reference.md)** — every endpoint the app calls, the GET / POST / DELETE method rules (no PUT/PATCH), request shapes per call site, and the sync + verdict-parsing algorithms.
+20. **[Hardware Specification & Deployment](20-hardware-and-deployment.md)** — device requirements (Android / iOS / web), the storage-growth model, connectivity needs, what hardware is *not* required, and procurement device profiles.
+
+> **Consolidated, stakeholder-facing documents** (single Word/PDF each) live in
+> [`technical_documentation/`](../technical_documentation/):
+> - `RDHIS2_Mobile_Technical_Documentation` — the whole system. Regenerate: `python3 scripts/build_technical_doc.py`
+> - `RDHIS2_Mobile_API_Reference` — the API surface as formatted tables. Regenerate: `python3 scripts/build_api_reference.py`
+> - `RDHIS2_Mobile_Hardware_Specification` — device / deployment requirements. Regenerate: `python3 scripts/build_hardware_spec.py`
+>
+> Keep `docs/` authoritative and re-fold changes into the scripts.
 
 ## The one-paragraph mental model
 

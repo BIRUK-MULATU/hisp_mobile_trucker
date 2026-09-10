@@ -149,6 +149,15 @@ class _HomePageState extends State<HomePage> {
   int _syncTick = 0;
   bool _isSyncing = false;
 
+  // Outstanding-report counts, bubbled up from ReportPeriodView's
+  // "reports to fill" band so the drawer can badge them.
+  int _expectedTotal = 0;
+  int _expectedOverdue = 0;
+
+  /// Set when the user taps the drawer's "Reports to fill" item, so
+  /// the Capture view opens with that band already expanded.
+  bool _expandExpected = false;
+
   /// FAB action: the org unit → dataset → period → section → data
   /// entry workflow, on its own page. Reload the report list on
   /// return in case a new report was saved or completed.
@@ -272,7 +281,28 @@ class _HomePageState extends State<HomePage> {
         searchShowcaseKey: _searchShowcaseKey,
         syncShowcaseKey: _syncShowcaseKey,
       ),
-      drawer: _HomeDrawer(onRetakeTour: _retakeTour),
+      drawer: _HomeDrawer(
+        onRetakeTour: _retakeTour,
+        expectedTotal: _expectedTotal,
+        expectedOverdue: _expectedOverdue,
+        onOpenExpected: () {
+          Navigator.pop(context);
+          setState(() {
+            _mode = HomeMode.capture;
+            _searchActive = false;
+            _searchQuery = '';
+            _expandExpected = true;
+            // Remount ReportPeriodView so it picks up expandExpected.
+            _syncTick++;
+          });
+          // One-shot: the freshly mounted section reads it during this
+          // build; clear it so a later remount (a sync) doesn't force
+          // the band open again.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _expandExpected = false);
+          });
+        },
+      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           // The keyboard shrinks the body (resizeToAvoidBottomInset);
@@ -391,6 +421,17 @@ class _HomePageState extends State<HomePage> {
                               ? null
                               : AppliedFilter(labels.join(', '));
                         }),
+                        expandExpected: _expandExpected,
+                        onExpectedCounts: (total, overdue) {
+                          if (total == _expectedTotal &&
+                              overdue == _expectedOverdue) {
+                            return;
+                          }
+                          setState(() {
+                            _expectedTotal = total;
+                            _expectedOverdue = overdue;
+                          });
+                        },
                       ),
                     ],
                   ),
@@ -409,10 +450,22 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ── Drawer (unchanged behavior) ────────────────────────────────
+// ── Drawer ─────────────────────────────────────────────────────
 class _HomeDrawer extends StatelessWidget {
   final VoidCallback? onRetakeTour;
-  const _HomeDrawer({this.onRetakeTour});
+
+  /// Outstanding reports to fill (and how many of those are overdue) —
+  /// badged on the "Reports to fill" item.
+  final int expectedTotal;
+  final int expectedOverdue;
+  final VoidCallback? onOpenExpected;
+
+  const _HomeDrawer({
+    this.onRetakeTour,
+    this.expectedTotal = 0,
+    this.expectedOverdue = 0,
+    this.onOpenExpected,
+  });
 
   Future<void> _logout(BuildContext context) async {
     final secureStorage = SecureStorage();
@@ -537,6 +590,25 @@ class _HomeDrawer extends StatelessWidget {
             onTap: () => Navigator.pop(context),
           ),
           _DrawerItem(
+            icon: Icons.assignment_late_rounded,
+            label: 'Reports to fill',
+            trailing: expectedTotal == 0
+                ? null
+                : _CountBadge(
+                    count: expectedTotal,
+                    color: expectedOverdue > 0
+                        ? AppColors.error
+                        : AppColors.warning,
+                  ),
+            onTap: () {
+              if (onOpenExpected != null) {
+                onOpenExpected!();
+              } else {
+                Navigator.pop(context);
+              }
+            },
+          ),
+          _DrawerItem(
             icon: Icons.settings_rounded,
             label: 'Setting',
             onTap: () {
@@ -589,12 +661,14 @@ class _DrawerItem extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool filledCircleIcon;
+  final Widget? trailing;
 
   const _DrawerItem({
     required this.icon,
     required this.label,
     required this.onTap,
     this.filledCircleIcon = false,
+    this.trailing,
   });
 
   @override
@@ -624,8 +698,40 @@ class _DrawerItem extends StatelessWidget {
                 : Icon(icon,
                     color: AppColors.primary, size: AppDimensions.iconXL),
             const SizedBox(width: AppDimensions.spaceLG),
-            Text(label, style: AppTextStyles.bodyLarge),
+            Expanded(child: Text(label, style: AppTextStyles.bodyLarge)),
+            if (trailing != null) trailing!,
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small pill showing an outstanding count on a drawer item.
+class _CountBadge extends StatelessWidget {
+  final int count;
+  final Color color;
+
+  const _CountBadge({required this.count, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 22),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spaceSM,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusFull),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: AppTextStyles.labelSmall.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
