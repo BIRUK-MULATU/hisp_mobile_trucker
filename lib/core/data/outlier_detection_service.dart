@@ -41,10 +41,15 @@ class OutlierDetectionService {
   /// cached snapshot from the previous successful fetch. Returns an
   /// empty map when neither is available — the caller treats that as
   /// "checking disabled", never an error.
+  ///
+  /// [excludePeriod] drops the form's own period from the history so
+  /// the "previous entries" shown next to a cell never include the
+  /// value the user is typing right now.
   Future<Map<String, OutlierStats>> fetchHistory({
     required String dataSetUid,
     required String orgUnitUid,
     required String attributeOptionComboUid,
+    String? excludePeriod,
   }) async {
     final key = cacheKey(
       dataSetUid: dataSetUid,
@@ -68,10 +73,14 @@ class OutlierDetectionService {
                     as List? ??
                 const [])
             .cast<Map<String, dynamic>>();
-        final series = _groupNumericByCell(values, attributeOptionComboUid);
+        final series = _groupNumericByCell(
+          values,
+          attributeOptionComboUid,
+          excludePeriod: excludePeriod,
+        );
         final stats = <String, OutlierStats>{};
-        series.forEach((cell, nums) {
-          final s = OutlierStats.fromValues(nums);
+        series.forEach((cell, entries) {
+          final s = OutlierStats.fromHistory(entries);
           if (s != null) stats[cell] = s;
         });
         await _db.setSyncInfo(
@@ -144,8 +153,12 @@ class OutlierDetectionService {
       historicalMin: s.min,
       historicalMax: s.max,
       n: s.n,
+      recent: s.recent.take(recentEntryCount).toList(),
     );
   }
+
+  /// How many of the cell's newest values the warning dialog lists.
+  static const recentEntryCount = 3;
 
   // ── internals ────────────────────────────────────────────────────
 
@@ -165,22 +178,28 @@ class OutlierDetectionService {
     }
   }
 
-  /// `<de>_<coc>` → historical numeric values, keeping only rows under
-  /// the same attributeOptionCombo the form is scoped to.
-  static Map<String, List<double>> _groupNumericByCell(
+  /// `<de>_<coc>` → the historical `(period, value)` rows, keeping only
+  /// rows under the same attributeOptionCombo the form is scoped to
+  /// and (optionally) dropping the form's own period. Rows without a
+  /// period id still count toward the summary stats, just with an
+  /// empty label.
+  static Map<String, List<HistoryEntry>> _groupNumericByCell(
     List<Map<String, dynamic>> values,
-    String attributeOptionComboUid,
-  ) {
-    final out = <String, List<double>>{};
+    String attributeOptionComboUid, {
+    String? excludePeriod,
+  }) {
+    final out = <String, List<HistoryEntry>>{};
     for (final v in values) {
       final aoc = v['attributeOptionCombo'] as String?;
       if (aoc != null && aoc != attributeOptionComboUid) continue;
       final de = v['dataElement'] as String?;
       final coc = v['categoryOptionCombo'] as String?;
       if (de == null || coc == null) continue;
+      final period = v['period'] as String? ?? '';
+      if (excludePeriod != null && period == excludePeriod) continue;
       final n = double.tryParse(v['value']?.toString() ?? '');
       if (n == null || !n.isFinite) continue;
-      (out[statsKey(de, coc)] ??= []).add(n);
+      (out[statsKey(de, coc)] ??= []).add(HistoryEntry(value: n, periodId: period));
     }
     return out;
   }

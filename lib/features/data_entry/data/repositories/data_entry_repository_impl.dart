@@ -281,6 +281,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     String? attributeOptionComboUid,
+    String? currentPeriod,
   }) async {
     try {
       final aoc = attributeOptionComboUid ??
@@ -294,6 +295,7 @@ class DataEntryRepositoryImpl implements DataEntryRepository {
         dataSetUid: dataSetId,
         orgUnitUid: orgUnitId,
         attributeOptionComboUid: aoc,
+        excludePeriod: currentPeriod,
       );
     } catch (e) {
       log.w('[dataEntry] outlier history load failed: $e');

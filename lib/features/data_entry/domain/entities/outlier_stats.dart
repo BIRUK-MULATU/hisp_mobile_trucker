@@ -57,6 +57,30 @@ class OutlierConfig {
       );
 }
 
+/// One historical value of a cell, with the period it was reported in
+/// — kept so the form can show the user the *actual* previous entries
+/// (e.g. "Last 3: 12 · 14 · 13") instead of only aggregate numbers.
+class HistoryEntry {
+  const HistoryEntry({required this.value, required this.periodId});
+
+  final double value;
+  final String periodId;
+
+  /// Newest-first; ties (same period, can't happen per cell normally)
+  /// break on the higher value.
+  static int compareByPeriodDesc(HistoryEntry a, HistoryEntry b) {
+    final c = b.periodId.compareTo(a.periodId);
+    return c != 0 ? c : b.value.compareTo(a.value);
+  }
+
+  Map<String, dynamic> toJson() => {'value': value, 'periodId': periodId};
+
+  factory HistoryEntry.fromJson(Map<String, dynamic> j) => HistoryEntry(
+        value: (j['value'] as num).toDouble(),
+        periodId: (j['periodId'] as String?) ?? '',
+      );
+}
+
 /// The recent history of ONE `(dataElement, categoryOptionCombo)` cell
 /// at one org unit, reduced to the summary statistics every algorithm
 /// needs. Built by [OutlierDetectionService.fetchHistory].
@@ -69,6 +93,7 @@ class OutlierStats {
     required this.mad,
     required this.min,
     required this.max,
+    this.recent = const [],
   });
 
   /// Number of historical data points behind these figures.
@@ -81,6 +106,14 @@ class OutlierStats {
   final double mad;
   final double min;
   final double max;
+
+  /// The newest actual values for this cell, newest-first — capped by
+  /// [fromHistory] so a fat history doesn't bloat the cache/UI. Empty
+  /// on cached snapshots written by an older build.
+  final List<HistoryEntry> recent;
+
+  /// How many of the newest values [fromHistory] keeps for display.
+  static const recentCount = 5;
 
   /// Derive the stats from a raw list of historical values. Returns
   /// null when there is nothing numeric to summarise.
@@ -116,6 +149,29 @@ class OutlierStats {
     );
   }
 
+  /// Derive the stats AND the newest [recent] values from the raw
+  /// entries. The summary is computed over the FULL history (so a
+  /// thin-but-old cell still has statistics); [recent] keeps only the
+  /// newest [recentCount] entries, newest-first. Returns null when
+  /// there is nothing numeric to summarise.
+  static OutlierStats? fromHistory(Iterable<HistoryEntry> raw) {
+    final entries = raw.where((e) => e.value.isFinite).toList()
+      ..sort(HistoryEntry.compareByPeriodDesc);
+    if (entries.isEmpty) return null;
+    final summary = fromValues(entries.map((e) => e.value));
+    if (summary == null) return null;
+    return OutlierStats(
+      n: summary.n,
+      mean: summary.mean,
+      stdDev: summary.stdDev,
+      median: summary.median,
+      mad: summary.mad,
+      min: summary.min,
+      max: summary.max,
+      recent: entries.take(recentCount).toList(),
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'n': n,
         'mean': mean,
@@ -124,6 +180,7 @@ class OutlierStats {
         'mad': mad,
         'min': min,
         'max': max,
+        'recent': [for (final e in recent) e.toJson()],
       };
 
   factory OutlierStats.fromJson(Map<String, dynamic> j) => OutlierStats(
@@ -134,6 +191,12 @@ class OutlierStats {
         mad: (j['mad'] as num).toDouble(),
         min: (j['min'] as num).toDouble(),
         max: (j['max'] as num).toDouble(),
+        recent: [
+          for (final entry
+              in (j['recent'] as List<dynamic>? ?? const []))
+            if (entry is Map<String, dynamic>)
+              HistoryEntry.fromJson(entry),
+        ],
       );
 }
 
@@ -148,6 +211,7 @@ class OutlierVerdict {
     required this.historicalMin,
     required this.historicalMax,
     required this.n,
+    this.recent = const [],
   });
 
   final double value;
@@ -163,4 +227,8 @@ class OutlierVerdict {
   final double historicalMin;
   final double historicalMax;
   final int n;
+
+  /// The newest actual values for this cell (newest-first) — shown to
+  /// the user as "previous entries" next to the judged value.
+  final List<HistoryEntry> recent;
 }

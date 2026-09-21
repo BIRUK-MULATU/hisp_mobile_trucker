@@ -227,6 +227,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                 dataSetId: widget.dataSetId,
                 orgUnitId: widget.orgUnitId,
                 attributeOptionComboUid: widget.attributeOptionComboUid,
+                currentPeriod: widget.period,
               );
       if (!mounted) return;
       setState(() => _outlierStats = stats);
@@ -1444,6 +1445,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                           ? DiseaseEntryList(
                               dataElements: state.dataElements,
                               dataValues: state.dataValues,
+                              outlierStats: _outlierStats,
                               orgUnitId: widget.orgUnitId,
                               period: widget.period,
                               readOnly: _isPeriodClosed,
@@ -1452,6 +1454,7 @@ class _DataEntryViewState extends State<_DataEntryView> {
                           : DataEntryTable(
                               dataElements: state.dataElements,
                               dataValues: state.dataValues,
+                              outlierStats: _outlierStats,
                               orgUnitId: widget.orgUnitId,
                               period: widget.period,
                               searchQuery: _searchQuery,

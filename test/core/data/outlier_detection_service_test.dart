@@ -32,6 +32,70 @@ void main() {
     });
   });
 
+  group('OutlierStats.fromHistory', () {
+    HistoryEntry e(String period, double value) =>
+        HistoryEntry(value: value, periodId: period);
+
+    test('keeps the newest entries, newest-first', () {
+      final stats = OutlierStats.fromHistory([
+        e('20260501', 1),
+        e('20260505', 5),
+        e('20260503', 3),
+        e('20260504', 4),
+        e('20260502', 2),
+      ])!;
+      expect(stats.recent.map((h) => h.value), [5, 4, 3, 2, 1]);
+      expect(stats.n, 5);
+    });
+
+    test('caps recent at recentCount', () {
+      final entries = [
+        for (var i = 1; i <= 20; i++)
+          e('2026${i.toString().padLeft(4, '0')}', i.toDouble()),
+      ];
+      final stats = OutlierStats.fromHistory(entries)!;
+      expect(stats.n, 20);
+      expect(stats.recent.length, OutlierStats.recentCount);
+      expect(stats.recent.first.value, 20);
+    });
+
+    test('stats use the whole history, not just recent', () {
+      final stats = OutlierStats.fromHistory([
+        e('20260101', 50),
+        e('20260102', 50),
+        e('20260103', 50),
+        e('20260104', 5000),
+      ])!;
+      expect(stats.n, 4);
+      expect(stats.mean, closeTo(1287.5, 0.01));
+      expect(stats.recent.first.value, 5000);
+    });
+
+    test('recent round-trips through JSON', () {
+      final s = OutlierStats.fromHistory([
+        e('20260102', 14),
+        e('20260101', 12),
+        e('20260103', 13),
+      ])!;
+      final back = OutlierStats.fromJson(s.toJson());
+      expect(back.recent.map((h) => h.value), [13, 14, 12]);
+      expect(back.recent.first.periodId, '20260103');
+    });
+
+    test('old cached JSON without recent parses to an empty list', () {
+      final back = OutlierStats.fromJson({
+        'n': 3,
+        'mean': 10.0,
+        'stdDev': 1.0,
+        'median': 10.0,
+        'mad': 1.0,
+        'min': 9.0,
+        'max': 11.0,
+      });
+      expect(back.recent, isEmpty);
+    });
+  });
+
   group('OutlierDetectionService.judge', () {
     // A steady facility: ~50/month with small wobble.
     final steady = OutlierStats.fromValues([48, 52, 49, 51, 50, 47, 53, 50])!;
@@ -104,6 +168,23 @@ void main() {
             const OutlierConfig(algorithm: OutlierAlgorithm.zScore)),
         isNull,
       );
+    });
+
+    test('verdict carries the newest actual values for the dialog', () {
+      final history = OutlierStats.fromHistory([
+        for (var i = 1; i <= 10; i++)
+          HistoryEntry(
+              value: i.toDouble(), periodId: '2026${i.toString().padLeft(4, '0')}'),
+      ])!;
+      final v = OutlierDetectionService.judge(
+        '900',
+        history,
+        const OutlierConfig(),
+      );
+      expect(v, isNotNull);
+      expect(v!.recent.length, OutlierDetectionService.recentEntryCount);
+      // Newest three, newest first.
+      expect(v.recent.map((e) => e.value), [10, 9, 8]);
     });
   });
 }

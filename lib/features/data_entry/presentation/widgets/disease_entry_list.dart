@@ -5,6 +5,7 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/search_field.dart';
 import '../../domain/entities/data_element_entity.dart';
+import '../../domain/entities/outlier_stats.dart';
 import 'data_entry_table.dart';
 
 /// Disease Registration's data entry layout: there can be hundreds
@@ -23,6 +24,10 @@ class DiseaseEntryList extends StatefulWidget {
   final String orgUnitId;
   final String period;
 
+  /// Per-cell recent-history snapshot passed down to the
+  /// [DataEntryTable] for its live "previous entries" comparison lines.
+  final Map<String, OutlierStats> outlierStats;
+
   /// True once the period's expiry deadline has passed — cells go
   /// view-only and "Select for new disease" (there'd be nothing
   /// meaningful to type into a fresh one) is hidden.
@@ -38,6 +43,7 @@ class DiseaseEntryList extends StatefulWidget {
     required this.dataValues,
     required this.orgUnitId,
     required this.period,
+    this.outlierStats = const {},
     this.readOnly = false,
     this.searchShowcaseKey,
   });
@@ -249,6 +255,7 @@ class _DiseaseEntryListState extends State<DiseaseEntryList> {
                     key: ValueKey(visibleIds.first),
                     dataElements: visible,
                     dataValues: widget.dataValues,
+                    outlierStats: widget.outlierStats,
                     orgUnitId: widget.orgUnitId,
                     period: widget.period,
                     showElementTotal: true,

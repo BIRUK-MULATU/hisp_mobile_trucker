@@ -85,6 +85,7 @@ class _FakeDataEntryRepository implements DataEntryRepository {
     required String dataSetId,
     required String orgUnitId,
     String? attributeOptionComboUid,
+    String? currentPeriod,
   }) async =>
       const {};
 
@@ -877,6 +878,82 @@ void main() {
       await tester.pump();
       expect(find.text('Yes'), findsNothing);
       expect(find.text('—'), findsOneWidget);
+    });
+  });
+
+  group('DataEntryTable — previous entries comparison', () {
+    const element = DataElementEntity(
+      id: 'de1',
+      name: 'Stock-outs',
+      categoryComboId: 'ccDefault',
+      categoryOptionCombos: [
+        CategoryOptionCombo(id: 'default', name: 'default'),
+      ],
+    );
+
+    // Built oldest→newest; fromHistory returns the newest first, so the
+    // hint shows "Last 3: v3 · v2 · v1".
+    OutlierStats history(double v1, double v2, double v3) =>
+        OutlierStats.fromHistory([
+          for (final (period, v) in [
+            ('20260101', v1),
+            ('20260102', v2),
+            ('20260103', v3),
+          ])
+            HistoryEntry(value: v, periodId: period),
+        ])!;
+
+    Widget build({required String value, OutlierStats? stats}) => MaterialApp(
+          home: Scaffold(
+            body: DataEntryTable(
+              dataElements: const [element],
+              dataValues: {
+                'de1_default': DataValueEntity(
+                  dataElementId: 'de1',
+                  categoryOptionComboId: 'default',
+                  orgUnitId: 'ou1',
+                  period: '202607',
+                  value: value,
+                ),
+              },
+              outlierStats: stats == null ? const {} : {'de1_default': stats},
+              orgUnitId: 'ou1',
+              period: '202607',
+            ),
+          ),
+        );
+
+    testWidgets('shows the last values and flags a higher entry',
+        (tester) async {
+      await tester.pumpWidget(
+          build(value: '20', stats: history(12, 14, 13)));
+
+      expect(find.textContaining('Last 3: 13 · 14 · 12'), findsOneWidget);
+      expect(find.text('▲ Higher than last 3'), findsOneWidget);
+    });
+
+    testWidgets('flags a lower entry', (tester) async {
+      await tester.pumpWidget(build(value: '2', stats: history(12, 14, 13)));
+
+      expect(find.textContaining('Last 3: 13 · 14 · 12'), findsOneWidget);
+      expect(find.text('▼ Lower than last 3'), findsOneWidget);
+    });
+
+    testWidgets('says "within" when the value sits inside the last values',
+        (tester) async {
+      await tester.pumpWidget(build(value: '13', stats: history(12, 14, 13)));
+
+      expect(find.textContaining('Last 3: 13 · 14 · 12'), findsOneWidget);
+      expect(find.text('≈ Within last 3'), findsOneWidget);
+    });
+
+    testWidgets('renders nothing without history or without a number',
+        (tester) async {
+      await tester.pumpWidget(build(value: '5'));
+      expect(find.textContaining('Last'), findsNothing);
+
+      await tester.pumpWidget(build(value: '', stats: history(12, 14, 13)));
+      expect(find.textContaining('Last'), findsNothing);
     });
   });
 

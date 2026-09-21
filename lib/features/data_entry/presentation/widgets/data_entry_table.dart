@@ -9,8 +9,10 @@ import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../audit_log/presentation/widgets/cell_history_sheet.dart';
 import '../../domain/entities/data_element_entity.dart';
+import '../../domain/entities/outlier_stats.dart';
 import '../bloc/data_entry_bloc.dart';
 import 'data_entry_cell.dart';
+import 'previous_entries_hint.dart';
 
 /// Data entry form laid out as collapsible sections instead of a
 /// grid: every data element is a tappable header and expanding it
@@ -22,6 +24,12 @@ class DataEntryTable extends StatefulWidget {
   final Map<String, DataValueEntity> dataValues;
   final String orgUnitId;
   final String period;
+
+  /// Per-cell recent-history snapshot (`<de>_<coc>` → [OutlierStats])
+  /// powering the live "previous entries" comparison shown under each
+  /// numeric cell as the user types. Loaded once on form open by the
+  /// page; empty map = no comparison anywhere.
+  final Map<String, OutlierStats> outlierStats;
 
   /// Filters the visible sections by data element name — forms with
   /// many elements (e.g. long disease lists) need this to stay
@@ -49,6 +57,7 @@ class DataEntryTable extends StatefulWidget {
     required this.dataValues,
     required this.orgUnitId,
     required this.period,
+    this.outlierStats = const {},
     this.searchQuery,
     this.showElementTotal = false,
     this.showHeaderSumBadge = true,
@@ -598,6 +607,16 @@ class _DataEntryTableState extends State<DataEntryTable> {
     );
   }
 
+  // The "previous entries" comparison line under ONE cell — rendered
+  // only when the cell actually has a numeric value typed and history
+  // for it. Reads widget.dataValues, so it updates live on every
+  // keystroke (Bloc rebuild) without its own state.
+  Widget? _historyHint(String key, String value) {
+    final stats = widget.outlierStats[key];
+    if (stats == null || stats.recent.isEmpty) return null;
+    return PreviousEntriesHint(value: value, recent: stats.recent);
+  }
+
   // Single-combo element: name + input on one row, no accordion and
   // no "default" combo label — there's only ever one field, so
   // nothing to expand into.
@@ -606,7 +625,7 @@ class _DataEntryTableState extends State<DataEntryTable> {
     final existing = widget.dataValues[key];
     final hasError = existing?.syncError != null;
 
-    return Container(
+    final row = Container(
       width: double.infinity,
       constraints: const BoxConstraints(minHeight: 48),
       padding: const EdgeInsets.symmetric(
@@ -689,13 +708,20 @@ class _DataEntryTableState extends State<DataEntryTable> {
         ],
       ),
     );
+
+    final hint = _historyHint(key, existing?.value ?? '');
+    if (hint == null) return row;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [row, hint],
+    );
   }
 
   Widget _buildComboRow(DataElementEntity element, CategoryOptionCombo combo) {
     final key = '${element.id}_${combo.id}';
     final existing = widget.dataValues[key];
 
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.only(
         left: AppDimensions.space,
         right: AppDimensions.spaceSM,
@@ -761,6 +787,13 @@ class _DataEntryTableState extends State<DataEntryTable> {
           ),
         ],
       ),
+    );
+
+    final hint = _historyHint(key, existing?.value ?? '');
+    if (hint == null) return row;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [row, hint],
     );
   }
 

@@ -54,10 +54,14 @@ abstract class DataEntryRepository {
   /// check as the user types. Online: pulled fresh and cached. Offline:
   /// the last cached snapshot. Empty map = check disabled (never an
   /// error), same informative-only contract as [validateLiveValues].
+  /// [currentPeriod] (when given) is excluded from the history so the
+  /// "previous entries" displayed next to a cell never include the
+  /// value being typed right now.
   Future<Map<String, OutlierStats>> loadOutlierHistory({
     required String dataSetId,
     required String orgUnitId,
     String? attributeOptionComboUid,
+    String? currentPeriod,
   });
 
   /// Compulsory dataSetElement fields (DHIS2 `dataSetElement.compulsory`)

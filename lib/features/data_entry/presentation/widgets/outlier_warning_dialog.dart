@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/data/ethiopian_period_service.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -44,6 +45,99 @@ class _OutlierWarningDialog extends StatelessWidget {
     if (!v.isFinite) return '—';
     if (v == v.roundToDouble()) return v.toInt().toString();
     return v.toStringAsFixed(v.abs() < 10 ? 2 : 1);
+  }
+
+  /// Marker showing whether the entered value sits ABOVE, BELOW, or on
+  /// this previous entry — the dialog's direct answer to "is it larger
+  /// or smaller than last time?".
+  static (IconData, Color) _marker(double current, double previous) {
+    if (current > previous) {
+      return (Icons.arrow_upward_rounded, AppColors.warning);
+    }
+    if (current < previous) {
+      return (Icons.arrow_downward_rounded, AppColors.warning);
+    }
+    return (Icons.remove_rounded, AppColors.textSecondary);
+  }
+
+  // The newest actual values for this cell, newest-first, with a
+  // period label and a larger/smaller marker vs the judged value.
+  Widget _recentList() {
+    final recent = verdict.recent;
+    if (recent.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: AppDimensions.spaceMD,
+            color: AppColors.divider),
+        const SizedBox(height: AppDimensions.spaceXS),
+        Text(
+          'Previous entries',
+          style: AppTextStyles.labelSmall.copyWith(
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: AppDimensions.spaceXS),
+        for (final entry in recent)
+          Padding(
+            padding: const EdgeInsets.symmetric(
+                vertical: AppDimensions.spaceXXS),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 96,
+                  child: Text(
+                    EthiopianPeriodService.formatPeriodId(entry.periodId),
+                    style: AppTextStyles.labelSmall
+                        .copyWith(color: AppColors.textSecondary),
+                  ),
+                ),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      style: AppTextStyles.bodyMedium
+                          .copyWith(fontWeight: FontWeight.w600),
+                      children: [
+                        TextSpan(text: _num(entry.value)),
+                        TextSpan(
+                          text: verdict.value == entry.value
+                              ? '  (same as yours)'
+                              : '',
+                          style: AppTextStyles.labelSmall.copyWith(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Icon(
+                  _marker(verdict.value, entry.value).$1,
+                  size: AppDimensions.iconSM,
+                  color: _marker(verdict.value, entry.value).$2,
+                ),
+                const SizedBox(width: AppDimensions.spaceXS),
+                SizedBox(
+                  width: 44,
+                  child: Text(
+                    verdict.value > entry.value
+                        ? 'higher'
+                        : verdict.value < entry.value
+                            ? 'lower'
+                            : '—',
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: _marker(verdict.value, entry.value).$2,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -108,6 +202,8 @@ class _OutlierWarningDialog extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: AppDimensions.spaceMD),
+          _recentList(),
           const SizedBox(height: AppDimensions.spaceMD),
           Text(
             'Double-check the figure. If it is genuinely this high or low, '

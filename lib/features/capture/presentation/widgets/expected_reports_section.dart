@@ -32,12 +32,17 @@ class ExpectedReportsSection extends StatefulWidget {
   /// drawer's "Reports to fill" item).
   final bool startExpanded;
 
+  /// Overrides the repository the section loads with — tests inject a
+  /// session-backed fake so the widget never needs a live login.
+  final CaptureRepositoryImpl? repository;
+
   const ExpectedReportsSection({
     super.key,
     this.reloadTick = 0,
     this.onReturned,
     this.onCounts,
     this.startExpanded = false,
+    this.repository,
   });
 
   @override
@@ -45,7 +50,7 @@ class ExpectedReportsSection extends StatefulWidget {
 }
 
 class _ExpectedReportsSectionState extends State<ExpectedReportsSection> {
-  final _repository = CaptureRepositoryImpl();
+  late final _repository = widget.repository ?? CaptureRepositoryImpl();
   List<ExpectedReportEntity>? _reports;
   late bool _expanded = widget.startExpanded;
 

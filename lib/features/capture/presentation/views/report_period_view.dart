@@ -38,6 +38,10 @@ class ReportPeriodView extends StatefulWidget {
   /// arrived from the drawer's shortcut).
   final bool expandExpected;
 
+  /// Overrides the repository the view loads with — tests inject a
+  /// session-backed fake so the widget never needs a live login.
+  final CaptureRepositoryImpl? repository;
+
   const ReportPeriodView({
     super.key,
     this.searchQuery,
@@ -47,6 +51,7 @@ class ReportPeriodView extends StatefulWidget {
     this.onSyncFilterChanged,
     this.onExpectedCounts,
     this.expandExpected = false,
+    this.repository,
   });
 
   @override
@@ -54,7 +59,7 @@ class ReportPeriodView extends StatefulWidget {
 }
 
 class _ReportPeriodViewState extends State<ReportPeriodView> {
-  final _repository = CaptureRepositoryImpl();
+  late final _repository = widget.repository ?? CaptureRepositoryImpl();
   List<ReportInstanceEntity>? _reports;
   String? _error;
 
@@ -182,61 +187,89 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
       onReturned: _load,
       onCounts: widget.onExpectedCounts,
       startExpanded: widget.expandExpected,
+      repository: widget.repository,
     );
 
     if (all.isEmpty) {
-      return Column(
-        children: [
-          expectedSection,
-          const Expanded(
-            child: _EmptyView(
-              icon: Icons.event_note_rounded,
-              title: 'No reports yet',
-              message: 'Reports you save as drafts or complete will show up '
-                  'here, across all your organisation units.\n'
-                  'Tap the + button to start one.',
+      return RefreshIndicator(
+        color: AppColors.primary,
+        onRefresh: _load,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(child: expectedSection),
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyView(
+                icon: Icons.event_note_rounded,
+                title: 'No reports yet',
+                message: 'Reports you save as drafts or complete will show up '
+                    'here, across all your organisation units.\n'
+                    'Tap the + button to start one.',
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
     final scoped = _applyScopeFilters(all);
     final counts = _SyncCounts.fromReports(scoped);
     final reports = _applySyncFilter(scoped);
 
-    return Column(
-      children: [
-        expectedSection,
-        _SyncSummaryBar(
-          counts: counts,
-          selected: widget.syncFilters,
-          onSelect: _onSyncCardTapped,
-        ),
-        Expanded(
-          child: reports.isEmpty
-              ? const _EmptyView(
-                  icon: Icons.search_off_rounded,
-                  title: 'No results',
-                  message: 'No reports match the current search or filters.',
-                )
-              : RefreshIndicator(
-                  color: AppColors.primary,
-                  onRefresh: _load,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.only(
-                      top: AppDimensions.spaceMD,
-                      // Extra room so the last card never sits under the FAB.
-                      bottom: AppDimensions.spaceGiant + AppDimensions.spaceXXL,
-                    ),
-                    itemCount: reports.length,
-                    itemBuilder: (context, index) => _ReportCard(
-                      report: reports[index],
-                      onTap: () => _openReport(reports[index]),
-                    ),
-                  ),
+    // Everything — the "reports to fill" band, the sync summary bar
+    // and the report list — lives in ONE scrollable. A fixed Column
+    // over the list overflows on short screens / large system fonts:
+    // the band (capped at a fraction of the FULL screen) plus the bar
+    // can be taller than the body, and an Expanded list below can't
+    // absorb that. Scrolling the whole stack means no fixed child is
+    // ever taller than the viewport, so a RenderFlex overflow is
+    // impossible regardless of device or text scale.
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: _load,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                expectedSection,
+                _SyncSummaryBar(
+                  counts: counts,
+                  selected: widget.syncFilters,
+                  onSelect: _onSyncCardTapped,
                 ),
-        ),
-      ],
+              ],
+            ),
+          ),
+          if (reports.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyView(
+                icon: Icons.search_off_rounded,
+                title: 'No results',
+                message: 'No reports match the current search or filters.',
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.only(
+                top: AppDimensions.spaceMD,
+                // Extra room so the last card never sits under the FAB.
+                bottom: AppDimensions.spaceGiant + AppDimensions.spaceXXL,
+              ),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _ReportCard(
+                    report: reports[index],
+                    onTap: () => _openReport(reports[index]),
+                  ),
+                  childCount: reports.length,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
