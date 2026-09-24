@@ -96,12 +96,13 @@ void main() {
   tearDown(() async => db.close());
 
   testWidgets(
-      'expanded "reports to fill" never overflows the bottom on short '
-      'screens with a large system font', (tester) async {
+      'the "Reports to fill" dashboard card swaps the list for the '
+      'outstanding reports without overflowing a short, large-font screen',
+      (tester) async {
     // A short phone in logical pixels, with accessibility text scaling
-    // on. Together these make the fixed "reports to fill" band + sync
-    // summary bar taller than the body; the old Column-layout overflowed
-    // the bottom by ~20+ pixels.
+    // on. Together these make the four dashboard cards + the opened
+    // outstanding list taller than the body; the whole stack scrolls
+    // so a RenderFlex overflow is impossible.
     await tester.binding.setSurfaceSize(const Size(360, 420));
     tester.platformDispatcher.textScaleFactorTestValue = 1.75;
     addTearDown(tester.platformDispatcher.clearAllTestValues);
@@ -109,15 +110,23 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         appBar: AppBar(title: const Text('Capture')),
-        body: ReportPeriodView(repository: repo, expandExpected: true),
+        body: ReportPeriodView(repository: repo),
       ),
     ));
     await tester.pumpAndSettle();
 
-    // Two facilities × open periods → the band's expanded list is long.
-    final band = find.textContaining('reports to fill');
-    expect(band, findsWidgets,
-        reason: 'the expected-reports band should be rendered expanded');
+    // All four dashboard cards render, including the new one.
+    // (Synced/Unsynced also appear as report-card chips, hence
+    // findsWidgets rather than an exact count.)
+    expect(find.text('Synced'), findsWidgets);
+    expect(find.text('Unsynced'), findsWidgets);
+    expect(find.text('Sync Error'), findsOneWidget);
+    expect(find.text('Reports to fill'), findsOneWidget);
+
+    // Two facilities × open periods → the outstanding list is long.
+    await tester.tap(find.text('Reports to fill'));
+    await tester.pumpAndSettle();
+
     expect(find.byType(ReportPeriodView), findsOneWidget);
 
     final overflowed = <String>[];

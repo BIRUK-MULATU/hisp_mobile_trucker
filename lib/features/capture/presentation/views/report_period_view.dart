@@ -3,6 +3,7 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_loader.dart';
+import '../../../../shared/widgets/empty_view.dart';
 import '../../../data_entry/presentation/pages/data_entry_page.dart';
 import '../../data/repositories/capture_repository_impl.dart';
 import '../../domain/entities/report_instance_entity.dart';
@@ -30,14 +31,6 @@ class ReportPeriodView extends StatefulWidget {
   /// in sync from one piece of state (see HomePage).
   final ValueChanged<Set<String>>? onSyncFilterChanged;
 
-  /// `(total, overdue)` outstanding-report counts, bubbled up from the
-  /// embedded ExpectedReportsSection so the drawer can badge them.
-  final void Function(int total, int overdue)? onExpectedCounts;
-
-  /// Start the "reports to fill" band expanded (set when the user
-  /// arrived from the drawer's shortcut).
-  final bool expandExpected;
-
   /// Overrides the repository the view loads with — tests inject a
   /// session-backed fake so the widget never needs a live login.
   final CaptureRepositoryImpl? repository;
@@ -49,8 +42,6 @@ class ReportPeriodView extends StatefulWidget {
     this.syncFilters = const {},
     this.dateRange,
     this.onSyncFilterChanged,
-    this.onExpectedCounts,
-    this.expandExpected = false,
     this.repository,
   });
 
@@ -67,10 +58,48 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
   /// refreshes in step with this list.
   int _tick = 0;
 
+  /// The "Reports to fill" dashboard card is active — the outstanding
+  /// reports list replaces the worked-on reports list below the bar.
+  bool _showExpected = false;
+
+  /// Outstanding-report counts, bubbled up from the embedded
+  /// ExpectedReportsSection to feed the "Reports to fill" card.
+  int _expectedTotal = 0;
+  int _expectedOverdue = 0;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  void _onExpectedCounts(int total, int overdue) {
+    if (total == _expectedTotal && overdue == _expectedOverdue) return;
+    if (!mounted) return;
+    setState(() {
+      _expectedTotal = total;
+      _expectedOverdue = overdue;
+    });
+  }
+
+  /// Dashboard card tap: drills down into that single sync group, or —
+  /// if it's already the only thing selected — clears back to "all".
+  /// Swapping into a sync group also closes the reports-to-fill view.
+  void _onSyncCardTapped(String label) {
+    setState(() => _showExpected = false);
+    final current = widget.syncFilters;
+    final next = current.length == 1 && current.contains(label)
+        ? const <String>{}
+        : {label};
+    widget.onSyncFilterChanged?.call(next);
+  }
+
+  /// "Reports to fill" card tap: swaps the list to the outstanding
+  /// reports (clearing any sync-group drill-down), or back to "all".
+  void _onExpectedCardTapped() {
+    final next = !_showExpected;
+    setState(() => _showExpected = next);
+    if (next) widget.onSyncFilterChanged?.call(const {});
   }
 
   Future<void> _load() async {
@@ -140,16 +169,6 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
         .toList();
   }
 
-  /// Dashboard card tap: drills down into that single group, or — if
-  /// it's already the only thing selected — clears back to "all".
-  void _onSyncCardTapped(String label) {
-    final current = widget.syncFilters;
-    final next = current.length == 1 && current.contains(label)
-        ? const <String>{}
-        : {label};
-    widget.onSyncFilterChanged?.call(next);
-  }
-
   /// Straight into the whole-dataset form — a report already carries
   /// its dataset, period and org unit, so nothing is left to pick.
   Future<void> _openReport(ReportInstanceEntity report) async {
@@ -185,45 +204,23 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
     final expectedSection = ExpectedReportsSection(
       reloadTick: _tick,
       onReturned: _load,
-      onCounts: widget.onExpectedCounts,
-      startExpanded: widget.expandExpected,
+      visible: _showExpected,
+      onCounts: _onExpectedCounts,
       repository: widget.repository,
     );
 
-    if (all.isEmpty) {
-      return RefreshIndicator(
-        color: AppColors.primary,
-        onRefresh: _load,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(child: expectedSection),
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: _EmptyView(
-                icon: Icons.event_note_rounded,
-                title: 'No reports yet',
-                message: 'Reports you save as drafts or complete will show up '
-                    'here, across all your organisation units.\n'
-                    'Tap the + button to start one.',
-              ),
-            ),
-          ],
-        ),
-      );
-    }
     final scoped = _applyScopeFilters(all);
     final counts = _SyncCounts.fromReports(scoped);
     final reports = _applySyncFilter(scoped);
 
-    // Everything — the "reports to fill" band, the sync summary bar
+    // Everything — the "Reports to fill" summary, the sync summary bar
     // and the report list — lives in ONE scrollable. A fixed Column
     // over the list overflows on short screens / large system fonts:
-    // the band (capped at a fraction of the FULL screen) plus the bar
-    // can be taller than the body, and an Expanded list below can't
-    // absorb that. Scrolling the whole stack means no fixed child is
-    // ever taller than the viewport, so a RenderFlex overflow is
-    // impossible regardless of device or text scale.
+    // the outstanding list (capped at a fraction of the FULL screen)
+    // plus the bar can be taller than the body, and an Expanded list
+    // below can't absorb that. Scrolling the whole stack means no fixed
+    // child is ever taller than the viewport, so a RenderFlex overflow
+    // is impossible regardless of device or text scale.
     return RefreshIndicator(
       color: AppColors.primary,
       onRefresh: _load,
@@ -231,43 +228,54 @@ class _ReportPeriodViewState extends State<ReportPeriodView> {
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
-            child: Column(
-              children: [
-                expectedSection,
-                _SyncSummaryBar(
-                  counts: counts,
-                  selected: widget.syncFilters,
-                  onSelect: _onSyncCardTapped,
-                ),
-              ],
+            child: _SyncSummaryBar(
+              counts: counts,
+              selected: widget.syncFilters,
+              expectedTotal: _expectedTotal,
+              expectedOverdue: _expectedOverdue,
+              expectedSelected: _showExpected,
+              onSelect: _onSyncCardTapped,
+              onSelectExpected: _onExpectedCardTapped,
             ),
           ),
-          if (reports.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: _EmptyView(
-                icon: Icons.search_off_rounded,
-                title: 'No results',
-                message: 'No reports match the current search or filters.',
-              ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.only(
-                top: AppDimensions.spaceMD,
-                // Extra room so the last card never sits under the FAB.
-                bottom: AppDimensions.spaceGiant + AppDimensions.spaceXXL,
-              ),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) => _ReportCard(
-                    report: reports[index],
-                    onTap: () => _openReport(reports[index]),
+          // Always present (so its count and reminders load even while
+          // collapsed); it renders as a SLIVER — the "Reports to fill"
+          // list is virtualized so scrolling stays smooth with many
+          // outstanding reports — and only shows its own content (wait
+          // message / empty / list) when the card is on.
+          expectedSection,
+          if (!_showExpected) ...[
+            if (reports.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: EmptyView(
+                  icon: Icons.event_note_rounded,
+                  title: all.isEmpty ? 'No reports yet' : 'No results',
+                  message: all.isEmpty
+                      ? 'Reports you save as drafts or complete will show '
+                          'up here, across all your organisation units.\n'
+                          'Tap the + button to start one.'
+                      : 'No reports match the current search or filters.',
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.only(
+                  top: AppDimensions.spaceMD,
+                  // Extra room so the last card never sits under the FAB.
+                  bottom: AppDimensions.spaceGiant + AppDimensions.spaceXXL,
+                ),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _ReportCard(
+                      report: reports[index],
+                      onTap: () => _openReport(reports[index]),
+                    ),
+                    childCount: reports.length,
                   ),
-                  childCount: reports.length,
                 ),
               ),
-            ),
+          ],
         ],
       ),
     );
@@ -306,20 +314,34 @@ class _SyncCounts {
   }
 }
 
-/// Three tappable stat cards — Synced / Unsynced / Sync Error — each
-/// showing how many of the currently scoped reports fall into that
-/// group. Tapping one drills the list below into just that group
-/// (see ReportPeriodView._onSyncCardTapped); tapping the active one
-/// again clears back to "all".
+/// Four tappable stat cards — Synced / Unsynced / Sync Error /
+/// Reports to fill — each showing how many of the currently scoped
+/// reports fall into that group. Tapping a sync card drills the list
+/// below into just that group (see ReportPeriodView._onSyncCardTapped);
+/// tapping the active one again clears back to "all". The "Reports to
+/// fill" card instead swaps the list for the outstanding reports.
 class _SyncSummaryBar extends StatelessWidget {
   final _SyncCounts counts;
   final Set<String> selected;
+
+  /// Outstanding reports to fill (and how many of those are overdue) —
+  /// drives the "Reports to fill" card.
+  final int expectedTotal;
+  final int expectedOverdue;
+
+  /// Whether the "Reports to fill" card is active.
+  final bool expectedSelected;
   final ValueChanged<String> onSelect;
+  final VoidCallback onSelectExpected;
 
   const _SyncSummaryBar({
     required this.counts,
     required this.selected,
+    required this.expectedTotal,
+    required this.expectedOverdue,
+    required this.expectedSelected,
     required this.onSelect,
+    required this.onSelectExpected,
   });
 
   @override
@@ -363,6 +385,17 @@ class _SyncSummaryBar extends StatelessWidget {
               color: AppColors.error,
               selected: selected.contains('Sync Error'),
               onTap: () => onSelect('Sync Error'),
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spaceSM),
+          Expanded(
+            child: _SyncStatCard(
+              label: 'Reports to fill',
+              count: expectedTotal,
+              icon: Icons.assignment_late_rounded,
+              color: expectedOverdue > 0 ? AppColors.error : AppColors.warning,
+              selected: expectedSelected,
+              onTap: onSelectExpected,
             ),
           ),
         ],
@@ -427,43 +460,6 @@ class _SyncStatCard extends StatelessWidget {
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Empty state ────────────────────────────────────────────────
-class _EmptyView extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String message;
-
-  const _EmptyView({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.spaceXXL),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon,
-                size: AppDimensions.iconHuge, color: AppColors.textSecondary),
-            const SizedBox(height: AppDimensions.spaceLG),
-            Text(title, style: AppTextStyles.headingSmall),
-            const SizedBox(height: AppDimensions.spaceSM),
-            Text(
-              message,
-              style: AppTextStyles.bodySmall,
-              textAlign: TextAlign.center,
             ),
           ],
         ),

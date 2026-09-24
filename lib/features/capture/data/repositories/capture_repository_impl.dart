@@ -412,18 +412,10 @@ class CaptureRepositoryImpl implements CaptureRepository {
     final facilityNames = {for (final r in ouRows) r.uid: r.displayName};
     if (facilityNames.isEmpty) return const [];
 
-    // ── Best-effort: reconcile server completion state first ─────
-    final api = _api;
-    if (api != null && (ConnectivityService.instance.online ?? false)) {
-      try {
-        await CompletenessSync(_db, api).pullRecent(
-          orgUnitUids: facilityNames.keys.toList(),
-          since: DateTime.now().subtract(const Duration(days: 210)),
-        );
-      } catch (_) {
-        // Local view stands — the pull is a freshness bonus, not a gate.
-      }
-    }
+    // NOTE: online completion-state freshness is NOT awaited here —
+    // it lives in [reconcileExpectedReports], which the UI fires in
+    // the background so this list (and its count) renders instantly
+    // from local data and only refreshes once the server answers.
 
     final dataSetIds = {for (final l in links) l.dataSetUid};
     final dataSets = {
@@ -439,32 +431,102 @@ class CaptureRepositoryImpl implements CaptureRepository {
 
     final periodService = EthiopianPeriodService(_db);
     final now = await PeriodAccess(_db).effectiveNow();
-    // Periods depend only on the dataset, not the facility — resolve once.
-    final openPeriodsByDataSet = <String, List<({
-      String id,
-      String label,
-      String labelEnglish,
-      DateTime start,
-      DateTime end,
-    })>>{};
+    // Open periods depend on the dataset alone, not the facility —
+    // resolved once per dataset, and their ids collected up front so a
+    // SINGLE batched scan of local work can cover every combination
+    // below. (The old version ran one completeness query and up to
+    // three "started?" queries PER candidate report; on a wide capture
+    // scope — hundreds of facilities × datasets × open periods — that
+    // was thousands of sequential DB round trips and this list took
+    // seconds to render.)
+    final openPeriodsByDataSet =
+        <String, List<({String id, String label, String labelEnglish,
+            DateTime start, DateTime end})>>{};
+    final openPeriodIds = <String>{};
+    for (final id in dataSetIds) {
+      final ds = dataSets[id];
+      if (ds == null) continue;
+      final open = openPeriodsByDataSet[id] ??=
+          await periodService.openReportingPeriods(dataSet: ds);
+      openPeriodIds.addAll([for (final p in open) p.id]);
+    }
+
+    // ── One batch of today's local facts, all pre-keyed ─────────────
+    // Completions: a report is done once ANY `completed` row exists for
+    // its (dataset, period, org unit); any registration at all marks
+    // the report as "started locally". AOC isn't part of either key —
+    // matches the original per-row queries, which ignored it too.
+    final regs =
+        await (_db.select(_db.completeDataSetRegistrationsTable)).get();
+    String regKey(String ds, String pe, String ou) => '$ds|$pe|$ou';
+    final completedRegs = {
+      for (final r in regs)
+        if (r.completed) regKey(r.dataSetUid, r.period, r.orgUnitUid),
+    };
+    final anyLocalReg = {
+      for (final r in regs) regKey(r.dataSetUid, r.period, r.orgUnitUid),
+    };
+
+    // dataset -> its data elements — the same shape DataSetResource
+    // .dataElementUids returns per dataset, hoisted into one query.
+    final elementLinks = await (_db.select(_db.dataSetElementsTable)
+          ..where((t) => t.dataSetUid.isIn(dataSetIds)))
+        .get();
+    final elementsByDataSet = <String, Set<String>>{};
+    for (final l in elementLinks) {
+      (elementsByDataSet[l.dataSetUid] ??= <String>{}).add(l.dataElementUid);
+    }
+
+    // Any stored value at one of the outstanding periods/facilities
+    // marks that report as started. Sliced by the open periods and the
+    // assigned org units so the scan stays proportional to the
+    // candidate set. No sync-state filter: any row counts, exactly as
+    // the original per-report "started?" query.
+    final facilityIds = facilityNames.keys.toList();
+    final values = openPeriodIds.isEmpty
+        ? const []
+        : await (_db.select(_db.dataValuesTable)
+              ..where((t) => t.period.isIn(openPeriodIds) &
+                  t.orgUnitUid.isIn(facilityIds)))
+              .get();
+    final startedValues = {
+      for (final v in values) '${v.dataElementUid}|${v.period}|${v.orgUnitUid}',
+    };
+
+    bool isComplete(String ds, String pe, String ou) =>
+        completedRegs.contains(regKey(ds, pe, ou));
+    bool hasLocalWork(String ds, String pe, String ou) {
+      if (anyLocalReg.contains(regKey(ds, pe, ou))) return true;
+      final elements = elementsByDataSet[ds];
+      if (elements == null || elements.isEmpty) return false;
+      for (final e in elements) {
+        if (startedValues.contains('$e|$pe|$ou')) return true;
+      }
+      return false;
+    }
 
     final out = <ExpectedReportEntity>[];
     for (final link in links) {
       if (!facilityNames.containsKey(link.orgUnitUid)) continue;
       final ds = dataSets[link.dataSetUid];
       if (ds == null) continue; // dataset metadata gone
-      final open = openPeriodsByDataSet[link.dataSetUid] ??=
-          await periodService.openReportingPeriods(dataSet: ds);
+      final open = openPeriodsByDataSet[link.dataSetUid]!;
       for (final p in open) {
-        if (await _isPeriodComplete(link.dataSetUid, p.id, link.orgUnitUid)) {
+        if (isComplete(ds.uid, p.id, link.orgUnitUid)) {
           continue;
         }
-        final lockDate = ds.expiryDays > 0
-            ? p.end.add(Duration(days: ds.expiryDays))
-            : null;
-        final urgency = now.isAfter(p.end)
+        // DHIS2-aligned deadline: a report is only OVERDUE once the
+        // dataset's expiry window has closed — periodEnd + expiryDays.
+        // expiryDays == 0 (never expires) makes the bare period end the
+        // deadline. Monthly Ethiopian periods live by the Ethiopian
+        // calendar (EthiopianPeriodService), and the "next month opens
+        // on the 21st" rule feeds those periods in without marking
+        // them late.
+        final deadline = p.end.add(Duration(days: ds.expiryDays));
+        final lockDate = ds.expiryDays > 0 ? deadline : null;
+        final urgency = now.isAfter(deadline)
             ? ReportUrgency.overdue
-            : p.end.difference(now).inDays <= 5
+            : deadline.difference(now).inDays <= 5
                 ? ReportUrgency.dueSoon
                 : ReportUrgency.open;
         out.add(ExpectedReportEntity(
@@ -480,8 +542,7 @@ class CaptureRepositoryImpl implements CaptureRepository {
           urgency: urgency,
           isDiseaseRegistration: diseaseDataSets.contains(link.dataSetUid),
           needsComboPick: needsCombo[link.dataSetUid] ?? false,
-          localStarted:
-              await _hasLocalWork(link.dataSetUid, p.id, link.orgUnitUid),
+          localStarted: hasLocalWork(ds.uid, p.id, link.orgUnitUid),
         ));
       }
     }
@@ -500,45 +561,39 @@ class CaptureRepositoryImpl implements CaptureRepository {
     return out;
   }
 
-  /// Any completed==true registration for this (dataset, period, org
-  /// unit) — across attribute option combos and sync states.
-  Future<bool> _isPeriodComplete(
-      String dsUid, String period, String ouUid) async {
-    final row = await (_db.select(_db.completeDataSetRegistrationsTable)
-          ..where((t) =>
-              t.dataSetUid.equals(dsUid) &
-              t.period.equals(period) &
-              t.orgUnitUid.equals(ouUid) &
-              t.completed.equals(true))
-          ..limit(1))
+  /// Best-effort ONLINE reconcile of the server's completion state for
+  /// the user's facilities — the freshness half of [getExpectedReports],
+  /// split out so the outstanding list never waits on the network to
+  /// first render. Returns how many `completed` registrations were
+  /// freshly mirrored, so callers reload only when something actually
+  /// changed (e.g. a report finished on the web / another device no
+  /// longer counts as owing). Never throws; any failure just leaves the
+  /// local view as-is.
+  @override
+  Future<int> reconcileExpectedReports() async {
+    final api = _api;
+    if (api == null || !(ConnectivityService.instance.online ?? false)) {
+      return 0;
+    }
+    final links = await _db.select(_db.dataSetOrgUnitsTable).get();
+    if (links.isEmpty) return 0;
+    final ouIds = {for (final l in links) l.orgUnitUid};
+    final ouRows = await (_db.select(_db.orgUnitsTable)
+          ..where((t) => t.uid.isIn(ouIds)))
         .get();
-    return row.isNotEmpty;
-  }
-
-  /// True when there's already local work for this report — an
-  /// incomplete registration, or any locally-stored data value for the
-  /// dataset's elements at this (org unit, period). Drives the "resume"
-  /// vs "start" affordance.
-  Future<bool> _hasLocalWork(
-      String dsUid, String period, String ouUid) async {
-    final reg = await (_db.select(_db.completeDataSetRegistrationsTable)
-          ..where((t) =>
-              t.dataSetUid.equals(dsUid) &
-              t.period.equals(period) &
-              t.orgUnitUid.equals(ouUid))
-          ..limit(1))
-        .get();
-    if (reg.isNotEmpty) return true;
-    final elementUids = await DataSetResource(_db).dataElementUids(dsUid);
-    if (elementUids.isEmpty) return false;
-    final vals = await (_db.select(_db.dataValuesTable)
-          ..where((t) =>
-              t.period.equals(period) &
-              t.orgUnitUid.equals(ouUid) &
-              t.dataElementUid.isIn(elementUids))
-          ..limit(1))
-        .get();
-    return vals.isNotEmpty;
+    final facilityUids = [for (final r in ouRows) r.uid];
+    final dataSetUids = {for (final l in links) l.dataSetUid}.toList();
+    if (facilityUids.isEmpty || dataSetUids.isEmpty) return 0;
+    try {
+      return await CompletenessSync(_db, api).pullRecent(
+        dataSetUids: dataSetUids,
+        orgUnitUids: facilityUids,
+        since: DateTime.now().subtract(const Duration(days: 210)),
+      );
+    } catch (_) {
+      // Local view stands — the pull is a freshness bonus, not a gate.
+      return 0;
+    }
   }
 
   @override

@@ -1,9 +1,11 @@
 /// How pressing an outstanding report is.
 enum ReportUrgency {
-  /// The period has ended but is still inside its lock window — fill it now.
+  /// Past the dataset's deadline — `periodEnd + expiryDays` (the bare
+  /// period end for never-expiring datasets). The fillable window has
+  /// closed; filling it means a (possibly rejected) late entry.
   overdue,
 
-  /// The period is ending within a few days.
+  /// The deadline is within a few days.
   dueSoon,
 
   /// Open, deadline not yet close.

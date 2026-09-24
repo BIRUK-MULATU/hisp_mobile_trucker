@@ -117,7 +117,7 @@ Plus one targeted metadata GET outside the resource loop:
 |---|---|---|---|---|---|
 | **POST** | `/api/completeDataSetRegistrations` | Mark a form **complete**. One call per pending registration. | Body `{ "completeDataSetRegistrations": [ {dataSet, period, organisationUnit, attributeOptionCombo} ] }` | `CompletenessSync.pushPending` | 409 → marked `error` with the server's reason (**permanent**, not retried). Other `DioException` → stays `pending`. |
 | **DELETE** | `/api/completeDataSetRegistrations` | **Re-open** a completed form (un-complete). | `ds`, `pe`, `ou` [, `cc`, `cp` for a non-default attribute option combo — the default combo sends neither] | `CompletenessSync.pushPending` (the `completed == false` branch) | Same 409-is-permanent rule as POST. |
-| GET | `/api/completeDataSetRegistrations.json` | Pull the server's completion state so a report finished on the web drops out of the **"To-do"** list. Org units fanned out ≤ 40 per request. | `orgUnit` (list), `startDate`, `endDate`, `fields=dataSet,period,organisationUnit,attributeOptionCombo,completed,date` | `CompletenessSync.pullRecent` | Best-effort; the local "expected reports" view is left as-is. |
+| GET | `/api/completeDataSetRegistrations.json` | Pull the server's completion state so a report finished on the web drops out of the **"To-do"** list. Org units fanned out ≤ 40 per request. | `dataSet` (list), `orgUnit` (list), `startDate`, `endDate` — the endpoint **requires** at least one `dataSet` (E2013 → 400 otherwise), and does not accept a `fields` param | `CompletenessSync.pullRecent` | Best-effort; the local "expected reports" view is left as-is. |
 
 ### 3.5  Audit trail
 

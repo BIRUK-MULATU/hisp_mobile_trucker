@@ -32,8 +32,15 @@ abstract class CaptureRepository {
   /// Reports the user still OWES: every dataset assigned to one of
   /// their own facilities (capture roots + direct children), for every
   /// period still open for entry, that isn't already completed
-  /// (locally or on the server). Sorted most-urgent first. Best-effort
-  /// pulls the server's completion state first when online, so a
-  /// report finished on the web doesn't linger here.
+  /// (locally or on the server). Sorted most-urgent first. Purely
+  /// LOCAL and fast — online freshness is [reconcileExpectedReports]'s
+  /// job, fired in the background so this never blocks the UI.
   Future<List<ExpectedReportEntity>> getExpectedReports();
+
+  /// Best-effort ONLINE reconcile of the server's completion state for
+  /// the user's facilities — returns how many `completed` registrations
+  /// were freshly mirrored. Just a freshness bonus for
+  /// [getExpectedReports]; callers fire it without awaiting, then reload
+  /// only if the returned count is non-zero.
+  Future<int> reconcileExpectedReports();
 }

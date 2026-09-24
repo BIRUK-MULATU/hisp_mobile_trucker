@@ -119,17 +119,55 @@ void main() {
     expect(await repo.getExpectedReports(), isEmpty);
   });
 
-  test('the previous month is overdue, the current one is not', () async {
-    await assign(facility);
-    final expected = await repo.getExpectedReports();
-    final last = expected.where((e) => e.periodId == lastPeriod);
-    final cur = expected.firstWhere((e) => e.periodId == currentPeriod);
-    expect(last, isNotEmpty);
-    expect(last.single.urgency, ReportUrgency.overdue);
-    expect(cur.urgency, isNot(ReportUrgency.overdue));
-    // Overdue sorts ahead of the current period.
-    expect(expected.first.urgency, ReportUrgency.overdue);
-  });
+test('overdue aligns to the expiry lock, never the bare period end',
+    () async {
+  await assign(facility);
+
+  final expected = await repo.getExpectedReports();
+
+  // The current open period is never overdue — its deadline
+  // (periodEnd + expiryDays) is still ahead.
+  final cur = expected.firstWhere((e) => e.periodId == currentPeriod);
+  expect(cur.urgency, isNot(ReportUrgency.overdue));
+
+  // A previous month only appears here WHILE still inside its lock
+  // window (expiryDays = 10 → deadline is periodEnd + 10 days), so as
+  // long as it's listed it cannot be overdue under the DHIS2-aligned
+  // rule. Once its lock passes it leaves this list entirely.
+  for (final last in expected.where((e) => e.periodId == lastPeriod)) {
+    expect(last.urgency, isNot(ReportUrgency.overdue));
+  }
+});
+
+test("a never-expiring dataset's past period is overdue", () async {
+  await db.into(db.dataSetsTable).insert(DataSetsTableCompanion.insert(
+        uid: 'registerDs1',
+        name: 'HMIS Register',
+        displayName: 'HMIS Register',
+        periodType: 'Monthly',
+        categoryComboUid: coc,
+        // expiryDays omitted → 0 → never locks, so every past incomplete
+        // period stays in the list, due at its bare period end.
+      ));
+  await db.into(db.dataSetElementsTable).insert(
+        DataSetElementsTableCompanion.insert(
+            dataSetUid: 'registerDs1',
+            dataElementUid: de,
+            categoryComboUid: coc),
+      );
+  await db.into(db.dataSetOrgUnitsTable).insert(
+        DataSetOrgUnitsTableCompanion.insert(
+            dataSetUid: 'registerDs1', orgUnitUid: facility),
+      );
+
+  final expected = await repo.getExpectedReports();
+  final past = expected
+      .where((e) => e.dataSetId == 'registerDs1' && e.periodId == lastPeriod);
+  expect(past, isNotEmpty);
+  expect(past.single.urgency, ReportUrgency.overdue);
+  // Overdue sorts ahead of everything else.
+  expect(expected.first.urgency, ReportUrgency.overdue);
+});
 
   test('everything is expired once the clock is far in the future', () async {
     await assign(facility);

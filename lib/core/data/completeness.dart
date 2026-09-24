@@ -207,11 +207,16 @@ class CompletenessSync {
   /// reports" list drop a report finished on the web or another device.
   /// Best-effort: any failure just leaves the local view as-is.
   /// Returns how many rows were newly mirrored.
+  ///
+  /// The DHIS2 endpoint insists on a `dataSet` filter ([ErrorCode] E2013,
+  /// HTTP 400 otherwise), so the reporting scope's data set UIDs must be
+  /// passed alongside the org units.
   Future<int> pullRecent({
+    required List<String> dataSetUids,
     required List<String> orgUnitUids,
     required DateTime since,
   }) async {
-    if (orgUnitUids.isEmpty) return 0;
+    if (orgUnitUids.isEmpty || dataSetUids.isEmpty) return 0;
     String fmt(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
         '${d.month.toString().padLeft(2, '0')}-'
         '${d.day.toString().padLeft(2, '0')}';
@@ -227,11 +232,10 @@ class CompletenessSync {
       try {
         res = await _api.get('/api/completeDataSetRegistrations.json',
             queryParameters: {
+              'dataSet': dataSetUids,
               'orgUnit': slice,
               'startDate': fmt(since),
               'endDate': fmt(DateTime.now()),
-              'fields': 'dataSet,period,organisationUnit,attributeOptionCombo,'
-                  'completed,date',
             });
       } on DioException catch (e) {
         log.w('[completeness] pullRecent failed: ${e.message}');

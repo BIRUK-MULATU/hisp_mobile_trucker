@@ -59,7 +59,7 @@ void main() {
 
   test('mirrors a server completion locally as synced', () async {
     final applied = await CompletenessSync(db, clientWith(regBody(completed: true)))
-        .pullRecent(orgUnitUids: [ou], since: DateTime(2018));
+        .pullRecent(dataSetUids: [ds], orgUnitUids: [ou], since: DateTime(2018));
     expect(applied, 1);
 
     final row = (await db.select(db.completeDataSetRegistrationsTable).get())
@@ -83,7 +83,7 @@ void main() {
         );
 
     final applied = await CompletenessSync(db, clientWith(regBody(completed: true)))
-        .pullRecent(orgUnitUids: [ou], since: DateTime(2018));
+        .pullRecent(dataSetUids: [ds], orgUnitUids: [ou], since: DateTime(2018));
     expect(applied, 0);
 
     final row = (await db.select(db.completeDataSetRegistrationsTable).get())
@@ -95,7 +95,7 @@ void main() {
   test('completed:false server rows are ignored', () async {
     final applied =
         await CompletenessSync(db, clientWith(regBody(completed: false)))
-            .pullRecent(orgUnitUids: [ou], since: DateTime(2018));
+            .pullRecent(dataSetUids: [ds], orgUnitUids: [ou], since: DateTime(2018));
     expect(applied, 0);
     expect(await db.select(db.completeDataSetRegistrationsTable).get(), isEmpty);
   });
