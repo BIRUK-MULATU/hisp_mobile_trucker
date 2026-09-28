@@ -216,7 +216,7 @@ class AppDatabase extends _$AppDatabase {
       raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -283,6 +283,22 @@ class AppDatabase extends _$AppDatabase {
             // DHIS2 `dataSet.compulsoryDataElementOperands` — the
             // element+combo-pair sibling of dataSetElement.compulsory.
             5: (m) => m.createTable(compulsoryDataElementOperandsTable),
+            // Marks an org unit the user actually opened, so
+            // OrgUnitResource.pruneOutOfScope stops deleting it on the
+            // next login just because it sits past the synced depth
+            // bound. Existing devices have no marker to backfill (they
+            // simply default to false and get their next visit cached
+            // again), so this is a bare guarded addColumn.
+            6: (m) async {
+              final columns = await customSelect(
+                "SELECT name FROM pragma_table_info('org_units_table')",
+              ).get();
+              final hasIsVisited =
+                  columns.any((r) => r.read<String>('name') == 'is_visited');
+              if (!hasIsVisited) {
+                await m.addColumn(orgUnitsTable, orgUnitsTable.isVisited);
+              }
+            },
           };
           for (var target = from + 1; target <= to; target++) {
             final step = steps[target];

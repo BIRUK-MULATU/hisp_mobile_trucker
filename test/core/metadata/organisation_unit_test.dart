@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -120,6 +121,58 @@ void main() {
       final resource = OrgUnitResource(db)..captureRootUids = [woredaUid];
       expect(await resource.pruneOutOfScope(), 0);
       expect(await db.select(db.orgUnitsTable).get(), hasLength(1));
+    });
+
+    test('keeps a VISITED unit that sits past the bound', () async {
+      // The device reached this health center by opening it, not by
+      // syncing it. Pruning it is what made a facility the user works
+      // in vanish from the tree on the next login, while its dataset
+      // links stayed behind and went orphaned.
+      await insert(hcUid, '/national/region/zone/$woredaUid/$phcuUid/$hcUid');
+      await db.into(db.orgUnitsTable).insert(
+            OrgUnitsTableCompanion.insert(
+              uid: hpUid,
+              name: hpUid,
+              displayName: hpUid,
+              path:
+                  '/national/region/zone/$woredaUid/$phcuUid/$hcUid/$hpUid',
+              isVisited: const Value(true),
+            ),
+          );
+
+      final resource = OrgUnitResource(db)
+        ..captureRootUids = [woredaUid]
+        ..captureRootLevels = {woredaUid: 4};
+
+      expect(await resource.pruneOutOfScope(), 1, reason: 'only the '
+          'unvisited health center is out of scope');
+
+      final remaining = await db.select(db.orgUnitsTable).get();
+      expect(remaining.map((r) => r.uid), isNot(contains(hcUid)));
+      expect(remaining.map((r) => r.uid), contains(hpUid));
+    });
+
+    test('a visited unit is still removed when the server deletes it',
+        () async {
+      await insert(woredaUid, '/national/region/zone/$woredaUid');
+      await insert(phcuUid, '/national/region/zone/$woredaUid/$phcuUid');
+      final resource = OrgUnitResource(db)
+        ..captureRootUids = [woredaUid]
+        ..captureRootLevels = {woredaUid: 4};
+      expect(await resource.pruneOutOfScope(), 0);
+    });
+  });
+
+  group('OrgUnitDepth', () {
+    test('maxLevelsBelowRoot is the single source of the bound', () {
+      expect(OrgUnitDepth.maxLevelsBelowRoot, 1);
+    });
+
+    test('levelOf counts path segments, matching the bound', () {
+      expect(OrgUnitDepth.levelOf('/a/b/c'), 3);
+      expect(OrgUnitDepth.levelOf('/a'), 1);
+      expect(OrgUnitDepth.levelOf(''), 0);
+      expect(OrgUnitDepth.levelOf(null), 0);
     });
   });
 }

@@ -48,21 +48,29 @@ class CaptureRepositoryImpl implements CaptureRepository {
   @override
   Future<List<OrgUnitTreeNode>> getOrgUnitChildren(String parentId) async {
     final children = await OrgUnitResource(_db).getChildren(parentId);
-    if (children.isEmpty) {
-      // Beyond the direct-children depth bound (or a true leaf) —
-      // live is the only way to tell, and only possible online. A
-      // non-null ApiClient means "logged in", NOT "currently
-      // connected" — genuinely offline, the request throws
-      // (connection error), which is expected here, not a real
-      // failure: nothing more to show without a connection.
-      final api = _api;
-      if (api == null) return const [];
+    final api = _api;
+
+    // Past the synced depth bound the local rows under a node are NOT
+    // its child list — they are whichever facilities this device
+    // happened to visit (see [_fetchAndCacheVisitedOrgUnit]), so a
+    // single cached sibling says nothing about the rest. Treating
+    // "non-empty" as "complete" is what made a facility like "Alert
+    // Specialized Hospital" the only org unit shown under its region.
+    // Go live instead, and treat the server's answer as authoritative.
+    if (api != null && !await _hasSyncedChildren(parentId)) {
       try {
-        return await _fetchChildrenLive(api, parentId);
+        final live = await _fetchChildrenLive(api, parentId);
+        if (live.isNotEmpty) return live;
+        // Server says this is a leaf while local rows disagree — a
+        // pruned or renamed facility. Fall through to local rather
+        // than hiding a node the user can still open.
       } catch (_) {
-        return const [];
+        // Genuinely offline (a non-null ApiClient only means "logged
+        // in"). Fall through to whatever is cached.
       }
     }
+
+    if (children.isEmpty) return const [];
 
     // One grouped query for the expand arrows: how many children does
     // each child itself have — accurate LOCALLY, except for a capture
@@ -83,7 +91,6 @@ class CaptureRepositoryImpl implements CaptureRepository {
       for (final row in grouped) row.read(t.parentUid)!: row.read(countExp)!,
     };
 
-    final api = _api;
     if (api != null) {
       final parent = await OrgUnitResource(_db).getById(parentId);
       if (parent?.isUserCaptureRoot ?? false) {
@@ -126,6 +133,43 @@ class CaptureRepositoryImpl implements CaptureRepository {
     ];
   }
 
+  /// Whether [parentId]'s FULL child list is guaranteed to be on the
+  /// device.
+  ///
+  /// Sync keeps a capture root plus [OrgUnitDepth.maxLevelsBelowRoot]
+  /// levels, so a node's children are only all present when the node
+  /// itself sits at the last level that gets stored. Everything deeper
+  /// can appear locally purely by accident (a facility opened once, and
+  /// cached by [_fetchAndCacheVisitedOrgUnit]) — which is precisely why
+  /// a non-empty local set can't be trusted past that point.
+  ///
+  /// Derived from the capture roots already flagged in the table, so it
+  /// costs no extra request and needs no stored level column. When there
+  /// are no flagged roots (never synced, or flags cleared) the answer is
+  /// false: trust the server rather than an unverified local set.
+  Future<bool> _hasSyncedChildren(String parentId) async {
+    final resource = OrgUnitResource(_db);
+    final roots = await resource.getCaptureRoots();
+    if (roots.isEmpty) return false;
+
+    final parent = await resource.getById(parentId);
+    if (parent == null) return false;
+
+    final parentLevel = OrgUnitDepth.levelOf(parent.path);
+    final parentPath = parent.path.split('/').where((s) => s.isNotEmpty);
+    // With several capture roots, the tightest bound wins: the deepest
+    // ancestor gives the smallest margin, so we go live more often
+    // rather than trusting a local set too readily.
+    var tightestMargin = 1 << 30;
+    for (final root in roots) {
+      if (!parentPath.contains(root.uid)) continue;
+      final margin = parentLevel - OrgUnitDepth.levelOf(root.path);
+      if (margin < tightestMargin) tightestMargin = margin;
+    }
+    if (tightestMargin == 1 << 30) return false; // under no capture root
+    return tightestMargin < OrgUnitDepth.maxLevelsBelowRoot;
+  }
+
   /// Live children of [parentId], mapped the same shape as the local
   /// query — NOT persisted here (browsing alone shouldn't cache
   /// anything; see [getDataSetsForOrgUnit] for what actually does).
@@ -158,24 +202,50 @@ class CaptureRepositoryImpl implements CaptureRepository {
   /// Batched existence check: which of [uids] have at least one child
   /// on the server? One request for the whole set — used only to
   /// decide which of a capture root's direct children get an expand
-  /// arrow (see [getOrgUnitChildren]) — `fields=parent[id]` keeps the
-  /// response to one row per matching child, not a full fetch.
+  /// arrow (see [getOrgUnitChildren]).
+  ///
+  /// The `parent.id:in:[...]` filter already restricts the response to
+  /// children of these uids, so a non-empty response proves the filter
+  /// worked. Which parent each row belongs to is read from `parent[id]`
+  /// when the server sends it; when it doesn't (a proxy dropping nested
+  /// field selections, or a DHIS2 version that ignores the selection) a
+  /// single queried uid is unambiguous and gets the credit, rather than
+  /// silently resolving to "none of them have children" and stripping
+  /// every expand arrow on screen.
   Future<Set<String>> _liveChildrenExistence(
       ApiClient api, List<String> uids) async {
     final res = await api.get('/api/organisationUnits.json', queryParameters: {
       'filter': 'parent.id:in:[${uids.join(',')}]',
-      'fields': 'parent[id]',
+      'fields': 'id,parent[id]',
       'paging': 'false',
     });
     final items =
         ((res.data as Map<String, dynamic>)['organisationUnits'] as List? ??
                 const [])
             .cast<Map<String, dynamic>>();
-    return {
-      for (final ou in items)
-        if ((ou['parent'] as Map<String, dynamic>?)?['id'] is String)
-          (ou['parent'] as Map<String, dynamic>)['id'] as String,
-    };
+    if (items.isEmpty) return const {};
+
+    final byParent = <String>{};
+    var unattributed = 0;
+    for (final ou in items) {
+      final parentId = (ou['parent'] as Map<String, dynamic>?)?['id'];
+      if (parentId is String) {
+        byParent.add(parentId);
+      } else {
+        unattributed++;
+      }
+    }
+    if (unattributed == 0) return byParent;
+
+    // Rows came back with no usable parent attribution. Every one of
+    // them is a child of one of [uids], so with a single candidate the
+    // answer is certain; with several we can only report that the
+    // filter matched something, which is not enough to place an arrow.
+    if (uids.length == 1) return {uids.single};
+    log.w('[capture] live child existence check returned '
+        '$unattributed unattributed row(s) for ${uids.length} uids — '
+        'expand arrows left unverified');
+    return byParent;
   }
 
   @override
@@ -254,9 +324,9 @@ class CaptureRepositoryImpl implements CaptureRepository {
     ];
 
     await _db.transaction(() async {
-      await _db
-          .into(_db.orgUnitsTable)
-          .insertOnConflictUpdate(OrgUnitResource(_db).companionFromJson(json));
+      await _db.into(_db.orgUnitsTable).insertOnConflictUpdate(
+            OrgUnitResource(_db).visitedCompanionFromJson(json),
+          );
       await (_db.delete(_db.dataSetOrgUnitsTable)
             ..where((t) => t.orgUnitUid.equals(orgUnitId)))
           .go();

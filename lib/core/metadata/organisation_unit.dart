@@ -21,8 +21,40 @@ class OrgUnitsTable extends Table {
   BoolColumn get isUserCaptureRoot =>
       boolean().withDefault(const Constant(false))();
 
+  /// True for an org unit this device reached by actually opening it,
+  /// not by syncing it (see CaptureRepositoryImpl, which caches a
+  /// facility the moment its dataset list is opened).
+  ///
+  /// Such a unit normally sits outside [OrgUnitDepth]'s bound, so it
+  /// must survive [OrgUnitResource.pruneOutOfScope] — otherwise a
+  /// facility the user works in vanishes from the tree on the next
+  /// login, while its dataset links linger and go orphaned. Set only by
+  /// that cache path, never cleared by sync: a unit inside the bound
+  /// simply never needs the flag.
+  BoolColumn get isVisited => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {uid};
+}
+
+/// How much of the org unit tree is kept on the device.
+///
+/// Sync stores a capture root plus this many levels below it, so a
+/// Woreda-assigned user's device holds the Woreda and its direct
+/// children (PHCUs) and nothing deeper. Anything past that is fetched
+/// live when the device is online — see
+/// [CaptureRepositoryImpl.getOrgUnitChildren].
+///
+/// Both the sync-side bound ([OrgUnitResource.isValid]) and the
+/// read-side "is this node's child list complete?" check derive from
+/// this one number, so the two can't drift apart.
+abstract final class OrgUnitDepth {
+  static const int maxLevelsBelowRoot = 1;
+
+  /// Level of an org unit from its `/a/b/c` path — the same counting
+  /// [OrgUnitResource._withinDepthBound] uses.
+  static int levelOf(String? path) =>
+      '/'.allMatches(path ?? '').length;
 }
 
 class OrgUnitResource extends MetadataResource<OrgUnit> {
@@ -49,15 +81,16 @@ class OrgUnitResource extends MetadataResource<OrgUnit> {
       [for (final uid in captureRootUids) 'path:like:$uid'];
 
   /// Keeps a fetched org unit only if it IS a capture root, or is
-  /// exactly one level below one — a Woreda-assigned user's synced
-  /// (and therefore navigable/enterable) org units stop at their
-  /// direct children (e.g. PHCUs), never descending into the Health
-  /// Centers/Posts beneath each of those. Deeper descendants are
-  /// still fetched over the network (DHIS2's filter API has no way to
-  /// bound depth server-side while OR-combining multiple roots — see
-  /// [captureRootUids]) but are discarded here before anything is
-  /// written locally, so they're simply unknown to the rest of the
-  /// app: not in the org unit tree, not selectable, not enterable.
+  /// within [OrgUnitDepth.maxLevelsBelowRoot] levels below one — a
+  /// Woreda-assigned user's synced (and therefore navigable/enterable)
+  /// org units stop at their direct children (e.g. PHCUs), never
+  /// descending into the Health Centers/Posts beneath each of those.
+  /// Deeper descendants are still fetched over the network (DHIS2's
+  /// filter API has no way to bound depth server-side while OR-combining
+  /// multiple roots — see [captureRootUids]) but are discarded here
+  /// before anything is written locally, so they're simply unknown to
+  /// the rest of the app: not in the org unit tree, not selectable, not
+  /// enterable.
   @override
   bool isValid(Map<String, dynamic> json) =>
       _withinDepthBound(json['path'] as String? ?? '');
@@ -71,7 +104,7 @@ class OrgUnitResource extends MetadataResource<OrgUnit> {
       final rootLevel = captureRootLevels[rootUid];
       if (rootLevel != null &&
           segments.contains(rootUid) &&
-          ownLevel - rootLevel <= 1) {
+          ownLevel - rootLevel <= OrgUnitDepth.maxLevelsBelowRoot) {
         return true;
       }
     }
@@ -86,12 +119,18 @@ class OrgUnitResource extends MetadataResource<OrgUnit> {
   /// this once [captureRootLevels] is set, after syncAll/syncDelta, so
   /// a device that synced before this bound existed converges to it
   /// on its very next sync rather than only on a full re-sync.
+  ///
+  /// Units flagged [OrgUnitsTable.isVisited] are kept regardless: the
+  /// bound governs what gets *synced*, not what the user may browse, and
+  /// a facility they opened once (whose dataset links are still cached)
+  /// has to stay in the tree. Server-deleted units are still removed —
+  /// by delta sync, which knows the server's answer.
   Future<int> pruneOutOfScope() async {
     if (captureRootLevels.isEmpty) return 0;
     final rows = await db.select(db.orgUnitsTable).get();
     final outOfScope = [
       for (final r in rows)
-        if (!_withinDepthBound(r.path)) r.uid,
+        if (!r.isVisited && !_withinDepthBound(r.path)) r.uid,
     ];
     if (outOfScope.isEmpty) return 0;
     return (db.delete(db.orgUnitsTable)..where((t) => t.uid.isIn(outOfScope)))
@@ -117,7 +156,18 @@ class OrgUnitResource extends MetadataResource<OrgUnit> {
   Column<DateTime> get lastUpdatedColumn => db.orgUnitsTable.lastUpdated;
 
   @override
-  Insertable<OrgUnit> companionFromJson(Map<String, dynamic> json) {
+  Insertable<OrgUnit> companionFromJson(Map<String, dynamic> json) =>
+      _companion(json);
+
+  /// [companionFromJson] for a unit the user actually opened, marking
+  /// it [OrgUnitsTable.isVisited] so [pruneOutOfScope] keeps it.
+  Insertable<OrgUnit> visitedCompanionFromJson(Map<String, dynamic> json) =>
+      _companion(json, visited: true);
+
+  Insertable<OrgUnit> _companion(
+    Map<String, dynamic> json, {
+    bool visited = false,
+  }) {
     return OrgUnitsTableCompanion.insert(
       uid: json['id'] as String,
       name: json['name'] as String,
@@ -129,6 +179,7 @@ class OrgUnitResource extends MetadataResource<OrgUnit> {
       openingDate: Value(json['openingDate'] as String?),
       closedDate: Value(json['closedDate'] as String?),
       lastUpdated: lastUpdatedFrom(json),
+      isVisited: Value(visited),
     );
   }
 

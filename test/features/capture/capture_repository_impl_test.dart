@@ -345,6 +345,141 @@ void main() {
           reason: 'derived from the nested children[] the live query asked for');
     });
 
+    test('a node past the depth bound with ONE cached sibling still lists '
+        'ALL its children online', () async {
+      // The reported bug: Addis Ababa Region showed only "Alert
+      // Specialized Hospital" because that one facility had been cached
+      // locally when its dataset list was opened, and a non-empty local
+      // set was taken as a complete one — so the server was never asked.
+      const region = 'orgUnit0002';
+      const alert = 'orgUnit0003';
+      const other = 'orgUnit0004';
+      const woreda = 'orgUnit0005';
+
+      // ou1 is the capture root (level 1); the region is its child, so
+      // the region's own children sit one level past the bound.
+      await (db.update(db.orgUnitsTable)..where((t) => t.uid.equals(ou1)))
+          .write(const OrgUnitsTableCompanion(isUserCaptureRoot: Value(true)));
+      await db.batch((b) => b.insertAll(db.orgUnitsTable, [
+        OrgUnitsTableCompanion.insert(
+          uid: region,
+          name: 'Addis Ababa',
+          displayName: 'Addis Ababa',
+          parentUid: const Value(ou1),
+          path: '/$ou1/$region',
+        ),
+        // Only the facility the user happened to visit.
+        OrgUnitsTableCompanion.insert(
+          uid: alert,
+          name: 'Alert Specialized Hospital',
+          displayName: 'Alert Specialized Hospital',
+          parentUid: const Value(region),
+          path: '/$ou1/$region/$alert',
+          isVisited: const Value(true),
+        ),
+      ]));
+
+      final adapter = _CannedAdapter(body: {
+        'organisationUnits': [
+          {
+            'id': alert,
+            'displayName': 'Alert Specialized Hospital',
+            'path': '/$ou1/$region/$alert',
+          },
+          {
+            'id': woreda,
+            'displayName': 'Addis Ketema',
+            'path': '/$ou1/$region/$woreda',
+          },
+          {
+            'id': other,
+            'displayName': 'Yaba Health Center',
+            'path': '/$ou1/$region/$other',
+          },
+        ],
+      });
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final children = await repo.getOrgUnitChildren(region);
+
+      expect(adapter.requestedUris.single.queryParameters['filter'],
+          'parent.id:eq:$region',
+          reason: 'one cached sibling must not suppress the live query');
+      expect(children.map((c) => c.id).toSet(),
+          {alert, woreda, other},
+          reason: 'the server\'s full child list wins over the local subset');
+    });
+
+    test('a capture root still answers from local, with no live call',
+        () async {
+      // The bound guarantees a capture root's direct children are all
+      // on the device, so this is the case that must stay local (and
+      // keep working offline).
+      const rootChild = 'orgUnit0002';
+      await (db.update(db.orgUnitsTable)..where((t) => t.uid.equals(ou1)))
+          .write(const OrgUnitsTableCompanion(isUserCaptureRoot: Value(true)));
+      await db.into(db.orgUnitsTable).insert(
+            OrgUnitsTableCompanion.insert(
+              uid: rootChild,
+              name: 'Addis Ababa',
+              displayName: 'Addis Ababa',
+              parentUid: const Value(ou1),
+              path: '/$ou1/$rootChild',
+            ),
+          );
+
+      final adapter = _CannedAdapter(body: const {});
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      client.dio.httpClientAdapter = adapter;
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final children = await repo.getOrgUnitChildren(ou1);
+
+      expect(children.single.id, rootChild);
+      expect(
+        adapter.requestedUris.where(
+            (u) => u.queryParameters['filter'] == 'parent.id:eq:$ou1'),
+        isEmpty,
+        reason: 'within the synced bound there is nothing to ask the server '
+            'for (the arrow existence check is a separate, expected call)',
+      );
+    });
+
+    test('past the bound but offline: the cached sibling is still shown',
+        () async {
+      const region = 'orgUnit0002';
+      const alert = 'orgUnit0003';
+      await (db.update(db.orgUnitsTable)..where((t) => t.uid.equals(ou1)))
+          .write(const OrgUnitsTableCompanion(isUserCaptureRoot: Value(true)));
+      await db.batch((b) => b.insertAll(db.orgUnitsTable, [
+        OrgUnitsTableCompanion.insert(
+          uid: region,
+          name: 'Addis Ababa',
+          displayName: 'Addis Ababa',
+          parentUid: const Value(ou1),
+          path: '/$ou1/$region',
+        ),
+        OrgUnitsTableCompanion.insert(
+          uid: alert,
+          name: 'Alert Specialized Hospital',
+          displayName: 'Alert Specialized Hospital',
+          parentUid: const Value(region),
+          path: '/$ou1/$region/$alert',
+          isVisited: const Value(true),
+        ),
+      ]));
+
+      // No api at all — the repository is the offline one.
+      final children = await repository.getOrgUnitChildren(region);
+      expect(children.map((c) => c.id), [alert]);
+    });
+
     test('a capture root\'s direct child with zero LOCAL grandchildren '
         'still gets an expand arrow when a live check finds real ones',
         () async {

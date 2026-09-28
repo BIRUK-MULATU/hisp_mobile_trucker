@@ -78,6 +78,16 @@ class $OrgUnitsTableTable extends OrgUnitsTable
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("is_user_capture_root" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _isVisitedMeta =
+      const VerificationMeta('isVisited');
+  @override
+  late final GeneratedColumn<bool> isVisited = GeneratedColumn<bool>(
+      'is_visited', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("is_visited" IN (0, 1))'),
+      defaultValue: const Constant(false));
   @override
   List<GeneratedColumn> get $columns => [
         uid,
@@ -90,7 +100,8 @@ class $OrgUnitsTableTable extends OrgUnitsTable
         openingDate,
         closedDate,
         lastUpdated,
-        isUserCaptureRoot
+        isUserCaptureRoot,
+        isVisited
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -166,6 +177,10 @@ class $OrgUnitsTableTable extends OrgUnitsTable
           isUserCaptureRoot.isAcceptableOrUnknown(
               data['is_user_capture_root']!, _isUserCaptureRootMeta));
     }
+    if (data.containsKey('is_visited')) {
+      context.handle(_isVisitedMeta,
+          isVisited.isAcceptableOrUnknown(data['is_visited']!, _isVisitedMeta));
+    }
     return context;
   }
 
@@ -197,6 +212,8 @@ class $OrgUnitsTableTable extends OrgUnitsTable
           .read(DriftSqlType.dateTime, data['${effectivePrefix}last_updated']),
       isUserCaptureRoot: attachedDatabase.typeMapping.read(
           DriftSqlType.bool, data['${effectivePrefix}is_user_capture_root'])!,
+      isVisited: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_visited'])!,
     );
   }
 
@@ -221,6 +238,18 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
   /// True for the roots of the logged-in user's capture tree
   /// (set from /api/me by the sync service, not by this resource).
   final bool isUserCaptureRoot;
+
+  /// True for an org unit this device reached by actually opening it,
+  /// not by syncing it (see CaptureRepositoryImpl, which caches a
+  /// facility the moment its dataset list is opened).
+  ///
+  /// Such a unit normally sits outside [OrgUnitDepth]'s bound, so it
+  /// must survive [OrgUnitResource.pruneOutOfScope] — otherwise a
+  /// facility the user works in vanishes from the tree on the next
+  /// login, while its dataset links linger and go orphaned. Set only by
+  /// that cache path, never cleared by sync: a unit inside the bound
+  /// simply never needs the flag.
+  final bool isVisited;
   const OrgUnit(
       {required this.uid,
       required this.name,
@@ -232,7 +261,8 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
       this.openingDate,
       this.closedDate,
       this.lastUpdated,
-      required this.isUserCaptureRoot});
+      required this.isUserCaptureRoot,
+      required this.isVisited});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -259,6 +289,7 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
       map['last_updated'] = Variable<DateTime>(lastUpdated);
     }
     map['is_user_capture_root'] = Variable<bool>(isUserCaptureRoot);
+    map['is_visited'] = Variable<bool>(isVisited);
     return map;
   }
 
@@ -285,6 +316,7 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
           ? const Value.absent()
           : Value(lastUpdated),
       isUserCaptureRoot: Value(isUserCaptureRoot),
+      isVisited: Value(isVisited),
     );
   }
 
@@ -303,6 +335,7 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
       closedDate: serializer.fromJson<String?>(json['closedDate']),
       lastUpdated: serializer.fromJson<DateTime?>(json['lastUpdated']),
       isUserCaptureRoot: serializer.fromJson<bool>(json['isUserCaptureRoot']),
+      isVisited: serializer.fromJson<bool>(json['isVisited']),
     );
   }
   @override
@@ -320,6 +353,7 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
       'closedDate': serializer.toJson<String?>(closedDate),
       'lastUpdated': serializer.toJson<DateTime?>(lastUpdated),
       'isUserCaptureRoot': serializer.toJson<bool>(isUserCaptureRoot),
+      'isVisited': serializer.toJson<bool>(isVisited),
     };
   }
 
@@ -334,7 +368,8 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
           Value<String?> openingDate = const Value.absent(),
           Value<String?> closedDate = const Value.absent(),
           Value<DateTime?> lastUpdated = const Value.absent(),
-          bool? isUserCaptureRoot}) =>
+          bool? isUserCaptureRoot,
+          bool? isVisited}) =>
       OrgUnit(
         uid: uid ?? this.uid,
         name: name ?? this.name,
@@ -347,6 +382,7 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
         closedDate: closedDate.present ? closedDate.value : this.closedDate,
         lastUpdated: lastUpdated.present ? lastUpdated.value : this.lastUpdated,
         isUserCaptureRoot: isUserCaptureRoot ?? this.isUserCaptureRoot,
+        isVisited: isVisited ?? this.isVisited,
       );
   OrgUnit copyWithCompanion(OrgUnitsTableCompanion data) {
     return OrgUnit(
@@ -368,6 +404,7 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
       isUserCaptureRoot: data.isUserCaptureRoot.present
           ? data.isUserCaptureRoot.value
           : this.isUserCaptureRoot,
+      isVisited: data.isVisited.present ? data.isVisited.value : this.isVisited,
     );
   }
 
@@ -384,14 +421,26 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
           ..write('openingDate: $openingDate, ')
           ..write('closedDate: $closedDate, ')
           ..write('lastUpdated: $lastUpdated, ')
-          ..write('isUserCaptureRoot: $isUserCaptureRoot')
+          ..write('isUserCaptureRoot: $isUserCaptureRoot, ')
+          ..write('isVisited: $isVisited')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(uid, name, displayName, parentUid, parentName,
-      path, code, openingDate, closedDate, lastUpdated, isUserCaptureRoot);
+  int get hashCode => Object.hash(
+      uid,
+      name,
+      displayName,
+      parentUid,
+      parentName,
+      path,
+      code,
+      openingDate,
+      closedDate,
+      lastUpdated,
+      isUserCaptureRoot,
+      isVisited);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -406,7 +455,8 @@ class OrgUnit extends DataClass implements Insertable<OrgUnit> {
           other.openingDate == this.openingDate &&
           other.closedDate == this.closedDate &&
           other.lastUpdated == this.lastUpdated &&
-          other.isUserCaptureRoot == this.isUserCaptureRoot);
+          other.isUserCaptureRoot == this.isUserCaptureRoot &&
+          other.isVisited == this.isVisited);
 }
 
 class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
@@ -421,6 +471,7 @@ class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
   final Value<String?> closedDate;
   final Value<DateTime?> lastUpdated;
   final Value<bool> isUserCaptureRoot;
+  final Value<bool> isVisited;
   final Value<int> rowid;
   const OrgUnitsTableCompanion({
     this.uid = const Value.absent(),
@@ -434,6 +485,7 @@ class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
     this.closedDate = const Value.absent(),
     this.lastUpdated = const Value.absent(),
     this.isUserCaptureRoot = const Value.absent(),
+    this.isVisited = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   OrgUnitsTableCompanion.insert({
@@ -448,6 +500,7 @@ class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
     this.closedDate = const Value.absent(),
     this.lastUpdated = const Value.absent(),
     this.isUserCaptureRoot = const Value.absent(),
+    this.isVisited = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : uid = Value(uid),
         name = Value(name),
@@ -465,6 +518,7 @@ class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
     Expression<String>? closedDate,
     Expression<DateTime>? lastUpdated,
     Expression<bool>? isUserCaptureRoot,
+    Expression<bool>? isVisited,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -479,6 +533,7 @@ class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
       if (closedDate != null) 'closed_date': closedDate,
       if (lastUpdated != null) 'last_updated': lastUpdated,
       if (isUserCaptureRoot != null) 'is_user_capture_root': isUserCaptureRoot,
+      if (isVisited != null) 'is_visited': isVisited,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -495,6 +550,7 @@ class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
       Value<String?>? closedDate,
       Value<DateTime?>? lastUpdated,
       Value<bool>? isUserCaptureRoot,
+      Value<bool>? isVisited,
       Value<int>? rowid}) {
     return OrgUnitsTableCompanion(
       uid: uid ?? this.uid,
@@ -508,6 +564,7 @@ class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
       closedDate: closedDate ?? this.closedDate,
       lastUpdated: lastUpdated ?? this.lastUpdated,
       isUserCaptureRoot: isUserCaptureRoot ?? this.isUserCaptureRoot,
+      isVisited: isVisited ?? this.isVisited,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -548,6 +605,9 @@ class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
     if (isUserCaptureRoot.present) {
       map['is_user_capture_root'] = Variable<bool>(isUserCaptureRoot.value);
     }
+    if (isVisited.present) {
+      map['is_visited'] = Variable<bool>(isVisited.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -568,6 +628,7 @@ class OrgUnitsTableCompanion extends UpdateCompanion<OrgUnit> {
           ..write('closedDate: $closedDate, ')
           ..write('lastUpdated: $lastUpdated, ')
           ..write('isUserCaptureRoot: $isUserCaptureRoot, ')
+          ..write('isVisited: $isVisited, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -11128,6 +11189,7 @@ typedef $$OrgUnitsTableTableCreateCompanionBuilder = OrgUnitsTableCompanion
   Value<String?> closedDate,
   Value<DateTime?> lastUpdated,
   Value<bool> isUserCaptureRoot,
+  Value<bool> isVisited,
   Value<int> rowid,
 });
 typedef $$OrgUnitsTableTableUpdateCompanionBuilder = OrgUnitsTableCompanion
@@ -11143,6 +11205,7 @@ typedef $$OrgUnitsTableTableUpdateCompanionBuilder = OrgUnitsTableCompanion
   Value<String?> closedDate,
   Value<DateTime?> lastUpdated,
   Value<bool> isUserCaptureRoot,
+  Value<bool> isVisited,
   Value<int> rowid,
 });
 
@@ -11188,6 +11251,9 @@ class $$OrgUnitsTableTableFilterComposer
   ColumnFilters<bool> get isUserCaptureRoot => $composableBuilder(
       column: $table.isUserCaptureRoot,
       builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isVisited => $composableBuilder(
+      column: $table.isVisited, builder: (column) => ColumnFilters(column));
 }
 
 class $$OrgUnitsTableTableOrderingComposer
@@ -11232,6 +11298,9 @@ class $$OrgUnitsTableTableOrderingComposer
   ColumnOrderings<bool> get isUserCaptureRoot => $composableBuilder(
       column: $table.isUserCaptureRoot,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isVisited => $composableBuilder(
+      column: $table.isVisited, builder: (column) => ColumnOrderings(column));
 }
 
 class $$OrgUnitsTableTableAnnotationComposer
@@ -11275,6 +11344,9 @@ class $$OrgUnitsTableTableAnnotationComposer
 
   GeneratedColumn<bool> get isUserCaptureRoot => $composableBuilder(
       column: $table.isUserCaptureRoot, builder: (column) => column);
+
+  GeneratedColumn<bool> get isVisited =>
+      $composableBuilder(column: $table.isVisited, builder: (column) => column);
 }
 
 class $$OrgUnitsTableTableTableManager extends RootTableManager<
@@ -11311,6 +11383,7 @@ class $$OrgUnitsTableTableTableManager extends RootTableManager<
             Value<String?> closedDate = const Value.absent(),
             Value<DateTime?> lastUpdated = const Value.absent(),
             Value<bool> isUserCaptureRoot = const Value.absent(),
+            Value<bool> isVisited = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               OrgUnitsTableCompanion(
@@ -11325,6 +11398,7 @@ class $$OrgUnitsTableTableTableManager extends RootTableManager<
             closedDate: closedDate,
             lastUpdated: lastUpdated,
             isUserCaptureRoot: isUserCaptureRoot,
+            isVisited: isVisited,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -11339,6 +11413,7 @@ class $$OrgUnitsTableTableTableManager extends RootTableManager<
             Value<String?> closedDate = const Value.absent(),
             Value<DateTime?> lastUpdated = const Value.absent(),
             Value<bool> isUserCaptureRoot = const Value.absent(),
+            Value<bool> isVisited = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               OrgUnitsTableCompanion.insert(
@@ -11353,6 +11428,7 @@ class $$OrgUnitsTableTableTableManager extends RootTableManager<
             closedDate: closedDate,
             lastUpdated: lastUpdated,
             isUserCaptureRoot: isUserCaptureRoot,
+            isVisited: isVisited,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
