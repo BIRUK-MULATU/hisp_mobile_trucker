@@ -231,4 +231,9 @@ class OutlierVerdict {
   /// The newest actual values for this cell (newest-first) — shown to
   /// the user as "previous entries" next to the judged value.
   final List<HistoryEntry> recent;
+
+  /// [recent] as bare values, oldest-first — the order a person reads a
+  /// trend in ("34, 38, and 40"), the reverse of [recent]'s sort.
+  List<double> get previousValues =>
+      recent.map((e) => e.value).toList().reversed.toList();
 }

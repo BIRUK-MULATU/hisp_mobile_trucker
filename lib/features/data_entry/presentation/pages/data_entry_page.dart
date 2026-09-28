@@ -176,21 +176,16 @@ class _DataEntryViewState extends State<_DataEntryView> {
   bool _violationsExpanded = false;
   Timer? _validationDebounce;
 
-  // ── Live outlier check ───────────────────────────────────────
+  // ── Outlier check ────────────────────────────────────────────
   // A recent-history snapshot for this org unit (keyed per de_coc
   // cell), loaded once when the form opens (online; cached for
-  // offline). The check itself is local: as the user types, each
-  // modified numeric value is judged against its cell's history and a
-  // value outside the expected range pops a warning. Informative only
-  // — "Keep value" always lets it through, like validation rules.
+  // offline). The check itself is local: when Save is tapped, every
+  // modified numeric value is judged against the three previous
+  // periods of its own cell, and anything far outside what that cell
+  // normally reports asks the user to confirm. Warn, never block —
+  // "Save value" always lets it through, like validation rules.
   Map<String, OutlierStats> _outlierStats = const {};
   OutlierConfig _outlierConfig = OutlierConfig.defaults;
-  Timer? _outlierDebounce;
-  bool _outlierDialogOpen = false;
-
-  /// `<de>_<coc>_<value>` keys the user has already confirmed via
-  /// "Keep value" — so the same number never re-warns.
-  final Set<String> _acknowledgedOutliers = {};
 
   void _scheduleLiveValidation(DataEntryLoaded state) {
     _validationDebounce?.cancel();
@@ -229,34 +224,17 @@ class _DataEntryViewState extends State<_DataEntryView> {
                 attributeOptionComboUid: widget.attributeOptionComboUid,
                 currentPeriod: widget.period,
               );
-      if (!mounted) return;
-      setState(() => _outlierStats = stats);
-      // The snapshot may land after the user has already typed — judge
-      // what's on the form now rather than waiting for the next edit.
-      final state = context.read<DataEntryBloc>().state;
-      if (state is DataEntryLoaded) _scheduleOutlierCheck(state);
+      if (mounted) setState(() => _outlierStats = stats);
     } catch (_) {
       // Informative only — no history just means no check.
     }
   }
 
-  void _scheduleOutlierCheck(DataEntryLoaded state) {
-    _outlierDebounce?.cancel();
-    _outlierDebounce = Timer(
-        const Duration(milliseconds: 600), () => _checkOutliers(state));
-  }
-
-  /// Walk every user-edited numeric value, judge it against its cell's
-  /// history, and warn on the first not-yet-acknowledged outlier. One
-  /// dialog at a time; "Let me fix it" stops the walk so the user can
-  /// edit before the next change re-triggers it.
-  Future<void> _checkOutliers(DataEntryLoaded state) async {
-    if (!mounted ||
-        _outlierDialogOpen ||
-        _isPeriodClosed ||
-        _outlierStats.isEmpty) {
-      return;
-    }
+  /// Every value on this form the outlier check flags, in the order the
+  /// user filled them in. Cells with no history, or fewer than the
+  /// three previous periods the check needs, are silently left alone.
+  List<OutlierWarning> _collectOutlierWarnings(DataEntryLoaded state) {
+    if (_outlierStats.isEmpty || _isPeriodClosed) return const [];
 
     final elementName = {
       for (final e in state.dataElements) e.id: e.displayName,
@@ -266,44 +244,42 @@ class _DataEntryViewState extends State<_DataEntryView> {
         for (final c in e.categoryOptionCombos) '${e.id}_${c.id}': c.displayName,
     };
 
+    final warnings = <OutlierWarning>[];
     for (final v in state.dataValues.values) {
       if (!v.isModified) continue;
       final stats = _outlierStats[v.key];
       if (stats == null) continue;
-      final ackKey = '${v.key}_${v.value.trim()}';
-      if (_acknowledgedOutliers.contains(ackKey)) continue;
       final verdict =
           OutlierDetectionService.judge(v.value, stats, _outlierConfig);
       if (verdict == null) continue;
 
-      _outlierDialogOpen = true;
-      final kept = await showOutlierWarning(
-        context,
+      final element = elementName[v.dataElementId] ?? 'this field';
+      final combo = cocName[v.key] ?? '';
+      warnings.add(OutlierWarning(
         verdict: verdict,
-        elementName: elementName[v.dataElementId] ?? 'this field',
-        cocName: cocName[v.key] ?? '',
-      );
-      _outlierDialogOpen = false;
-      if (!mounted) return;
-      if (kept) {
-        _acknowledgedOutliers.add(ackKey);
-      } else {
-        return; // user wants to edit — next change re-checks
-      }
+        label: combo.isEmpty || combo == 'default'
+            ? element
+            : '$element · $combo',
+      ));
     }
+    return warnings;
+  }
+
+  /// Ask the user to confirm any flagged values before they are saved.
+  /// Returns true to carry on with the save, false to send the user
+  /// back to the form to correct the value.
+  Future<bool> _confirmOutliersBeforeSave(DataEntryLoaded state) async {
+    final warnings = _collectOutlierWarnings(state);
+    if (warnings.isEmpty) return true;
+    if (!mounted) return false;
+    return showOutlierWarning(context, warnings: warnings);
   }
 
   Future<void> _openOutlierSettings() async {
     final updated = await showOutlierSettings(context, current: _outlierConfig);
     if (updated == null || !mounted) return;
-    final state = context.read<DataEntryBloc>().state;
     await OutlierConfigStore.save(updated);
-    if (!mounted) return;
-    setState(() {
-      _outlierConfig = updated;
-      _acknowledgedOutliers.clear();
-    });
-    if (state is DataEntryLoaded) _scheduleOutlierCheck(state);
+    if (mounted) setState(() => _outlierConfig = updated);
   }
 
   Widget _buildValidationBanner() {
@@ -431,7 +407,6 @@ class _DataEntryViewState extends State<_DataEntryView> {
   @override
   void dispose() {
     _validationDebounce?.cancel();
-    _outlierDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -756,6 +731,16 @@ class _DataEntryViewState extends State<_DataEntryView> {
       );
       return;
     }
+
+    // Outlier gate: values far outside what their cell normally reports
+    // are confirmed before they go anywhere, not after. Cancel sends
+    // the user back with the form untouched so they can correct it.
+    final current = bloc.state;
+    if (current is DataEntryLoaded &&
+        !await _confirmOutliersBeforeSave(current)) {
+      return;
+    }
+    if (!mounted) return;
 
     setState(() => _isSaving = true);
 
@@ -1370,7 +1355,6 @@ class _DataEntryViewState extends State<_DataEntryView> {
         listener: (context, state) {
           if (state is DataEntryLoaded) {
             _scheduleLiveValidation(state);
-            _scheduleOutlierCheck(state);
           }
         },
         child: Column(

@@ -1,45 +1,45 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
-import '../../../../core/data/ethiopian_period_service.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../domain/entities/outlier_stats.dart';
 
-/// Popup shown right after the user types a value that fails the live
-/// outlier check. Informative only — "Keep value" always lets them
-/// through, matching the warn-never-block contract of validation rules.
+/// One flagged value waiting for the user's confirmation, as collected
+/// by the save-time check: which cell it belongs to, and the verdict.
+class OutlierWarning {
+  const OutlierWarning({required this.label, required this.verdict});
+
+  /// "Malaria cases · Under 5 years" — the cell's identity in the form.
+  final String label;
+  final OutlierVerdict verdict;
+}
+
+/// Popup shown when Save is tapped on a form holding values the outlier
+/// check flags as far outside what this cell normally reports.
 ///
-/// Returns true when the user chose to keep the value as typed, false
-/// (or null, treated as false) when they want to go back and fix it.
+/// Warn, never block: "Save anyway" always lets the values through,
+/// matching the contract validation rules already follow. Returns true
+/// when the user chose to save, false (or null, treated as false) when
+/// they want to go back and correct the value.
 Future<bool> showOutlierWarning(
   BuildContext context, {
-  required OutlierVerdict verdict,
-  required String elementName,
-  required String cocName,
+  required List<OutlierWarning> warnings,
 }) async {
   final kept = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => _OutlierWarningDialog(
-      verdict: verdict,
-      elementName: elementName,
-      cocName: cocName,
-    ),
+    builder: (context) => _OutlierWarningDialog(warnings: warnings),
   );
   return kept ?? false;
 }
 
 class _OutlierWarningDialog extends StatelessWidget {
-  const _OutlierWarningDialog({
-    required this.verdict,
-    required this.elementName,
-    required this.cocName,
-  });
+  const _OutlierWarningDialog({required this.warnings});
 
-  final OutlierVerdict verdict;
-  final String elementName;
-  final String cocName;
+  final List<OutlierWarning> warnings;
 
   static String _num(double v) {
     if (!v.isFinite) return '—';
@@ -47,104 +47,117 @@ class _OutlierWarningDialog extends StatelessWidget {
     return v.toStringAsFixed(v.abs() < 10 ? 2 : 1);
   }
 
-  /// Marker showing whether the entered value sits ABOVE, BELOW, or on
-  /// this previous entry — the dialog's direct answer to "is it larger
-  /// or smaller than last time?".
-  static (IconData, Color) _marker(double current, double previous) {
-    if (current > previous) {
-      return (Icons.arrow_upward_rounded, AppColors.warning);
-    }
-    if (current < previous) {
-      return (Icons.arrow_downward_rounded, AppColors.warning);
-    }
-    return (Icons.remove_rounded, AppColors.textSecondary);
+  /// "34, 38, and 40" — Oxford-comma list, so a sentence with numbers
+  /// in it reads the way a person would say it.
+  static String _list(Iterable<String> parts) {
+    final p = parts.toList();
+    if (p.length <= 1) return p.join('');
+    if (p.length == 2) return '${p[0]} and ${p[1]}';
+    return '${p.sublist(0, p.length - 1).join(', ')}, and ${p.last}';
   }
 
-  // The newest actual values for this cell, newest-first, with a
-  // period label and a larger/smaller marker vs the judged value.
-  Widget _recentList() {
-    final recent = verdict.recent;
-    if (recent.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Divider(height: AppDimensions.spaceMD,
-            color: AppColors.divider),
-        const SizedBox(height: AppDimensions.spaceXS),
-        Text(
-          'Previous entries',
-          style: AppTextStyles.labelSmall.copyWith(
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w700,
+  /// "higher" / "lower" / "outside" — where the typed value sits
+  /// against the previous values the dialog quotes.
+  static String _direction(OutlierVerdict v) {
+    final prev = v.previousValues;
+    if (prev.isEmpty) return 'outside';
+    if (v.value > prev.reduce(math.max)) return 'significantly higher than';
+    if (v.value < prev.reduce(math.min)) return 'significantly lower than';
+    return 'outside the usual range of';
+  }
+
+  /// "month" / "months" for the number of previous periods quoted.
+  static String _periods(int n) => n == 1 ? 'month' : 'months';
+
+  /// The headline sentence for one value — the whole reason the dialog
+  /// is on screen, so it states the comparison in full rather than
+  /// deferring to numbers in a table.
+  Widget _oneSentence(OutlierWarning w) {
+    final v = w.verdict;
+    final previous = _list(v.previousValues.map(_num));
+    final span = 'the previous ${v.recent.length} '
+        '${_periods(v.recent.length)}';
+    return Text.rich(
+      TextSpan(
+        style: AppTextStyles.bodyMedium,
+        children: [
+          const TextSpan(text: 'The values for '),
+          TextSpan(text: '$span were '),
+          TextSpan(
+            text: previous,
+            style: AppTextStyles.bodyMedium
+                .copyWith(fontWeight: FontWeight.w700),
           ),
-        ),
-        const SizedBox(height: AppDimensions.spaceXS),
-        for (final entry in recent)
-          Padding(
-            padding: const EdgeInsets.symmetric(
-                vertical: AppDimensions.spaceXXS),
-            child: Row(
+          const TextSpan(text: ', but you entered '),
+          TextSpan(
+            text: _num(v.value),
+            style: AppTextStyles.bodyMedium
+                .copyWith(fontWeight: FontWeight.w700),
+          ),
+          const TextSpan(text: ' for this month. This value appears to be '),
+          TextSpan(
+            text: _direction(v),
+            style: AppTextStyles.bodyMedium
+                .copyWith(fontWeight: FontWeight.w700),
+          ),
+          TextSpan(text: ' $span.'),
+        ],
+      ),
+    );
+  }
+
+  /// One row of the multi-value form: which cell, its previous values,
+  /// and what was typed instead.
+  Widget _oneRow(OutlierWarning w) {
+    final v = w.verdict;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: AppDimensions.spaceSM),
+      padding: const EdgeInsets.all(AppDimensions.spaceMD),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundGrey,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            w.label,
+            style: AppTextStyles.bodyMedium
+                .copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: AppDimensions.spaceXS),
+          Text.rich(
+            TextSpan(
+              style: AppTextStyles.labelMedium
+                  .copyWith(color: AppColors.textSecondary),
               children: [
-                SizedBox(
-                  width: 96,
-                  child: Text(
-                    EthiopianPeriodService.formatPeriodId(entry.periodId),
-                    style: AppTextStyles.labelSmall
-                        .copyWith(color: AppColors.textSecondary),
+                TextSpan(text: 'Last ${v.recent.length}: '),
+                TextSpan(
+                  text: v.previousValues.map(_num).join(' · '),
+                  style: AppTextStyles.labelMedium.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(
-                      style: AppTextStyles.bodyMedium
-                          .copyWith(fontWeight: FontWeight.w600),
-                      children: [
-                        TextSpan(text: _num(entry.value)),
-                        TextSpan(
-                          text: verdict.value == entry.value
-                              ? '  (same as yours)'
-                              : '',
-                          style: AppTextStyles.labelSmall.copyWith(
-                            color: AppColors.textSecondary,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                const TextSpan(text: '   →   you entered '),
+                TextSpan(
+                  text: _num(v.value),
+                  style: AppTextStyles.labelMedium
+                      .copyWith(fontWeight: FontWeight.w700),
                 ),
-                Icon(
-                  _marker(verdict.value, entry.value).$1,
-                  size: AppDimensions.iconSM,
-                  color: _marker(verdict.value, entry.value).$2,
-                ),
-                const SizedBox(width: AppDimensions.spaceXS),
-                SizedBox(
-                  width: 44,
-                  child: Text(
-                    verdict.value > entry.value
-                        ? 'higher'
-                        : verdict.value < entry.value
-                            ? 'lower'
-                            : '—',
-                    style: AppTextStyles.labelSmall.copyWith(
-                      color: _marker(verdict.value, entry.value).$2,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
+                TextSpan(text: ' (${_direction(v)})'),
               ],
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final field = cocName.isEmpty || cocName == 'default'
-        ? elementName
-        : '$elementName · $cocName';
+    final single = warnings.length == 1;
     return AlertDialog(
       backgroundColor: Colors.white,
       shape: RoundedRectangleBorder(
@@ -160,90 +173,49 @@ class _OutlierWarningDialog extends StatelessWidget {
           ),
           SizedBox(width: AppDimensions.spaceSM),
           Expanded(
-            child: Text('Possible outlier', style: AppTextStyles.headingSmall),
+            child: Text('Are you sure?', style: AppTextStyles.headingSmall),
           ),
         ],
       ),
-      content: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text.rich(
-            TextSpan(
-              style: AppTextStyles.bodyMedium,
-              children: [
-                const TextSpan(text: 'You entered '),
-                TextSpan(
-                  text: _num(verdict.value),
-                  style: AppTextStyles.bodyMedium
-                      .copyWith(fontWeight: FontWeight.w700),
-                ),
-                TextSpan(text: ' for $field.'),
-              ],
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (single)
+              _oneSentence(warnings.first)
+            else ...[
+              Text(
+                '${warnings.length} values look very different from what '
+                'these cells normally report. Check each one before saving.',
+                style: AppTextStyles.bodyMedium,
+              ),
+              const SizedBox(height: AppDimensions.spaceMD),
+              for (final w in warnings) _oneRow(w),
+            ],
+            const SizedBox(height: AppDimensions.spaceMD),
+            Text(
+              single
+                  ? 'If the figure is genuinely this high or low, save it '
+                      'as it is.'
+                  : 'Save them as they are if they are correct.',
+              style: AppTextStyles.labelMedium
+                  .copyWith(color: AppColors.textSecondary),
             ),
-          ),
-          const SizedBox(height: AppDimensions.spaceMD),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(AppDimensions.spaceMD),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundGrey,
-              borderRadius: BorderRadius.circular(AppDimensions.radiusMD),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _row('Recent range',
-                    '${_num(verdict.historicalMin)} – ${_num(verdict.historicalMax)}'),
-                _row('Typical', '≈ ${_num(verdict.typical)}'),
-                _row('Expected',
-                    '${_num(verdict.lowerBound)} – ${_num(verdict.upperBound)}'),
-                _row('Based on', '${verdict.n} recent periods'),
-              ],
-            ),
-          ),
-          const SizedBox(height: AppDimensions.spaceMD),
-          _recentList(),
-          const SizedBox(height: AppDimensions.spaceMD),
-          Text(
-            'Double-check the figure. If it is genuinely this high or low, '
-            'keep it and carry on.',
-            style: AppTextStyles.labelMedium
-                .copyWith(color: AppColors.textSecondary),
-          ),
-        ],
+          ],
+        ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('Let me fix it'),
+          child: Text(single ? 'Go back and correct' : 'Go back'),
         ),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
           style: TextButton.styleFrom(foregroundColor: AppColors.warning),
-          child: const Text('Keep value'),
+          child: Text(single ? 'Save value' : 'Save anyway'),
         ),
       ],
     );
   }
-
-  Widget _row(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppDimensions.spaceXS),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 96,
-              child: Text(label,
-                  style: AppTextStyles.labelMedium
-                      .copyWith(color: AppColors.textSecondary)),
-            ),
-            Expanded(
-              child: Text(value,
-                  style: AppTextStyles.bodyMedium
-                      .copyWith(fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ),
-      );
 }
