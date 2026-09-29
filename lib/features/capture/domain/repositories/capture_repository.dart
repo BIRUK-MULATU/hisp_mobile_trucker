@@ -5,6 +5,14 @@ import '../entities/org_unit_tree_node.dart';
 import '../entities/report_instance_entity.dart';
 
 abstract class CaptureRepository {
+  /// The org units assigned to the logged-in user — the roots the
+  /// capture tree hangs off. Read from the per-user database, which is
+  /// the only assignment source that survives an offline login (the
+  /// SecureStorage copy is written by an online /me call alone, and is
+  /// wiped on logout, so reading it directly left the tree empty
+  /// offline).
+  Future<List<OrgUnitTreeNode>> getCaptureRoots();
+
   /// One level of children of [parentId] — the tree is loaded
   /// lazily per expand, never as a whole.
   Future<List<OrgUnitTreeNode>> getOrgUnitChildren(String parentId);

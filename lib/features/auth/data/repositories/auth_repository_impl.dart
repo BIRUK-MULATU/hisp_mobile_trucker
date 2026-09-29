@@ -82,8 +82,16 @@ class AuthRepositoryImpl implements AuthRepository {
         _attachSyncApi(serverUrl, username, password);
         final user = await _userFromDatabase(username);
         // Persist so legacy screens reading SecureStorage keep working.
+        // The org units have to be rewritten too, not just the user:
+        // clearSession() drops that key on logout, and only an ONLINE
+        // login ever put it back, so skipping it here left Settings (and
+        // anything else reading it) blank until the next online login.
         await _secureStorage.saveUserData(user.toJson());
         await _secureStorage.saveUsername(username);
+        await _secureStorage.saveOrgUnits([
+          for (final ou in user.organisationUnits)
+            (ou as OrgUnitModel).toJson(),
+        ]);
         AppSession.instance.sessionChanged();
         return user;
 

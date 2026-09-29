@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../../core/storage/secure_storage.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_dimensions.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -30,7 +29,7 @@ class OrgUnitFilterPage extends StatefulWidget {
 }
 
 class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
-  final _secureStorage = SecureStorage();
+  final _repository = CaptureRepositoryImpl();
   late final Future<List<OrgUnitTreeNode>> Function(String parentId)
       _fetchChildren;
 
@@ -43,7 +42,7 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
   @override
   void initState() {
     super.initState();
-    final defaultUseCase = GetOrgUnitChildrenUseCase(CaptureRepositoryImpl());
+    final defaultUseCase = GetOrgUnitChildrenUseCase(_repository);
     _fetchChildren = widget.fetchChildren ??
         (parentId) => defaultUseCase.call(parentId: parentId);
     _loadRoots();
@@ -55,24 +54,11 @@ class _OrgUnitFilterPageState extends State<OrgUnitFilterPage> {
       _error = null;
     });
     try {
-      final orgUnits = await _secureStorage.getOrgUnits();
       final roots = <OrgUnitTreeNode>[];
-      for (final orgUnit in orgUnits) {
-        final id = orgUnit['id'] as String? ?? '';
-        if (id.isEmpty) continue;
-        final root = OrgUnitTreeNode(
-          id: id,
-          name: orgUnit['displayName'] as String? ??
-              orgUnit['name'] as String? ??
-              '',
-          level: orgUnit['level'] as int? ?? 1,
-          path: orgUnit['path'] as String?,
-          isAssigned: true,
-          isExpanded: true,
-        );
+      for (final root in await _repository.getCaptureRoots()) {
         // The stored assignment has no child count — resolve the
         // first level now so the root renders correctly expanded.
-        root.children.addAll(await _fetchChildren(id));
+        root.children.addAll(await _fetchChildren(root.id));
         root.childrenLoaded = true;
         roots.add(root);
       }

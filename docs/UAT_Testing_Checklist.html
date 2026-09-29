@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RDHIS2 Mobile Tracker — UAT Testing Checklist</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif;
+         color: #1c2333; font-size: 9.5px; line-height: 1.35; margin: 0; }
+  h1, h2, h3 { color: #14284b; margin: 0; }
+  .cover { border: 2px solid #14284b; border-radius: 6px; padding: 22px 26px;
+            margin-bottom: 16px; background: #f5f8fd; }
+  .cover .kicker { letter-spacing: 2px; font-size: 9px; color: #285a9e; font-weight: bold;
+                    text-transform: uppercase; }
+  .cover h1 { font-size: 24px; margin: 6px 0 2px; }
+  .cover .sub { font-size: 12px; color: #285a9e; font-weight: bold; }
+  .cover .meta { margin-top: 14px; font-size: 9.5px; color: #333; }
+  .cover .meta b { color: #14284b; }
+  .infogrid { width: 100%; border-collapse: collapse; margin-top: 14px; }
+  .infogrid td { border: 1px solid #c3d0e4; padding: 7px 9px; font-size: 9.5px;
+                  background: #fff; width: 50%; }
+  .infogrid .lbl { color: #285a9e; font-weight: bold; font-size: 8.5px; display: block;
+                    text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+  .summary { background: #fff; border: 1px solid #c3d0e4; border-left: 5px solid #285a9e;
+              padding: 12px 16px; margin-bottom: 16px; }
+  .summary p { margin: 0 0 6px; }
+  .summary ul { margin: 4px 0 0 18px; padding: 0; }
+  .summary li { margin-bottom: 3px; }
+  .toc { background: #fff; border: 1px solid #c3d0e4; padding: 12px 16px; margin-bottom: 16px; }
+  .toc h3 { font-size: 12px; margin-bottom: 6px; }
+  .toc ul { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 26px; }
+  .toc li { padding: 2px 0; border-bottom: 1px dotted #d5ddea; }
+  .toc-code { display: inline-block; width: 16px; color: #285a9e; font-weight: bold; }
+  .toc-count { float: right; color: #777; }
+  .sec { page-break-inside: auto; margin-bottom: 14px; }
+  h2 { font-size: 13px; border-bottom: 2px solid #14284b; padding-bottom: 4px;
+        margin: 14px 0 4px; page-break-after: avoid; }
+  .secnum { display: inline-block; background: #14284b; color: #fff; border-radius: 4px;
+             padding: 1px 7px; margin-right: 6px; font-size: 11px; }
+  .blurb { color: #555; font-style: italic; margin: 0 0 6px; font-size: 9px; }
+  table.cases { width: 100%; border-collapse: collapse; }
+  table.cases th { background: #14284b; color: #fff; text-align: left; font-size: 8.5px;
+                    padding: 4px 5px; border: 1px solid #14284b; }
+  table.cases td { border: 1px solid #c3d0e4; padding: 4px 5px; vertical-align: top; }
+  table.cases tr { page-break-inside: avoid; }
+  table.cases tbody tr:nth-child(even) td { background: #f7f9fc; }
+  td.id, th.id { width: 7%; font-weight: bold; color: #285a9e; white-space: nowrap; }
+  th.title, td.title { width: 31%; }
+  th.expect, td.expect { width: 30%; }
+  th.result, td.result { width: 13%; }
+  th.notes, td.notes { width: 19%; }
+  .tname { font-weight: bold; color: #1c2333; }
+  .steps { color: #556; font-size: 8.5px; }
+  .expect { color: #21402a; }
+  .box { display: inline-block; width: 9px; height: 9px; border: 1.4px solid #14284b;
+          border-radius: 2px; vertical-align: -1px; }
+  .signoff { page-break-inside: avoid; border: 1px solid #c3d0e4; padding: 12px 16px;
+              margin-top: 8px; }
+  .signoff h3 { font-size: 12px; margin-bottom: 8px; }
+  .defects { width: 100%; border-collapse: collapse; margin: 8px 0 14px; }
+  .defects th { background: #14284b; color: #fff; font-size: 8.5px; padding: 4px; border: 1px solid #14284b; }
+  .defects td { border: 1px solid #c3d0e4; padding: 9px 4px; }
+  .sigrow { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .sigrow td { padding: 20px 8px 4px; border-bottom: 1px solid #8fa4c4; font-size: 9px; color: #555; }
+  .footer-note { margin-top: 12px; font-size: 8px; color: #888; text-align: center; }
+  .legend span { display: inline-block; margin-right: 14px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="kicker">User Acceptance Testing</div>
+  <h1>RDHIS2 Mobile Tracker</h1>
+  <div class="sub">UAT Test Checklist &mdash; Version 1.0.0</div>
+  <div class="meta">Prepared for the Ministry of Health / HISP Ethiopia UAT session &middot; 29 September 2026</div>
+  <table class="infogrid">
+    <tr>
+      <td><span class="lbl">Tester name</span>&nbsp;</td>
+      <td><span class="lbl">Test date</span>&nbsp;</td>
+    </tr>
+    <tr>
+      <td><span class="lbl">Device / OS</span>&nbsp;</td>
+      <td><span class="lbl">Build / APK version</span>&nbsp;</td>
+    </tr>
+    <tr>
+      <td><span class="lbl">DHIS2 server URL</span>&nbsp;</td>
+      <td><span class="lbl">Test account / org unit</span>&nbsp;</td>
+    </tr>
+    <tr>
+      <td><span class="lbl">Network conditions tested</span>&nbsp;</td>
+      <td><span class="lbl">Total test cases (155)</span>&nbsp;</td>
+    </tr>
+  </table>
+</div>
+
+<div class="summary">
+  <p><b>Purpose.</b> This checklist walks a tester through every user-facing feature of the
+  RDHIS2 Mobile Tracker. Each row is a single test case with the steps to perform and the expected
+  result. Mark <b>Pass</b> or <b>Fail</b>, and record the actual behaviour, screenshots or
+  defect IDs in the Notes column.</p>
+  <p><b>How to use it.</b></p>
+  <ul>
+    <li>Work top to bottom within each section; sections are independent, so you may split them across testers.</li>
+    <li>A case passes only when the observed result matches the expected result in full.</li>
+    <li>For any fail, capture a screenshot, note the exact on-screen text and log a defect ID.</li>
+    <li>Re-test offline-first behaviour explicitly (airplane mode) &mdash; it is central to this app.</li>
+    <li>Use a <b>staging/test</b> DHIS2 server and non-production accounts. Do not enter real patient data.</li>
+  </ul>
+  <p class="legend" style="margin-top:6px;"><b>Legend:</b>
+    <span><span class="box"></span> Pass</span>
+    <span><span class="box"></span> Fail</span>
+    <span>N/A &mdash; note why in Notes</span>
+  </p>
+</div>
+
+<div class="toc">
+  <h3>Contents</h3>
+  <ul><li><span class='toc-code'>A</span> Onboarding &amp; First-Run Experience <span class='toc-count'>9</span></li>
+<li><span class='toc-code'>B</span> Authentication &amp; Session <span class='toc-count'>13</span></li>
+<li><span class='toc-code'>C</span> Home Shell &amp; Navigation <span class='toc-count'>12</span></li>
+<li><span class='toc-code'>D</span> Capture Workflow (Org Unit -&gt; Dataset -&gt; Section -&gt; Period) <span class='toc-count'>13</span></li>
+<li><span class='toc-code'>E</span> Reports Overview &amp; To-do Band <span class='toc-count'>10</span></li>
+<li><span class='toc-code'>F</span> Data Entry Form <span class='toc-count'>21</span></li>
+<li><span class='toc-code'>G</span> Data Quality &amp; Validation <span class='toc-count'>14</span></li>
+<li><span class='toc-code'>H</span> Offline-First &amp; Synchronization <span class='toc-count'>17</span></li>
+<li><span class='toc-code'>I</span> Visualization &amp; Dashboards <span class='toc-count'>15</span></li>
+<li><span class='toc-code'>J</span> Export (PDF &amp; Excel) <span class='toc-count'>5</span></li>
+<li><span class='toc-code'>K</span> Notifications &amp; Deadline Reminders <span class='toc-count'>6</span></li>
+<li><span class='toc-code'>L</span> Settings <span class='toc-count'>4</span></li>
+<li><span class='toc-code'>M</span> Edge Cases &amp; Error Handling <span class='toc-count'>9</span></li>
+<li><span class='toc-code'>N</span> Non-Functional Checks <span class='toc-count'>7</span></li></ul>
+</div>
+
+<section class="sec">
+<h2><span class="secnum">A</span> Onboarding &amp; First-Run Experience</h2>
+<p class="blurb">Fresh-install behaviour, the welcome carousel, spotlight app tours and the one-time battery-optimisation prompt.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">ONB-01</td>
+  <td class="title"><span class="tname">First-launch carousel</span><br><span class="steps">Fresh install. Open the app for the very first time.</span></td>
+  <td class="expect">Four slides appear in order: &#x27;Welcome to RDHIS2 Mobile App&#x27;, &#x27;Capture data anywhere&#x27;, &quot;Syncs when you&#x27;re connected&quot;, &#x27;Build and view charts&#x27;. Each has an illustration, title and body text.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">ONB-02</td>
+  <td class="title"><span class="tname">Carousel navigation</span><br><span class="steps">Tap &#x27;Next&#x27; through the slides; on the last slide read the button.</span></td>
+  <td class="expect">Button reads &#x27;Next&#x27; on slides 1-3 and changes to &#x27;Get Started&#x27; on the last. &#x27;Skip&#x27; is visible on slides 1-3 and hidden on the last.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">ONB-03</td>
+  <td class="title"><span class="tname">Skip onboarding</span><br><span class="steps">On slide 1 tap &#x27;Skip&#x27;.</span></td>
+  <td class="expect">Carousel closes and the Login screen is shown. Relaunching the app does not show the carousel again.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">ONB-04</td>
+  <td class="title"><span class="tname">Complete onboarding</span><br><span class="steps">On the last slide tap &#x27;Get Started&#x27;.</span></td>
+  <td class="expect">Carousel closes and the Login screen is shown.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">ONB-05</td>
+  <td class="title"><span class="tname">Home spotlight tour</span><br><span class="steps">Log in and land on Home for the first time.</span></td>
+  <td class="expect">A spotlight tour highlights the menu, search, sync button and the Visualization/Capture toggle (&#x27;Switch modes&#x27;). It can be stepped through.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">ONB-06</td>
+  <td class="title"><span class="tname">Per-screen tours</span><br><span class="steps">Visit a routine form, a disease-registration form and the Visualization tab.</span></td>
+  <td class="expect">Each screen shows its own one-time spotlight tour (routine entry, disease entry, dashboards/builder). They do not repeat on later visits.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">ONB-07</td>
+  <td class="title"><span class="tname">Replay the app tour</span><br><span class="steps">Open the drawer and tap &#x27;App Tour&#x27;; return to Home, then revisit the other screens.</span></td>
+  <td class="expect">Home&#x27;s tour replays immediately; the other screens replay on their next visit.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">ONB-08</td>
+  <td class="title"><span class="tname">Battery-optimisation prompt</span><br><span class="steps">Log in on an Android device the first time.</span></td>
+  <td class="expect">Dialog &#x27;Keep offline sync reliable&#x27; appears with &#x27;Not now&#x27; / &#x27;Allow&#x27;. Choosing either dismisses it and it is never shown again.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">ONB-09</td>
+  <td class="title"><span class="tname">Prompt fail-open</span><br><span class="steps">Dismiss the battery prompt and continue working offline.</span></td>
+  <td class="expect">No repeated nagging; the app continues to function if the prompt errors.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">B</span> Authentication &amp; Session</h2>
+<p class="blurb">Online and offline login, credential validation, server switching, session expiry and logout.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">AUTH-01</td>
+  <td class="title"><span class="tname">Online login with valid credentials</span><br><span class="steps">On Wi-Fi/data, enter a valid username and password, tap &#x27;Log in&#x27;.</span></td>
+  <td class="expect">Login succeeds and Home opens. On the very first login a &#x27;Downloading data&#x27; overlay appears while metadata is pulled for offline use.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-02</td>
+  <td class="title"><span class="tname">Invalid credentials</span><br><span class="steps">Enter a wrong username or password while online and submit.</span></td>
+  <td class="expect">Login is refused with a clear message such as &#x27;Invalid server URL or credentials.&#x27; The user stays on the login screen.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-03</td>
+  <td class="title"><span class="tname">Empty-field validation</span><br><span class="steps">Leave username and/or password blank and submit.</span></td>
+  <td class="expect">&#x27;Please enter your username&#x27; and/or &#x27;Please enter your password&#x27; is shown.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-04</td>
+  <td class="title"><span class="tname">Short-password validation</span><br><span class="steps">Enter a password shorter than the minimum and submit.</span></td>
+  <td class="expect">&#x27;Password is too short&#x27; is shown; no login attempt is made.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-05</td>
+  <td class="title"><span class="tname">Offline login (previously used account)</span><br><span class="steps">Log in online once, log out, enable airplane mode, log in with the same credentials.</span></td>
+  <td class="expect">Login succeeds offline using the locally stored verifier. No network error is shown.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-06</td>
+  <td class="title"><span class="tname">Offline login (never-used account)</span><br><span class="steps">On a fresh device in airplane mode, try an account never logged in before.</span></td>
+  <td class="expect">Login fails with a clear message; the app does not hang.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-07</td>
+  <td class="title"><span class="tname">Change DHIS2 server URL</span><br><span class="steps">Tap the server icon on the login screen; open &#x27;DHIS2 Server&#x27;.</span></td>
+  <td class="expect">Dialog shows the hint &#x27;https://server/api&#x27;. An invalid address shows &#x27;Enter a valid server address&#x27;. A valid address save shows &#x27;Server set to &lt;url&gt;&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-08</td>
+  <td class="title"><span class="tname">Session expiry / 401</span><br><span class="steps">Invalidate the session server-side (or wait for expiry), then use the app.</span></td>
+  <td class="expect">The user is returned to login with &#x27;Your session has ended. Please log in again.&#x27;</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-09</td>
+  <td class="title"><span class="tname">Logout from drawer</span><br><span class="steps">Drawer -&gt; &#x27;Log Out&#x27;.</span></td>
+  <td class="expect">App returns to the Login screen.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-10</td>
+  <td class="title"><span class="tname">Logout from Settings (confirmation)</span><br><span class="steps">Settings -&gt; &#x27;Log out&#x27;.</span></td>
+  <td class="expect">Confirm dialog &#x27;Log out?&#x27; with text &#x27;You will need to log in again. Data not yet synced stays on this device.&#x27;, plus &#x27;Cancel&#x27; / &#x27;Log out&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-11</td>
+  <td class="title"><span class="tname">Re-login preserves local data</span><br><span class="steps">With draft/unsynced values on the device, log out and log back in as the same user.</span></td>
+  <td class="expect">The drafts and unsynced values are still present; the same local database is reused.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-12</td>
+  <td class="title"><span class="tname">Login pushes queued work</span><br><span class="steps">Create offline pending data, then log out and log in while online.</span></td>
+  <td class="expect">Queued values are pushed automatically as part of login.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">AUTH-13</td>
+  <td class="title"><span class="tname">Per-user data isolation</span><br><span class="steps">Log in as user A, enter data, log out, log in as user B.</span></td>
+  <td class="expect">User B cannot see user A&#x27;s drafts or data; each user has a separate database.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">C</span> Home Shell &amp; Navigation</h2>
+<p class="blurb">The mode toggle, mode-aware search, app-bar actions, filters, drawer and connectivity indicator.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">HOME-01</td>
+  <td class="title"><span class="tname">Default mode</span><br><span class="steps">Open Home after login.</span></td>
+  <td class="expect">Visualization mode is selected by default.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-02</td>
+  <td class="title"><span class="tname">Mode toggle</span><br><span class="steps">Tap between &#x27;Visualization&#x27; and &#x27;Capture&#x27;.</span></td>
+  <td class="expect">The content area swaps between dashboards and the organisation-unit tree.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-03</td>
+  <td class="title"><span class="tname">Mode-aware search hint</span><br><span class="steps">Open search in each mode.</span></td>
+  <td class="expect">Capture mode hint: &#x27;Search reports...&#x27;. Visualization mode hint: &#x27;Search dashboards or charts...&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-04</td>
+  <td class="title"><span class="tname">Drawer items</span><br><span class="steps">Open the drawer.</span></td>
+  <td class="expect">Items present: Home, Setting, App Tour, Log Out, About. Each opens the expected destination.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-05</td>
+  <td class="title"><span class="tname">About dialog</span><br><span class="steps">Drawer -&gt; &#x27;About&#x27;.</span></td>
+  <td class="expect">Shows app name and &#x27;Version 1.0.0&#x27; plus description; &#x27;Close&#x27; dismisses it.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-06</td>
+  <td class="title"><span class="tname">Connectivity indicator</span><br><span class="steps">Toggle airplane mode on/off while on Home.</span></td>
+  <td class="expect">Indicator shows &#x27;Online&#x27; / &#x27;Offline&#x27; with tooltips &#x27;Connected to the server&#x27; / &#x27;No server connection — changes are saved on this device&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-07</td>
+  <td class="title"><span class="tname">Sync button states</span><br><span class="steps">Observe the sync button before/during/after a sync.</span></td>
+  <td class="expect">Tooltips read &#x27;Sync&#x27; / &#x27;Syncing&#x27; / &#x27;Sync all&#x27;; a result snackbar is shown when done.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-08</td>
+  <td class="title"><span class="tname">Filter panel rows</span><br><span class="steps">Switch to Capture and open filters.</span></td>
+  <td class="expect">Rows labelled DATE, ORG. UNIT, SYNC. Idle summary reads &#x27;No filters applied&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-09</td>
+  <td class="title"><span class="tname">Date filter options</span><br><span class="steps">Open the DATE filter.</span></td>
+  <td class="expect">Options include Today, Yesterday, Tomorrow, This/Last/Next Week, This/Last/Next month, From -To, Other, Any time. A custom range shows as dd/MM/yyyy.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-10</td>
+  <td class="title"><span class="tname">Sync-state filter options</span><br><span class="steps">Open the SYNC filter.</span></td>
+  <td class="expect">Options are &#x27;Synced&#x27;, &#x27;UnSynced&#x27;, &#x27;Sync Error&#x27;. Selecting one filters the report list.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-11</td>
+  <td class="title"><span class="tname">Organisation-unit filter</span><br><span class="steps">Open ORG. UNIT; search and use &#x27;Choose from organisation unit tree&#x27;.</span></td>
+  <td class="expect">Search filters the list; the full-page tree allows selection; &#x27;Apply Filter&#x27; applies and a clear control removes it.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">HOME-12</td>
+  <td class="title"><span class="tname">Sync refreshes capture tree</span><br><span class="steps">In Capture with unsynced chips shown, tap Sync.</span></td>
+  <td class="expect">On completion the tree/chips refresh to reflect the just-completed push.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">D</span> Capture Workflow (Org Unit -&gt; Dataset -&gt; Section -&gt; Period)</h2>
+<p class="blurb">The offline capture navigation: lazily loaded org-unit tree, dataset selection, sections, the Ethiopian-calendar period picker and disease-registration combos.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">CAP-01</td>
+  <td class="title"><span class="tname">Org-unit tree lazy loading</span><br><span class="steps">Open Capture; expand nodes one level at a time.</span></td>
+  <td class="expect">Only one level loads per expand (&#x27;Loading organisation units...&#x27; while fetching). The full ~38,000-unit tree is never loaded at once and the UI stays responsive.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-02</td>
+  <td class="title"><span class="tname">Org-unit search &amp; empty states</span><br><span class="steps">Search for an org unit; also test a query with no matches.</span></td>
+  <td class="expect">Matching units are listed; a no-match query shows &#x27;No results for &quot;&lt;query&gt;&quot;&#x27;. Header reads &#x27;Select an organisation unit to capture data for&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-03</td>
+  <td class="title"><span class="tname">Select an organisation unit</span><br><span class="steps">Tap an org unit leaf.</span></td>
+  <td class="expect">Header shows &#x27;Selected: &lt;name&gt;&#x27; and &#x27;Continue&#x27; is enabled to proceed.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-04</td>
+  <td class="title"><span class="tname">Dataset list</span><br><span class="steps">Open &#x27;Select Dataset&#x27; for an org unit.</span></td>
+  <td class="expect">Datasets assigned to the org unit are listed, each searchable, with a Synced/Unsynced chip. Empty state: &#x27;No datasets available&#x27; or the &#x27;No datasets are assigned to &lt;orgUnit&gt;&#x27; message.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-05</td>
+  <td class="title"><span class="tname">Load-failure state</span><br><span class="steps">Open the dataset list with the local DB empty / metadata missing.</span></td>
+  <td class="expect">A &#x27;Could not load datasets&#x27; error with &#x27;Try Again&#x27; (or a prompt to log in online) is shown; retry recovers.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-06</td>
+  <td class="title"><span class="tname">Dataset &#x27;Sync all&#x27;</span><br><span class="steps">From the dataset page tap &#x27;Sync all&#x27; while online.</span></td>
+  <td class="expect">Button changes to &#x27;Syncing&#x27; and the list refreshes after the push.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-07</td>
+  <td class="title"><span class="tname">Section selection</span><br><span class="steps">Open a dataset that has sections.</span></td>
+  <td class="expect">Page &#x27;Select Section&#x27; lists numbered sections; subtitle shows &#x27;&lt;dataset&gt; · &lt;period&gt;&#x27;. Datasets without sections skip straight to the period.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-08</td>
+  <td class="title"><span class="tname">Period picker</span><br><span class="steps">Reach &#x27;Report Period&#x27;.</span></td>
+  <td class="expect">Field labelled &#x27;Report Period&#x27;, defaults to the current period for the dataset&#x27;s period type (default &#x27;Monthly&#x27;). Ethiopian month names are displayed.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-09</td>
+  <td class="title"><span class="tname">Period gating</span><br><span class="steps">Try to select an expired or not-yet-open period.</span></td>
+  <td class="expect">Expired periods are not selectable; future ones may show &#x27;not open yet&#x27;. Period open/expired honours expiryDays and openFuturePeriods.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-10</td>
+  <td class="title"><span class="tname">Clock-tamper warning</span><br><span class="steps">With the tamper flag set, open the period picker.</span></td>
+  <td class="expect">Warning shown: &quot;This device&#x27;s clock was set backwards. Only the current period is open until the app reconnects to the server.&quot;</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-11</td>
+  <td class="title"><span class="tname">Disease registration flow</span><br><span class="steps">Open a Disease Registration dataset.</span></td>
+  <td class="expect">A category-combo picker appears before the form; the app bar/section show &#x27;Disease Registration&#x27; and the form is themed accordingly.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-12</td>
+  <td class="title"><span class="tname">New-report entry point</span><br><span class="steps">Tap the &#x27;+&#x27; / &#x27;New report&#x27; button.</span></td>
+  <td class="expect">The capture flow starts (org unit -&gt; dataset -&gt; ...) as expected.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">CAP-13</td>
+  <td class="title"><span class="tname">Category-combo resolution error</span><br><span class="steps">Select combos when metadata is incomplete.</span></td>
+  <td class="expect">Banner: &#x27;Could not resolve the selected combination — try again once metadata has synced.&#x27; The user can recover.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">E</span> Reports Overview &amp; To-do Band</h2>
+<p class="blurb">The Report Period list (all reports across all org units) and the &#x27;Reports to fill&#x27; / To-do band with urgency.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">RPT-01</td>
+  <td class="title"><span class="tname">Empty report list</span><br><span class="steps">Open Report Period with no reports touched.</span></td>
+  <td class="expect">&#x27;No reports yet&#x27; plus guidance to tap + to start one.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">RPT-02</td>
+  <td class="title"><span class="tname">Reports across all org units</span><br><span class="steps">Complete/draft reports at more than one facility.</span></td>
+  <td class="expect">All reports appear in one list, routine and disease registration merged.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">RPT-03</td>
+  <td class="title"><span class="tname">Report status chips</span><br><span class="steps">Inspect report cards.</span></td>
+  <td class="expect">Cards show &#x27;Completed&#x27;/&#x27;Incomplete&#x27; and &#x27;Synced&#x27;/&#x27;Unsynced&#x27; as applicable.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">RPT-04</td>
+  <td class="title"><span class="tname">Report card identity</span><br><span class="steps">Inspect a disease-registration report card.</span></td>
+  <td class="expect">Card reads &#x27;&lt;period&gt; · &lt;org unit&gt;&#x27; and, for disease registration, also &#x27;· &lt;combo&gt;&#x27; so reports sharing dataset/period/org unit are not conflated.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">RPT-05</td>
+  <td class="title"><span class="tname">&#x27;Reports to fill&#x27; band</span><br><span class="steps">Open the To-do band online and offline.</span></td>
+  <td class="expect">Lists reports still owed. Empty state: &#x27;Nothing to fill&#x27; + &#x27;Every report assigned to your organisation units is up to date.&#x27;</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">RPT-06</td>
+  <td class="title"><span class="tname">Urgency labels</span><br><span class="steps">Inspect items due at different times.</span></td>
+  <td class="expect">Labels show Overdue / Due soon / Open with the relevant lock date (e.g. &#x27;Overdue — locked 5 Jan&#x27;, &#x27;Locks 5 Jan&#x27;).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">RPT-07</td>
+  <td class="title"><span class="tname">Started / Not started</span><br><span class="steps">Inspect an item that has local work vs one with none.</span></td>
+  <td class="expect">&#x27;Started&#x27; is shown when something is already queued; otherwise &#x27;Not started&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">RPT-08</td>
+  <td class="title"><span class="tname">Report search &amp; filters</span><br><span class="steps">Search and filter the report list with no matches.</span></td>
+  <td class="expect">Matching reports remain; a no-match state shows &#x27;No results&#x27; + &#x27;No reports match the current search or filters.&#x27;</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">RPT-09</td>
+  <td class="title"><span class="tname">Reopening un-finishes a report</span><br><span class="steps">Open a completed report and save a draft instead of completing.</span></td>
+  <td class="expect">The report shows as &#x27;Incomplete&#x27; in the list (intended behaviour).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">RPT-10</td>
+  <td class="title"><span class="tname">Server completion pull</span><br><span class="steps">Complete a report for the same dataset/period/org unit on the web, then refresh in-app.</span></td>
+  <td class="expect">The item disappears from &#x27;Reports to fill&#x27; after the best-effort server pull.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">F</span> Data Entry Form</h2>
+<p class="blurb">Opening, editing, saving, completing and reopening forms, plus all the entry controls (options, booleans, controller elements, disease list, totals).</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">DE-01</td>
+  <td class="title"><span class="tname">Open a form online</span><br><span class="steps">Open a routine form while online.</span></td>
+  <td class="expect">Server values for that form are pulled, conflicts resolved, and the form renders. A pull failure does not block the form.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-02</td>
+  <td class="title"><span class="tname">Open a form offline</span><br><span class="steps">Open the same form in airplane mode after a prior sync.</span></td>
+  <td class="expect">The form opens from local data with cached values; no blocking network error.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-03</td>
+  <td class="title"><span class="tname">Edit a numeric cell</span><br><span class="steps">Type a number into a numeric/ integer/ positive-integer cell.</span></td>
+  <td class="expect">The value is accepted and shown; the cell is marked modified.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-04</td>
+  <td class="title"><span class="tname">Edit other value types</span><br><span class="steps">Enter values into percentage, unit-interval, date, phone and e-mail cells.</span></td>
+  <td class="expect">Each type accepts only valid input; invalid input is flagged inline.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-05</td>
+  <td class="title"><span class="tname">Option-set picker</span><br><span class="steps">Tap a cell that uses an option set.</span></td>
+  <td class="expect">An option grid opens; choosing an option sets the value. &#x27;Clear value&#x27; removes it.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-06</td>
+  <td class="title"><span class="tname">Boolean / true-only cells</span><br><span class="steps">Tap boolean and true-only cells repeatedly.</span></td>
+  <td class="expect">Values cycle &#x27;Yes&#x27;/&#x27;No&#x27;/&#x27;-&#x27; (true-only toggles Yes/none).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-07</td>
+  <td class="title"><span class="tname">Greyed-out field</span><br><span class="steps">Hover/tap a greyed field.</span></td>
+  <td class="expect">Not editable; tooltip &quot;This combination isn&#x27;t applicable and can&#x27;t be entered.&quot;</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-08</td>
+  <td class="title"><span class="tname">Controller element gating</span><br><span class="steps">Change a controller element that others depend on from Yes to No.</span></td>
+  <td class="expect">Confirm dialog &#x27;Clear entered data?&#x27; explains N values will be erased; &#x27;Clear and close&#x27; erases and hides them, &#x27;Cancel&#x27; reverts.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-09</td>
+  <td class="title"><span class="tname">Save as draft</span><br><span class="steps">Edit values and tap the &#x27;Save&#x27; FAB.</span></td>
+  <td class="expect">Values save locally as a draft; snackbar confirms saving as a draft on this device.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-10</td>
+  <td class="title"><span class="tname">Invalid value blocks save</span><br><span class="steps">Enter an invalid value (e.g. letters in a number cell) and tap Save.</span></td>
+  <td class="expect">Save is blocked; message names the first problem and asks to fix the red cell(s). Nothing invalid reaches the database.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-11</td>
+  <td class="title"><span class="tname">Complete - clean form</span><br><span class="steps">With all mandatory fields filled and no issues, tap Save then &#x27;Complete&#x27;.</span></td>
+  <td class="expect">Dialog &#x27;Everything looks good&#x27;; completing shows &#x27;Data set completed successfully!&#x27; and values are queued/pushed.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-12</td>
+  <td class="title"><span class="tname">Complete - missing mandatory fields</span><br><span class="steps">Leave a compulsory field blank and try to complete.</span></td>
+  <td class="expect">Dialog &#x27;N required field(s) missing&#x27; blocks completion; the required cell is indicated.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-13</td>
+  <td class="title"><span class="tname">Complete - validation issues</span><br><span class="steps">Create a validation-rule violation and try to complete.</span></td>
+  <td class="expect">Dialog &#x27;N validation issue(s) found&#x27; warns; the user may &#x27;Review data&#x27; or &#x27;Complete anyway&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-14</td>
+  <td class="title"><span class="tname">Reopen a completed form</span><br><span class="steps">Open a completed report, change a value and tap Save.</span></td>
+  <td class="expect">Dialog &#x27;This data set is completed&#x27; offers &#x27;Incomplete&#x27; (reopen, edits stay drafts) or &#x27;Keep completed&#x27; (sends saved changes and stays completed).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-15</td>
+  <td class="title"><span class="tname">Closed period is view-only</span><br><span class="steps">Open a form whose period is closed.</span></td>
+  <td class="expect">Header chip &#x27;Closed · View only&#x27;; the Save FAB is hidden and cells are read-only.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-16</td>
+  <td class="title"><span class="tname">Search within the form</span><br><span class="steps">Use the form search field.</span></td>
+  <td class="expect">Data elements filter as typed; &#x27;No results for &quot;&lt;query&gt;&quot;&#x27; when empty.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-17</td>
+  <td class="title"><span class="tname">Reload values</span><br><span class="steps">Make an unsaved edit, then tap &#x27;Reload values&#x27;.</span></td>
+  <td class="expect">If unsaved changes exist, &#x27;Save your changes before reloading.&#x27;; otherwise server/local values reload.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-18</td>
+  <td class="title"><span class="tname">Row totals &amp; calculated fields</span><br><span class="steps">Inspect summation rows and auto-calculated cells.</span></td>
+  <td class="expect">Totals sum the row; calculated cells show &#x27;Automatically calculated — not entered directly&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-19</td>
+  <td class="title"><span class="tname">Previous-entries hint</span><br><span class="steps">Enter a numeric value in a cell with history.</span></td>
+  <td class="expect">Hint shows &#x27;Higher/Lower/Within last N&#x27; with the previous values listed.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-20</td>
+  <td class="title"><span class="tname">Disease entry list</span><br><span class="steps">On a disease form, use &#x27;Select for new disease&#x27;.</span></td>
+  <td class="expect">A new disease form is added; existing diseases can be &#x27;Collapse&#x27;/&#x27;Expand&#x27;; when all are added, &#x27;Every disease has already been added&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DE-21</td>
+  <td class="title"><span class="tname">Section navigation</span><br><span class="steps">Move between collapsible sections in a large form.</span></td>
+  <td class="expect">Sections expand/collapse smoothly and the correct fields are shown.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">G</span> Data Quality &amp; Validation</h2>
+<p class="blurb">The offline data-quality suite: value-type checks, validation rules, mandatory fields, outliers and the per-cell audit trail.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">DQ-01</td>
+  <td class="title"><span class="tname">Value-type validation</span><br><span class="steps">Type an out-of-range or wrong-format value into a typed cell.</span></td>
+  <td class="expect">The cell is flagged and the value cannot be saved with the form.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-02</td>
+  <td class="title"><span class="tname">Validation rules warn (do not block)</span><br><span class="steps">Enter values that violate a synced DHIS2 validation rule.</span></td>
+  <td class="expect">A warning is shown at completion and in the live banner; completing anyway is still possible (same contract as the DHIS2 web app).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-03</td>
+  <td class="title"><span class="tname">Live validation banner</span><br><span class="steps">Enter values that trigger a rule while typing.</span></td>
+  <td class="expect">Banner &#x27;N validation issue(s) — tap to review&#x27; updates live; tapping shows details with rule name and comparison.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-04</td>
+  <td class="title"><span class="tname">Mandatory fields block completion</span><br><span class="steps">Attempt to complete with compulsory operands blank.</span></td>
+  <td class="expect">Completion is blocked until the mandatory field(s) are filled.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-05</td>
+  <td class="title"><span class="tname">Grey fields cannot be entered</span><br><span class="steps">Try to edit a server-configured grey field.</span></td>
+  <td class="expect">Field is non-editable.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-06</td>
+  <td class="title"><span class="tname">Controller element hides group</span><br><span class="steps">Set a controller element to No.</span></td>
+  <td class="expect">Dependent elements are hidden and their existing values cleared after confirmation.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-07</td>
+  <td class="title"><span class="tname">Outlier warning (single value)</span><br><span class="steps">Type a value far outside the cell&#x27;s recent history.</span></td>
+  <td class="expect">After ~600 ms a dialog &#x27;Are you sure?&#x27; shows the typical value, historical range and bounds, with &#x27;Go back and correct&#x27; / &#x27;Save value&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-08</td>
+  <td class="title"><span class="tname">Outlier acknowledgement</span><br><span class="steps">Choose &#x27;Save value&#x27; on an outlier, then edit the cell again.</span></td>
+  <td class="expect">The value is kept and the warning is not repeated for that cell until settings change.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-09</td>
+  <td class="title"><span class="tname">Outlier warning (multiple)</span><br><span class="steps">Produce several outliers at once.</span></td>
+  <td class="expect">Dialog lists the values with &#x27;N values look very different...&#x27; and offers &#x27;Go back&#x27; / &#x27;Save anyway&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-10</td>
+  <td class="title"><span class="tname">Outlier settings</span><br><span class="steps">Open &#x27;Outlier check&#x27; from the form menu.</span></td>
+  <td class="expect">Algorithms &#x27;Z-score&#x27;, &#x27;Modified Z-score&#x27;, &#x27;Min-Max&#x27; and a threshold slider (&#x27;more sensitive&#x27; ... &#x27;less sensitive&#x27;) are available; &#x27;Save&#x27; applies and re-runs the check.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-11</td>
+  <td class="title"><span class="tname">Audit trail - local edits</span><br><span class="steps">Long-press a cell with local edits and open its history.</span></td>
+  <td class="expect">History sheet shows &#x27;On this device&#x27; entries with old/new value, actor and time (statuses include &#x27;Saved as a draft&#x27;, &#x27;Waiting to sync&#x27;, &#x27;Synced&#x27;, &#x27;Rejected&#x27;).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-12</td>
+  <td class="title"><span class="tname">Audit trail - server history</span><br><span class="steps">Open history online for a cell changed on another client.</span></td>
+  <td class="expect">Server entries appear (CREATE/UPDATE/DELETE) under the server banner &#x27;Change history below is from the DHIS2 server&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-13</td>
+  <td class="title"><span class="tname">Audit trail - offline</span><br><span class="steps">Open history in airplane mode.</span></td>
+  <td class="expect">Banner &#x27;Offline — showing this device&#x27;s own edit log below&#x27;; local entries still show.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">DQ-14</td>
+  <td class="title"><span class="tname">Audit trail - empty</span><br><span class="steps">Open history for a never-edited cell.</span></td>
+  <td class="expect">&#x27;No changes recorded for this cell yet.&#x27;</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">H</span> Offline-First &amp; Synchronization</h2>
+<p class="blurb">Draft -&gt; pending -&gt; synced/error state machine, automatic and manual sync, conflict resolution, server rejections and metadata sync.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">SYNC-01</td>
+  <td class="title"><span class="tname">Full offline data entry</span><br><span class="steps">In airplane mode: browse, open a form, enter values, save and complete.</span></td>
+  <td class="expect">Everything works with no network. Nothing is lost; values are queued locally.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-02</td>
+  <td class="title"><span class="tname">State transitions</span><br><span class="steps">Observe a value&#x27;s state after complete and after a successful push.</span></td>
+  <td class="expect">Value moves draft -&gt; pending on Complete -&gt; synced after the server accepts it.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-03</td>
+  <td class="title"><span class="tname">Auto-sync on reconnect</span><br><span class="steps">Create offline pending data, then restore connectivity.</span></td>
+  <td class="expect">Queued values upload automatically on the offline-&gt;online transition.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-04</td>
+  <td class="title"><span class="tname">Auto-sync on login</span><br><span class="steps">Log in while online with pending data already on the device.</span></td>
+  <td class="expect">Queued values upload as part of login.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-05</td>
+  <td class="title"><span class="tname">Heartbeat sync</span><br><span class="steps">Leave pending data and stay online without any event.</span></td>
+  <td class="expect">Within the 5-minute heartbeat the pending values are eventually pushed.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-06</td>
+  <td class="title"><span class="tname">Manual sync outcomes</span><br><span class="steps">Tap the sync button in each situation: offline with pending, offline with none, all synced, uploaded, partial, failed.</span></td>
+  <td class="expect">Each shows its specific message, e.g. &#x27;Sync complete — N entry/entries uploaded.&#x27;, &#x27;Everything is already synced.&#x27;, &#x27;Sync failed — your entries are safe on this device...&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-07</td>
+  <td class="title"><span class="tname">Conflict - draft always wins</span><br><span class="steps">Create a draft, change the same cell on the web, reopen the form online.</span></td>
+  <td class="expect">The local draft is kept and not overwritten by the server value.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-08</td>
+  <td class="title"><span class="tname">Conflict - newest wins</span><br><span class="steps">With a pending value differing from the server, reopen the form online.</span></td>
+  <td class="expect">The newer of the two wins; a genuinely newer local edit stays pending and is pushed.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-09</td>
+  <td class="title"><span class="tname">Conflict - tampered clock</span><br><span class="steps">Set the device clock back, create a conflicting pending value, reopen online.</span></td>
+  <td class="expect">The server value wins while the clock is suspect.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-10</td>
+  <td class="title"><span class="tname">Server rejection handling</span><br><span class="steps">Push a value the server rejects (wrong type / not in option set).</span></td>
+  <td class="expect">The cell turns red with the server&#x27;s reason; editing it clears the error and re-queues it as pending.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-11</td>
+  <td class="title"><span class="tname">Completion registration push</span><br><span class="steps">Complete a dataset online, then mark it incomplete.</span></td>
+  <td class="expect">Completion is POSTed (and DELETE) to the server; reopen succeeds.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-12</td>
+  <td class="title"><span class="tname">Metadata full sync</span><br><span class="steps">Log in for the first time on a fresh device.</span></td>
+  <td class="expect">A full metadata download scoped to the user&#x27;s own org-unit subtree completes; only then is the device ready for offline capture.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-13</td>
+  <td class="title"><span class="tname">Metadata delta sync</span><br><span class="steps">Log in again online later.</span></td>
+  <td class="expect">Only changed/new metadata is fetched; deletions on the server are removed locally.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-14</td>
+  <td class="title"><span class="tname">Offline org-unit depth bound</span><br><span class="steps">Inspect the offline org-unit tree for a woreda-assigned user.</span></td>
+  <td class="expect">Capture roots plus their direct children are stored; deeper levels remain reachable online via the live fallback.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-15</td>
+  <td class="title"><span class="tname">Tamper-resistant clock</span><br><span class="steps">Set the device clock backwards, then reopen the app.</span></td>
+  <td class="expect">Past periods are refused/warned; the current period still works; reconnecting anchors the clock to the server and clears the flag.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-16</td>
+  <td class="title"><span class="tname">Background kill protection (Android)</span><br><span class="steps">Start a sync, background the app and check notifications.</span></td>
+  <td class="expect">A foreground &#x27;dataSync&#x27; notification appears only while work is in flight; if the process is killed, pending values remain queued and retry later.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SYNC-17</td>
+  <td class="title"><span class="tname">Transport failure safety</span><br><span class="steps">Cause a sync to fail mid-flight (drop network during push).</span></td>
+  <td class="expect">Values remain pending (never marked synced); a later sync retries them.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">I</span> Visualization &amp; Dashboards</h2>
+<p class="blurb">Server dashboards, on-device local dashboards, the chart builder and offline caching.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">VIS-01</td>
+  <td class="title"><span class="tname">Three visualization tabs</span><br><span class="steps">Open the Visualization tab.</span></td>
+  <td class="expect">Flat tabs &#x27;Server Dashboard&#x27;, &#x27;Local Dashboard&#x27;, &#x27;Create New&#x27; are present.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-02</td>
+  <td class="title"><span class="tname">Server dashboards load</span><br><span class="steps">Open &#x27;Server Dashboard&#x27; online.</span></td>
+  <td class="expect">DHIS2 server dashboards are listed; opening one renders its charts natively. Each chart loads independently, so one failure does not block the rest.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-03</td>
+  <td class="title"><span class="tname">Per-chart retry</span><br><span class="steps">With a chart that failed to load, tap its &#x27;Retry&#x27;.</span></td>
+  <td class="expect">Only that chart re-fetches; the rest of the dashboard is unaffected.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-04</td>
+  <td class="title"><span class="tname">Unsupported items notice</span><br><span class="steps">Open a dashboard containing unsupported item types (e.g. maps).</span></td>
+  <td class="expect">A notice such as &#x27;N items not supported&#x27; is shown; the rest renders.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-05</td>
+  <td class="title"><span class="tname">Offline cache banner</span><br><span class="steps">Load a dashboard, then switch to airplane mode and reopen it.</span></td>
+  <td class="expect">Charts render from cache with &#x27;Offline — showing cached data&#x27; (and a timestamp).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-06</td>
+  <td class="title"><span class="tname">Local dashboard empty state</span><br><span class="steps">Open &#x27;Local Dashboard&#x27; with no saved charts.</span></td>
+  <td class="expect">&#x27;No local charts yet&#x27; + &#x27;Build your first chart...&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-07</td>
+  <td class="title"><span class="tname">Create a chart</span><br><span class="steps">In &#x27;Create New&#x27;, choose chart type, data type, group/items, org unit and period, then save.</span></td>
+  <td class="expect">&#x27;Chart saved.&#x27;; the chart appears under Local Dashboard and is never pushed to the server.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-08</td>
+  <td class="title"><span class="tname">Chart types render</span><br><span class="steps">Create/view Column, Bar, Line, Pie, Single Value and Gauge charts.</span></td>
+  <td class="expect">Each renders correctly; an empty result shows &#x27;No data&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-09</td>
+  <td class="title"><span class="tname">Data types</span><br><span class="steps">Build charts from Indicator, Data Element and Dataset sources.</span></td>
+  <td class="expect">Each source offers the right group/item picker and metric options (Reporting Rate, Actual Reports, etc.).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-10</td>
+  <td class="title"><span class="tname">Relative vs fixed period</span><br><span class="steps">Toggle &#x27;Relative Period&#x27; / &#x27;Fixed Period&#x27; in the builder.</span></td>
+  <td class="expect">Relative flags (This Month, Last 3 Months, This Financial Year, ...) and fixed periods both produce a query.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-11</td>
+  <td class="title"><span class="tname">Edit a local chart</span><br><span class="steps">Open a saved chart and tap &#x27;Edit chart&#x27;.</span></td>
+  <td class="expect">&#x27;Edit Chart&#x27; page loads; &#x27;Save Changes&#x27; updates it and shows &#x27;Chart updated.&#x27;</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-12</td>
+  <td class="title"><span class="tname">Delete a local chart</span><br><span class="steps">Tap the delete action on a local chart.</span></td>
+  <td class="expect">Dialog &#x27;Delete chart?&#x27; with &#x27;&quot;&lt;name&gt;&quot; will be removed from your charts.&#x27;; &#x27;Delete&#x27; removes it.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-13</td>
+  <td class="title"><span class="tname">Offline chart-builder draft</span><br><span class="steps">Build a chart while offline and tap &#x27;Save as Draft&#x27;.</span></td>
+  <td class="expect">A &#x27;Saved offline — will finish building once back online&#x27; chip appears; on regaining connectivity the draft is finished automatically.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-14</td>
+  <td class="title"><span class="tname">Misconfigured visualization</span><br><span class="steps">Attempt to render a visualization with no period dimension.</span></td>
+  <td class="expect">A clear, displayable configuration message is shown instead of a generic network error.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">VIS-15</td>
+  <td class="title"><span class="tname">Search dashboards/charts</span><br><span class="steps">Search in Visualization mode.</span></td>
+  <td class="expect">Dashboards are searched in Server mode and local charts in Local mode; no-match states are shown.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">J</span> Export (PDF &amp; Excel)</h2>
+<p class="blurb">Exporting an open form for paper backup or off-device review.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">EXP-01</td>
+  <td class="title"><span class="tname">Export as PDF</span><br><span class="steps">Open a form, tap &#x27;Download&#x27; -&gt; &#x27;Download as PDF&#x27;.</span></td>
+  <td class="expect">Prompt &#x27;What should the PDF include?&#x27; with &#x27;Only recorded&#x27; / &#x27;All elements&#x27;. A saved/shared PDF is produced.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EXP-02</td>
+  <td class="title"><span class="tname">PDF content</span><br><span class="steps">Open the exported PDF.</span></td>
+  <td class="expect">Header &#x27;&lt;org unit&gt; · &lt;period&gt;&#x27;, &#x27;Generated &lt;date&gt;&#x27;, a value table, &#x27;Page N / M&#x27; footers, and &#x27;Nothing to show.&#x27; when empty.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EXP-03</td>
+  <td class="title"><span class="tname">Export as Excel</span><br><span class="steps">Open a form, tap &#x27;Download&#x27; -&gt; &#x27;Download as Excel&#x27;.</span></td>
+  <td class="expect">An .xlsx is shared with a &#x27;Data&#x27; sheet, columns &#x27;Data Element&#x27; / &#x27;Category&#x27; / &#x27;Value&#x27;, and a &#x27;Generated by &lt;user&gt;&#x27; line.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EXP-04</td>
+  <td class="title"><span class="tname">Export offline</span><br><span class="steps">Export a form in airplane mode.</span></td>
+  <td class="expect">Export succeeds from local data.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EXP-05</td>
+  <td class="title"><span class="tname">Export filenames</span><br><span class="steps">Check the suggested filename for each export.</span></td>
+  <td class="expect">Format &#x27;&lt;title&gt; - &lt;period&gt;.pdf&#x27; / &#x27;.xlsx&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">K</span> Notifications &amp; Deadline Reminders</h2>
+<p class="blurb">On-device local reminders for reports due before their lock date.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">NOT-01</td>
+  <td class="title"><span class="tname">Reminder permission</span><br><span class="steps">First time reminders are needed, grant/deny notification permission.</span></td>
+  <td class="expect">Permission is requested; if denied the app disables reminders silently and keeps working.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NOT-02</td>
+  <td class="title"><span class="tname">3-day heads-up</span><br><span class="steps">Have a report locking in 3 days and wait/trigger the schedule.</span></td>
+  <td class="expect">At 08:00 (Africa/Addis_Ababa) a &#x27;Reports lock soon&#x27; notification lists the report(s).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NOT-03</td>
+  <td class="title"><span class="tname">Lock-day reminder</span><br><span class="steps">Have a report locking today.</span></td>
+  <td class="expect">A &#x27;Reports lock today&#x27; notification is delivered at 08:00.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NOT-04</td>
+  <td class="title"><span class="tname">Grouping by facility/date</span><br><span class="steps">Have multiple reports locking on the same day at one facility.</span></td>
+  <td class="expect">A single grouped notification is delivered, not one per report.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NOT-05</td>
+  <td class="title"><span class="tname">Reschedule on change</span><br><span class="steps">Complete one of the pending reports and refresh the To-do list.</span></td>
+  <td class="expect">The stale reminder is cancelled and the schedule reflects the remaining reports.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NOT-06</td>
+  <td class="title"><span class="tname">Reboot behaviour (Android)</span><br><span class="steps">Reboot the device.</span></td>
+  <td class="expect">Reminders are re-armed (or rescheduled on next launch) without duplication.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">L</span> Settings</h2>
+<p class="blurb">Account, server and app information plus logout.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">SET-01</td>
+  <td class="title"><span class="tname">Profile information</span><br><span class="steps">Open Settings.</span></td>
+  <td class="expect">Shows the logged-in username and primary organisation unit (fallbacks &#x27;Not logged in&#x27; / &#x27;No organisation unit&#x27;).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SET-02</td>
+  <td class="title"><span class="tname">Server URL display/edit</span><br><span class="steps">Inspect and change the server URL from Settings.</span></td>
+  <td class="expect">Current URL is shown; &#x27;DHIS2 Server&#x27; dialog validates and saves it.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SET-03</td>
+  <td class="title"><span class="tname">App version</span><br><span class="steps">Inspect the About section.</span></td>
+  <td class="expect">Shows &#x27;App version&#x27; with &#x27;RDHIS2 Mobile App 1.0.0&#x27;.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">SET-04</td>
+  <td class="title"><span class="tname">Logout confirmation</span><br><span class="steps">Tap &#x27;Log out&#x27;.</span></td>
+  <td class="expect">Dialog &#x27;Log out?&#x27; with the &#x27;Data not yet synced stays on this device.&#x27; notice; confirming returns to login.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">M</span> Edge Cases &amp; Error Handling</h2>
+<p class="blurb">Recovery paths and boundary conditions testers should actively try to break.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">EDGE-01</td>
+  <td class="title"><span class="tname">No connectivity at first use</span><br><span class="steps">Fresh install, no network, attempt login.</span></td>
+  <td class="expect">A clear &#x27;No internet connection.&#x27;-style message is shown; the app does not crash.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EDGE-02</td>
+  <td class="title"><span class="tname">Server error / timeout</span><br><span class="steps">Point at an unreachable or erroring server and act.</span></td>
+  <td class="expect">&#x27;Server error. Please try again.&#x27; / &#x27;Connection timed out. Please try again.&#x27; messages are shown; local data is unaffected.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EDGE-03</td>
+  <td class="title"><span class="tname">No datasets assigned</span><br><span class="steps">Open an org unit with no assigned datasets.</span></td>
+  <td class="expect">Guidance is shown: &#x27;No datasets are assigned to &lt;orgUnit&gt;...&#x27; to pick another unit or contact an administrator.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EDGE-04</td>
+  <td class="title"><span class="tname">Same report, different combos</span><br><span class="steps">Create two disease reports with the same dataset/period/org unit but different combos.</span></td>
+  <td class="expect">They remain separate entries and are not conflated.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EDGE-05</td>
+  <td class="title"><span class="tname">Large org-unit hierarchy performance</span><br><span class="steps">Expand deep branches of the national org-unit tree.</span></td>
+  <td class="expect">The tree stays responsive (lazy per-level loading); no freeze or memory spike.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EDGE-06</td>
+  <td class="title"><span class="tname">App backgrounded during entry</span><br><span class="steps">Enter values, background the app, return.</span></td>
+  <td class="expect">Entered values are preserved and the form/state is intact.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EDGE-07</td>
+  <td class="title"><span class="tname">Rotation / small screen</span><br><span class="steps">Rotate the device and test on a small screen.</span></td>
+  <td class="expect">Layouts reflow without clipping key controls.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EDGE-08</td>
+  <td class="title"><span class="tname">Duplicate / rapid taps</span><br><span class="steps">Rapidly tap Save and Complete.</span></td>
+  <td class="expect">No duplicate submissions or crashes; state remains consistent.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">EDGE-09</td>
+  <td class="title"><span class="tname">Storage pressure</span><br><span class="steps">Fill the local database with many values and sync.</span></td>
+  <td class="expect">Batches are chunked (500 values/request) and no data is lost on a mid-transfer drop.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section class="sec">
+<h2><span class="secnum">N</span> Non-Functional Checks</h2>
+<p class="blurb">Performance, reliability, security and usability observations.</p>
+<table class="cases">
+<thead>
+<tr>
+  <th class="id">ID</th>
+  <th class="title">Test Case &amp; Steps</th>
+  <th class="expect">Expected Result</th>
+  <th class="result">Result</th>
+  <th class="notes">Notes / Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="id">NFR-01</td>
+  <td class="title"><span class="tname">Performance</span><br><span class="steps">Time form open, org-unit expansion, saving and syncing.</span></td>
+  <td class="expect">All interactions complete in an acceptable time with no visible jank.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NFR-02</td>
+  <td class="title"><span class="tname">Battery / background behaviour</span><br><span class="steps">Leave the app installed and connected over a period.</span></td>
+  <td class="expect">Heartbeat and reminders do not noticeably drain the battery.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NFR-03</td>
+  <td class="title"><span class="tname">Credential security</span><br><span class="steps">Inspect stored credentials.</span></td>
+  <td class="expect">Passwords are not stored in plain text (a salted verifier is used); session data is in secure storage.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NFR-04</td>
+  <td class="title"><span class="tname">Data durability</span><br><span class="steps">Force-kill the app mid-sync.</span></td>
+  <td class="expect">No committed data is lost; pending items retry on next launch.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NFR-05</td>
+  <td class="title"><span class="tname">Text scaling / accessibility</span><br><span class="steps">Increase the system font size.</span></td>
+  <td class="expect">Labels remain readable and controls usable.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NFR-06</td>
+  <td class="title"><span class="tname">Localization</span><br><span class="steps">Inspect the UI language.</span></td>
+  <td class="expect">UI is English with the Amharic Ministry heading on login; note any untranslated text.</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+<tr>
+  <td class="id">NFR-07</td>
+  <td class="title"><span class="tname">Release HTTPS-only</span><br><span class="steps">In a release build, configure an http:// server.</span></td>
+  <td class="expect">The insecure server is refused (http works only in debug builds).</td>
+  <td class="result"><span class="box"></span> Pass &nbsp; <span class="box"></span> Fail</td>
+  <td class="notes"></td>
+</tr>
+</tbody>
+</table>
+</section>
+
+<div class="signoff">
+  <h3>Defect Log</h3>
+  <table class="defects">
+    <thead>
+      <tr>
+        <th style="width:12%">Defect ID</th>
+        <th style="width:14%">Test Case ID</th>
+        <th style="width:36%">Description / Steps to reproduce</th>
+        <th style="width:12%">Severity</th>
+        <th style="width:26%">Screenshot / Attachment</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>
+      <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top:14px;">Overall Result</h3>
+  <p class="legend">
+    <span><span class="box"></span> Accepted &mdash; ready to release</span>
+    <span><span class="box"></span> Accepted with minor issues</span>
+    <span><span class="box"></span> Rejected &mdash; must re-test</span>
+  </p>
+  <table class="sigrow">
+    <tr>
+      <td style="width:50%">Tester signature / name</td>
+      <td style="width:50%">Date</td>
+    </tr>
+  </table>
+  <table class="sigrow">
+    <tr>
+      <td style="width:50%">Development / QA representative</td>
+      <td style="width:50%">Date</td>
+    </tr>
+  </table>
+</div>
+
+<p class="footer-note">RDHIS2 Mobile Tracker 1.0.0 &mdash; generated 29 September 2026 from the application's feature documentation.</p>
+
+</body>
+</html>

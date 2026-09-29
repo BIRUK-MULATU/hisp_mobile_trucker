@@ -13,6 +13,7 @@ import '../../../../core/metadata/section.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/network/connectivity_service.dart';
 import '../../../../core/data/ethiopian_period_service.dart';
+import '../../../../core/storage/secure_storage.dart';
 import '../../../../core/utils/app_logger.dart';
 import '../../domain/entities/dataset_entity.dart';
 import '../../domain/entities/dataset_section_entity.dart';
@@ -44,6 +45,52 @@ class CaptureRepositoryImpl implements CaptureRepository {
   /// checks this instead of throwing, since offline is an expected,
   /// silent "nothing more to show" here, not an error.
   ApiClient? get _api => _apiOverride ?? AppSession.instance.api;
+
+  @override
+  Future<List<OrgUnitTreeNode>> getCaptureRoots() async {
+    final roots = await OrgUnitResource(_db).getCaptureRoots();
+    if (roots.isNotEmpty) {
+      return [
+        for (final r in roots)
+          OrgUnitTreeNode(
+            id: r.uid,
+            name: r.displayName,
+            parentId: r.parentUid,
+            // level is not stored — derive from the path (/a/b/c = 3).
+            level: OrgUnitDepth.levelOf(r.path),
+            path: r.path,
+            isAssigned: true,
+            isExpanded: true,
+          ),
+      ];
+    }
+
+    // No flagged root in the database: either this device has never
+    // completed a metadata sync, or the first one is still running in
+    // the background right after an online login. Fall back to the
+    // assignment captured by the last online /me so the tree still
+    // renders immediately instead of claiming nothing is assigned.
+    // A failure to read that legacy store is not worth failing the
+    // screen over — an empty list is exactly what it would have been.
+    List<Map<String, dynamic>> stored;
+    try {
+      stored = await SecureStorage().getOrgUnits();
+    } catch (_) {
+      return const [];
+    }
+    return [
+      for (final ou in stored)
+        if ((ou['id'] as String? ?? '').isNotEmpty)
+          OrgUnitTreeNode(
+            id: ou['id'] as String,
+            name: ou['displayName'] as String? ?? ou['name'] as String? ?? '',
+            level: ou['level'] as int? ?? 1,
+            path: ou['path'] as String?,
+            isAssigned: true,
+            isExpanded: true,
+          ),
+    ];
+  }
 
   @override
   Future<List<OrgUnitTreeNode>> getOrgUnitChildren(String parentId) async {

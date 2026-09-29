@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hisp_mobile_trucker/core/auth/session_service.dart';
 import 'package:hisp_mobile_trucker/core/database/app_database.dart';
+import 'package:hisp_mobile_trucker/core/metadata/organisation_unit.dart';
 import 'package:hisp_mobile_trucker/core/network/api_client.dart';
 import 'package:hisp_mobile_trucker/features/capture/data/repositories/capture_repository_impl.dart';
 import 'package:hisp_mobile_trucker/features/capture/domain/entities/report_instance_entity.dart';
@@ -680,4 +681,46 @@ void main() {
       expect(children.single.childCount, 0);
     });
   });
+
+  group('getCaptureRoots', () {
+    test('returns the flagged capture roots from the local database, with '
+        'no network involved', () async {
+      // The offline bug: roots used to be read from SecureStorage, which
+      // only an ONLINE /me login ever wrote and which logout deletes —
+      // so after logout -> offline login the tree rendered "no org units
+      // assigned" even though the synced rows were sitting right there.
+      const woreda = 'orgUnit0006';
+      await (db.update(db.orgUnitsTable)..where((t) => t.uid.equals(ou1)))
+          .write(const OrgUnitsTableCompanion(isUserCaptureRoot: Value(true)));
+      // A plain descendant — must NOT be offered as a root.
+      await db.into(db.orgUnitsTable).insert(
+            OrgUnitsTableCompanion.insert(
+              uid: woreda,
+              name: 'Woreda One',
+              displayName: 'Woreda One',
+              parentUid: const Value(ou1),
+              path: '/$ou1/$woreda',
+            ),
+          );
+
+      final client = ApiClient.withBasicAuth(
+          baseUrl: 'https://example.invalid', username: 'u', password: 'p');
+      final adapter = _ThrowingAdapter();
+      client.dio.httpClientAdapter = adapter;
+      final repo =
+          CaptureRepositoryImpl(session: _TestSession(db), api: client);
+
+      final roots = await repo.getCaptureRoots();
+
+      expect([for (final r in roots) r.id], [ou1]);
+      expect(roots.single.name, 'Health Post A');
+      expect(roots.single.isAssigned, isTrue);
+      expect(roots.single.level, OrgUnitDepth.levelOf('/$ou1'));
+      expect(roots.single.path, '/$ou1');
+    });
+
+    test('is empty — not an error — when no root has ever been synced',
+        () async {
+      expect(await repository.getCaptureRoots(), isEmpty);
+    });  });
 }
